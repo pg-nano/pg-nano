@@ -17,7 +17,8 @@
   "scripts": {
     "build": "rimraf dist && tsup",
     "dev": "rimraf dist && tsup --watch --sourcemap",
-    "format": "biome format --write src generators"
+    "format": "biome format --write src generators",
+    "lint": "biome lint --fix --unsafe src generators"
   },
   "files": ["dist", "generators"],
   "dependencies": {
