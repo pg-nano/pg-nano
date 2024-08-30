@@ -1,19 +1,21 @@
 import { Duplex, Writable } from 'node:stream'
-import util from 'node:util'
 
-const CopyStream = function (pq, options) {
-  Duplex.call(this, options)
+class CopyStream extends Duplex {
+  private pq: any
+  private _reading: boolean
+
+  constructor(pq: any, options?: any) {
+    super(options)
   this.pq = pq
   this._reading = false
 }
 
-export default CopyStream
-
-util.inherits(CopyStream, Duplex)
-
-// writer methods
-CopyStream.prototype._write = function (chunk, encoding, cb) {
-  var result = this.pq.putCopyData(chunk)
+  _write(
+    chunk: any,
+    encoding: string,
+    cb: (error?: Error | null) => void,
+  ): void {
+    const result = this.pq.putCopyData(chunk)
 
   // sent successfully
   if (result === 1) {
@@ -26,30 +28,26 @@ CopyStream.prototype._write = function (chunk, encoding, cb) {
   }
 
   // command would block. wait for writable and call again.
-  var self = this
   this.pq.writable(() => {
-    self._write(chunk, encoding, cb)
+      this._write(chunk, encoding, cb)
   })
 }
 
-CopyStream.prototype.end = function () {
-  var args = Array.prototype.slice.call(arguments, 0)
-  var self = this
-
-  var callback = args.pop()
+  end(...args: any[]): void {
+    const callback = args.pop()
 
   if (args.length) {
     this.write(args[0])
   }
-  var result = this.pq.putCopyEnd()
+    const result = this.pq.putCopyEnd()
 
   // sent successfully
   if (result === 1) {
     // consume our results and then call 'end' on the
     // "parent" writable class so we can emit 'finish' and
     // all that jazz
-    return consumeResults(this.pq, (err, res) => {
-      Writable.prototype.end.call(self)
+      return consumeResults(this.pq, (err: Error | null) => {
+        Writable.prototype.end.call(this)
 
       // handle possible passing of callback to end method
       if (callback) {
@@ -60,7 +58,7 @@ CopyStream.prototype.end = function () {
 
   // error
   if (result === -1) {
-    var err = new Error(this.pq.errorMessage())
+      const err = new Error(this.pq.errorMessage())
     return this.emit('error', err)
   }
 
@@ -68,12 +66,13 @@ CopyStream.prototype.end = function () {
   // don't pass any buffers to end on the second call because
   // we already sent them to possible this.write the first time
   // we called end
-  return this.pq.writable(() => self.end.apply(self, callback))
+    return this.pq.writable(() => this.end(callback))
 }
 
-// reader methods
-CopyStream.prototype._consumeBuffer = function (cb) {
-  var result = this.pq.getCopyData(true)
+  private _consumeBuffer(
+    cb: (error: Error | null, buffer: Buffer | null) => void,
+  ): void {
+    const result = this.pq.getCopyData(true)
   if (result instanceof Buffer) {
     return setImmediate(() => {
       cb(null, result)
@@ -84,49 +83,48 @@ CopyStream.prototype._consumeBuffer = function (cb) {
     return cb(null, null)
   }
   if (result === 0) {
-    var self = this
     this.pq.once('readable', () => {
-      self.pq.stopReader()
-      self.pq.consumeInput()
-      self._consumeBuffer(cb)
+        this.pq.stopReader()
+        this.pq.consumeInput()
+        this._consumeBuffer(cb)
     })
     return this.pq.startReader()
   }
-  cb(new Error('Unrecognized read status: ' + result))
+    cb(new Error('Unrecognized read status: ' + result), null)
 }
 
-CopyStream.prototype._read = function (size) {
+  _read(size: number): void {
   if (this._reading) {
     return
   }
   this._reading = true
   // console.log('read begin');
-  var self = this
   this._consumeBuffer((err, buffer) => {
-    self._reading = false
+      this._reading = false
     if (err) {
-      return self.emit('error', err)
+        return this.emit('error', err)
     }
     if (buffer === false) {
       // nothing to read for now, return
       return
     }
-    self.push(buffer)
+      this.push(buffer)
   })
 }
+}
 
-var consumeResults = (pq, cb) => {
-  var cleanup = () => {
+const consumeResults = (pq: any, cb: (error: Error | null) => void): void => {
+  const cleanup = () => {
     pq.removeListener('readable', onReadable)
     pq.stopReader()
   }
 
-  var readError = message => {
+  const readError = (message?: string) => {
     cleanup()
     return cb(new Error(message || pq.errorMessage()))
   }
 
-  var onReadable = () => {
+  const onReadable = () => {
     // read waiting data from the socket
     // e.g. clear the pending 'select'
     if (!pq.consumeInput()) {
@@ -158,3 +156,5 @@ var consumeResults = (pq, cb) => {
   pq.on('readable', onReadable)
   pq.startReader()
 }
+
+export default CopyStream
