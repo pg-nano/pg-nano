@@ -1,0 +1,14 @@
+{
+  "include": ["src"],
+  "exclude": ["src/pg-native"],
+  "compilerOptions": {
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "outDir": "./dist/tmp",
+    "strict": true,
+    "module": "esnext",
+    "moduleResolution": "node",
+    "target": "esnext",
+    "lib": ["esnext"]
+  }
+}
