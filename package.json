@@ -16,12 +16,10 @@
   },
   "scripts": {
     "build": "rimraf dist && tsup",
-    "dev": "rimraf dist && tsup --watch --sourcemap"
+    "dev": "rimraf dist && tsup --watch --sourcemap",
+    "format": "biome format --write src generators"
   },
-  "files": [
-    "dist",
-    "generators"
-  ],
+  "files": ["dist", "generators"],
   "dependencies": {
     "libpq": "^1.8.13"
   }
