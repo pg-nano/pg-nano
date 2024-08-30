@@ -5,7 +5,9 @@
     "@alloc/codegentool": "^1.3.2",
     "@biomejs/biome": "^1.8.3",
     "@radashi-org/biome-config": "^1.0.2",
+    "@types/libpq": "^1.8.13",
     "@types/node": "^14.14.33",
+    "pg-types": "workspace:^",
     "postgres": "^3.4.4",
     "rimraf": "^6.0.1",
     "tsup": "^8.2.4",
@@ -19,5 +21,8 @@
   "files": [
     "dist",
     "generators"
-  ]
+  ],
+  "dependencies": {
+    "libpq": "^1.8.13"
+  }
 }
