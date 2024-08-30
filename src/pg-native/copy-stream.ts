@@ -6,9 +6,9 @@ class CopyStream extends Duplex {
 
   constructor(pq: any, options?: any) {
     super(options)
-  this.pq = pq
-  this._reading = false
-}
+    this.pq = pq
+    this._reading = false
+  }
 
   _write(
     chunk: any,
@@ -17,100 +17,100 @@ class CopyStream extends Duplex {
   ): void {
     const result = this.pq.putCopyData(chunk)
 
-  // sent successfully
-  if (result === 1) {
-    return cb()
-  }
+    // sent successfully
+    if (result === 1) {
+      return cb()
+    }
 
-  // error
-  if (result === -1) {
-    return cb(new Error(this.pq.errorMessage()))
-  }
+    // error
+    if (result === -1) {
+      return cb(new Error(this.pq.errorMessage()))
+    }
 
-  // command would block. wait for writable and call again.
-  this.pq.writable(() => {
+    // command would block. wait for writable and call again.
+    this.pq.writable(() => {
       this._write(chunk, encoding, cb)
-  })
-}
+    })
+  }
 
   end(...args: any[]): void {
     const callback = args.pop()
 
-  if (args.length) {
-    this.write(args[0])
-  }
+    if (args.length) {
+      this.write(args[0])
+    }
     const result = this.pq.putCopyEnd()
 
-  // sent successfully
-  if (result === 1) {
-    // consume our results and then call 'end' on the
-    // "parent" writable class so we can emit 'finish' and
-    // all that jazz
+    // sent successfully
+    if (result === 1) {
+      // consume our results and then call 'end' on the
+      // "parent" writable class so we can emit 'finish' and
+      // all that jazz
       return consumeResults(this.pq, (err: Error | null) => {
         Writable.prototype.end.call(this)
 
-      // handle possible passing of callback to end method
-      if (callback) {
-        callback(err)
-      }
-    })
-  }
+        // handle possible passing of callback to end method
+        if (callback) {
+          callback(err)
+        }
+      })
+    }
 
-  // error
-  if (result === -1) {
+    // error
+    if (result === -1) {
       const err = new Error(this.pq.errorMessage())
-    return this.emit('error', err)
-  }
+      return this.emit('error', err)
+    }
 
-  // command would block. wait for writable and call end again
-  // don't pass any buffers to end on the second call because
-  // we already sent them to possible this.write the first time
-  // we called end
+    // command would block. wait for writable and call end again
+    // don't pass any buffers to end on the second call because
+    // we already sent them to possible this.write the first time
+    // we called end
     return this.pq.writable(() => this.end(callback))
-}
+  }
 
   private _consumeBuffer(
     cb: (error: Error | null, buffer: Buffer | null) => void,
   ): void {
     const result = this.pq.getCopyData(true)
-  if (result instanceof Buffer) {
-    return setImmediate(() => {
-      cb(null, result)
-    })
-  }
-  if (result === -1) {
-    // end of stream
-    return cb(null, null)
-  }
-  if (result === 0) {
-    this.pq.once('readable', () => {
+    if (result instanceof Buffer) {
+      return setImmediate(() => {
+        cb(null, result)
+      })
+    }
+    if (result === -1) {
+      // end of stream
+      return cb(null, null)
+    }
+    if (result === 0) {
+      this.pq.once('readable', () => {
         this.pq.stopReader()
         this.pq.consumeInput()
         this._consumeBuffer(cb)
-    })
-    return this.pq.startReader()
-  }
+      })
+      return this.pq.startReader()
+    }
     cb(new Error('Unrecognized read status: ' + result), null)
-}
+  }
 
   _read(size: number): void {
-  if (this._reading) {
-    return
-  }
-  this._reading = true
-  // console.log('read begin');
-  this._consumeBuffer((err, buffer) => {
-      this._reading = false
-    if (err) {
-        return this.emit('error', err)
-    }
-    if (buffer === false) {
-      // nothing to read for now, return
+    if (this._reading) {
       return
     }
+    this._reading = true
+    // console.log('read begin');
+    this._consumeBuffer((err, buffer) => {
+      this._reading = false
+      if (err) {
+        return this.emit('error', err)
+      }
+      if (buffer === false) {
+        // nothing to read for now, return
+        return
+      }
       this.push(buffer)
-  })
-}
+    })
+  }
 }
 
 const consumeResults = (pq: any, cb: (error: Error | null) => void): void => {
