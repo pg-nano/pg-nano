@@ -43,6 +43,13 @@ export interface PostgresConfig {
   idleTimeout: number
 }
 
+/**
+ * A minimal connection pool for Postgres.
+ *
+ * Note that `maxConnections` defaults to 100, which assumes you only have one
+ * application server. If you have multiple application servers, you probably
+ * want to lower this value by dividing it by the number of application servers.
+ */
 export class Postgres {
   protected pool: (Connection | Promise<Connection>)[] = []
   protected backlog: ((err?: Error) => void)[] = []
