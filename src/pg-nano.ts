@@ -1,7 +1,11 @@
+import createDebug from 'debug'
+import type { EventEmitter } from 'node:events'
 import { isPromise } from 'node:util/types'
 import { isArray, sleep } from 'radashi'
 import type { Field, Result, Row } from './pg-native/build-result.js'
 import { ClientStatus, Client as Connection } from './pg-native/index.js'
+
+const debug = /** @__PURE__ */ createDebug('pg-nano')
 
 export type { Field, Result, Row }
 
@@ -209,19 +213,38 @@ export class Postgres {
   /**
    * Executes a query on the database.
    */
-  async query(
+  query<TRow extends Row = Row>(
     sql: string,
     params?: any[] | AbortSignal,
     signal?: AbortSignal,
-  ): Promise<Result[]> {
+  ): QueryPromise<Result<TRow>[]> {
     if (params && !isArray(params)) {
       signal = params
       params = undefined
     }
 
+    const connection = this.getConnection(signal)
+    const promise = this.dispatchQuery<TRow>(connection, sql, params, signal)
+
+    return makeAsyncIterable(promise, () =>
+      makeEventGenerator(connection, 'result'),
+    )
+  }
+
+  protected async dispatchQuery<TRow extends Row = Row>(
+    connection: Connection | Promise<Connection>,
+    sql: string,
+    params?: any[],
+    signal?: AbortSignal,
+  ): Promise<Result<TRow>[]> {
     signal?.throwIfAborted()
 
-    const connection = await this.getConnection()
+    if (isPromise(connection)) {
+      // Only await the connection if necessary, so the connection status can
+      // change to QUERY_WRITING as soon as possible.
+      connection = await connection
+    }
+
     try {
       signal?.throwIfAborted()
 
@@ -235,7 +258,7 @@ export class Postgres {
         })
       }
 
-      return await queryPromise
+      return (await queryPromise) as Result<TRow>[]
     } finally {
       this.backlog.shift()?.()
     }
@@ -246,13 +269,16 @@ export class Postgres {
    *
    * You may explicitly type the rows using generics.
    */
-  async many<T extends Row>(
+  many<T extends Row>(
     sql: string,
     params?: any[] | AbortSignal,
     signal?: AbortSignal,
-  ): Promise<T[]> {
-    const [result] = await this.query(sql, params, signal)
-    return result.rows as T[]
+  ) {
+    const promise = this.query(sql, params, signal)
+    return transformAsyncIterable(
+      promise,
+      result => result.rows,
+    ) as QueryPromise<T[]>
   }
 
   /**
@@ -261,13 +287,16 @@ export class Postgres {
    *
    * You may explicitly type the row using generics.
    */
-  async one<T extends Row>(
+  one<T extends Row>(
     sql: string,
     params?: any[] | AbortSignal,
     signal?: AbortSignal,
-  ): Promise<T | undefined> {
-    const [result] = await this.query(sql, params, signal)
-    return result.rows[0] as T | undefined
+  ) {
+    const promise = this.query(sql, params, signal)
+    return transformAsyncIterable(
+      promise,
+      result => result.rows[0],
+    ) as QueryPromise<T | undefined>
   }
 
   /**
@@ -296,5 +325,55 @@ export class Postgres {
 
   private setDSN(dsn: string | null) {
     ;(this as { dsn: string | null }).dsn = dsn
+  }
+}
+
+export interface QueryPromise<T>
+  extends Promise<T>,
+    AsyncIterable<T extends (infer U)[] ? U : T> {}
+
+/**
+ * Add the AsyncIterable protocol to an object.
+ */
+function makeAsyncIterable<T extends object, Item>(
+  obj: T,
+  asyncIterator: () => AsyncIterator<Item>,
+): T & AsyncIterable<Item> {
+  const result: any = obj
+  result[Symbol.asyncIterator] = asyncIterator
+  return result
+}
+
+/**
+ * Converts an EventEmitter and event name pair into an async generator.
+ */
+async function* makeEventGenerator<T>(
+  emitter: EventEmitter | Promise<EventEmitter>,
+  eventName: string,
+): AsyncGenerator<Awaited<T>, never, unknown> {
+  if (isPromise(emitter)) {
+    emitter = await emitter
+  }
+  while (true) {
+    const { promise, resolve } = Promise.withResolvers<Awaited<T>>()
+    emitter.on(eventName, resolve)
+    try {
+      yield promise
+    } finally {
+      emitter.off(eventName, resolve)
+    }
+  }
+}
+
+/**
+ * Creates a new AsyncIterable with transformed values from the input
+ * AsyncIterable.
+ */
+async function* transformAsyncIterable<T, U>(
+  iterable: AsyncIterable<T>,
+  transform: (value: T) => U | Promise<U>,
+): AsyncIterable<U> {
+  for await (const value of iterable) {
+    yield await transform(value)
   }
 }
