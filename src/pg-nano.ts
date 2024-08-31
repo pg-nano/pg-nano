@@ -68,8 +68,10 @@ export class Postgres {
     }
   }
 
-  protected addConnection(): Promise<Connection> {
-    const connection = new Connection(this.config.idleTimeout)
+  protected addConnection(
+    idleTimeout = this.config.idleTimeout,
+  ): Promise<Connection> {
+    const connection = new Connection(idleTimeout)
     const connecting = this.connectWithRetry(connection).then(() => {
       const index = this.pool.indexOf(connecting)
       return (this.pool[index] = connection)
@@ -127,9 +129,9 @@ export class Postgres {
     ;(this as { dsn: string }).dsn = dsn
 
     if (this.config.minConnections > 0) {
-      const firstConnection = this.addConnection()
+      const firstConnection = this.addConnection(Number.POSITIVE_INFINITY)
       for (let i = 0; i < this.config.minConnections - 1; i++) {
-        this.addConnection()
+        this.addConnection(Number.POSITIVE_INFINITY)
       }
       await firstConnection
     }
