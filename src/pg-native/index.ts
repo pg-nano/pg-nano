@@ -2,7 +2,6 @@ import Libpq from 'libpq'
 import { EventEmitter } from 'node:events'
 import util from 'node:util'
 import type { StrictEventEmitter } from 'strict-event-emitter-types'
-import CopyStream from './copy-stream'
 import { buildResult, type Result } from './result'
 
 interface ClientEvents {
@@ -55,12 +54,6 @@ export class Client extends ClientEventEmitter {
       })
     }
     return promise
-  }
-
-  getCopyStream(): CopyStream {
-    this.pq.setNonBlocking(true)
-    stopReading(this.pq, castClient(this))
-    return new CopyStream(this.pq)
   }
 
   /**
