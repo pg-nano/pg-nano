@@ -2,8 +2,8 @@ import createDebug from 'debug'
 import type { EventEmitter } from 'node:events'
 import { isPromise } from 'node:util/types'
 import { isArray, sleep } from 'radashi'
-import type { Field, Result, Row } from './pg-native/build-result.js'
 import { ClientStatus, Client as Connection } from './pg-native/index.js'
+import type { Field, Result, Row } from './pg-native/result.js'
 
 const debug = /** @__PURE__ */ createDebug('pg-nano')
 
