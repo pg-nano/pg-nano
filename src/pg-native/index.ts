@@ -45,40 +45,7 @@ export class Client extends ClientEventEmitter {
    * Execute an unprepared query.
    */
   query(sql: string, params?: any[]) {
-    return dispatchQuery(
-      this.pq,
-      castClient(this),
-      Array.isArray(params) ? sendQueryParams : sendQuery,
-      sql,
-      params,
-    )
-  }
-
-  /**
-   * Prepare a query for execution, giving it a unique name.
-   */
-  prepare(name: string, sql: string, paramCount: number) {
-    return dispatchQuery(
-      this.pq,
-      castClient(this),
-      sendPrepare,
-      name,
-      sql,
-      paramCount,
-    )
-  }
-
-  /**
-   * Execute a prepared query by its unique name.
-   */
-  execute(name: string, params?: any[]) {
-    return dispatchQuery(
-      this.pq,
-      castClient(this),
-      sendQueryPrepared,
-      name,
-      params,
-    )
+    return dispatchQuery(this.pq, castClient(this), sql, params)
   }
 
   getCopyStream(): CopyStream {
@@ -159,13 +126,11 @@ function reset(client: ClientState): void {
  * Sends a query to libpq and waits for it to finish writing query text to the
  * socket.
  */
-async function dispatchQuery<Args extends [any, any, any]>(
+async function dispatchQuery(
   pq: Libpq,
   client: ClientState & ClientEventEmitter,
-  command: (pg: Libpq, ...args: [Args[0], Args[1], Args[2]]) => boolean,
-  arg1: Args[0],
-  arg2?: Args[1],
-  arg3?: Args[2],
+  sql: string,
+  params?: any[],
 ) {
   stopReading(pq, client)
 
@@ -173,7 +138,9 @@ async function dispatchQuery<Args extends [any, any, any]>(
   const success = pq.setNonBlocking(true)
 
   if (success) {
-    const sent = command(pq, arg1, arg2, arg3)
+    const sent = Array.isArray(params)
+      ? pq.sendQueryParams(sql, params)
+      : pq.sendQuery(sql)
 
     if (sent) {
       await waitForDrain(pq)
@@ -193,22 +160,6 @@ async function dispatchQuery<Args extends [any, any, any]>(
     )
   }
   return promise
-}
-
-function sendQueryParams(pg: Libpq, sql: string, params: any[]) {
-  return pg.sendQueryParams(sql, params)
-}
-
-function sendQuery(pg: Libpq, sql: string) {
-  return pg.sendQuery(sql)
-}
-
-function sendPrepare(pg: Libpq, name: string, sql: string, paramCount: number) {
-  return pg.sendPrepare(name, sql, paramCount)
-}
-
-function sendQueryPrepared(pg: Libpq, name: string, params: any[]) {
-  return pg.sendQueryPrepared(name, params)
 }
 
 // called when libpq is readable
