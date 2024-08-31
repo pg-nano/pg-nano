@@ -1,83 +1,76 @@
-class Result {
-  private _types: any
-  private _arrayMode: boolean
-  command: string | undefined
-  rowCount: number | undefined
-  fields: Array<{ name: string; dataTypeID: number }>
-  rows: any[]
+import type Libpq from 'libpq'
+import * as types from 'pg-types'
 
-  constructor(types, arrayMode) {
-    this._types = types
-    this._arrayMode = arrayMode
-
-    this.command = undefined
-    this.rowCount = undefined
-    this.fields = []
-    this.rows = []
-  }
-
-  consumeCommand(pq) {
-    this.command = pq.cmdStatus().split(' ')[0]
-    this.rowCount = Number.parseInt(pq.cmdTuples(), 10)
-  }
-
-  consumeFields(pq) {
-    const nfields = pq.nfields()
-    for (let x = 0; x < nfields; x++) {
-      this.fields.push({
-        name: pq.fname(x),
-        dataTypeID: pq.ftype(x),
-      })
-    }
-  }
-
-  consumeRows(pq) {
-    const tupleCount = pq.ntuples()
-    for (let i = 0; i < tupleCount; i++) {
-      const row = this._arrayMode
-        ? this.consumeRowAsArray(pq, i)
-        : this.consumeRowAsObject(pq, i)
-      this.rows.push(row)
-    }
-  }
-
-  consumeRowAsObject(pq, rowIndex) {
-    const row = {}
-    for (let j = 0; j < this.fields.length; j++) {
-      const value = this.readValue(pq, rowIndex, j)
-      row[this.fields[j].name] = value
-    }
-    return row
-  }
-
-  consumeRowAsArray(pq, rowIndex) {
-    const row = []
-    for (let j = 0; j < this.fields.length; j++) {
-      const value = this.readValue(pq, rowIndex, j)
-      row.push(value)
-    }
-    return row
-  }
-
-  readValue(pq, rowIndex, colIndex) {
-    const rawValue = pq.getvalue(rowIndex, colIndex)
-    if (rawValue === '') {
-      if (pq.getisnull(rowIndex, colIndex)) {
-        return null
-      }
-    }
-    const dataTypeId = this.fields[colIndex].dataTypeID
-    return this._types.getTypeParser(dataTypeId)(rawValue)
-  }
+export class Result {
+  constructor(
+    readonly command: string,
+    readonly rowCount: number,
+    readonly fields: Field[],
+    readonly rows: Row[],
+  ) {}
 }
 
-function buildResult(pq, types, arrayMode) {
-  const result = new Result(types, arrayMode)
-  result.consumeCommand(pq)
-  result.consumeFields(pq)
-  result.consumeRows(pq)
+export type Row = Record<string, unknown>
 
-  return result
+export interface Field {
+  name: string
+  dataTypeID: number
 }
 
-export default buildResult
+export function buildResult(pq: Libpq) {
+  const command = consumeCommand(pq)
+  const rowCount = consumeRowCount(pq)
+  const fields = consumeFields(pq)
+  const rows = consumeRows(pq, fields)
+
+  return new Result(command, rowCount, fields, rows)
+}
+
+function consumeCommand(pq: Libpq) {
+  return pq.cmdStatus().split(' ')[0]
+}
+
+function consumeRowCount(pq: Libpq) {
+  return Number.parseInt(pq.cmdTuples(), 10)
+}
+
+function consumeFields(pq: Libpq) {
+  const fields = new Array(pq.nfields())
+  for (let i = 0; i < fields.length; i++) {
+    fields[i] = {
+      name: pq.fname(i),
+      dataTypeID: pq.ftype(i),
+    }
+  }
+  return fields
+}
+
+function consumeRows(pq: Libpq, fields: Field[]) {
+  const rows = new Array(pq.ntuples())
+  for (let i = 0; i < rows.length; i++) {
+    rows[i] = consumeRowAsObject(pq, i, fields)
+  }
+  return rows
+}
+
+function consumeRowAsObject(pq: Libpq, rowIndex: number, fields: Field[]) {
+  const row: Record<string, unknown> = {}
+  for (let colIndex = 0; colIndex < fields.length; colIndex++) {
+    row[fields[colIndex].name] = readValue(pq, rowIndex, colIndex, fields)
+  }
+  return row
+}
+
+function readValue(
+  pq: Libpq,
+  rowIndex: number,
+  colIndex: number,
+  fields: Field[],
+) {
+  const rawValue = pq.getvalue(rowIndex, colIndex)
+  if (rawValue === '' && pq.getisnull(rowIndex, colIndex)) {
+    return null
+  }
+  const parseValue = types.getTypeParser(fields[colIndex].dataTypeID)
+  return parseValue(rawValue)
+}
