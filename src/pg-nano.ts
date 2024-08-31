@@ -1,5 +1,5 @@
 import { isPromise } from 'node:util/types'
-import { sleep } from 'radashi'
+import { isArray, sleep } from 'radashi'
 import type { Field, Result, Row } from './pg-native/build-result.js'
 import { ClientStatus, Client as Connection } from './pg-native/index.js'
 
@@ -146,11 +146,36 @@ export class Postgres {
   /**
    * Executes a query on the database.
    */
-  async query(sql: string, params?: any[]) {
+  async query(
+    sql: string,
+    params?: any[] | AbortSignal,
+    signal?: AbortSignal,
+  ): Promise<Result[]> {
+    if (params && !isArray(params)) {
+      signal = params
+      params = undefined
+    }
+
+    signal?.throwIfAborted()
+
     const connection = await this.getConnection()
-    return connection.query(sql, params).finally(() => {
+    try {
+      signal?.throwIfAborted()
+
+      const queryPromise = connection.query(sql, params)
+
+      if (signal) {
+        const cancel = () => connection.cancel()
+        signal.addEventListener('abort', cancel)
+        queryPromise.finally(() => {
+          signal.removeEventListener('abort', cancel)
+        })
+      }
+
+      return await queryPromise
+    } finally {
       this.backlog.shift()?.()
-    })
+    }
   }
 
   /**
