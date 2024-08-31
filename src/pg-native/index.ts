@@ -7,6 +7,7 @@ import { debug } from './debug'
 import { buildResult, type Result } from './result'
 
 interface ClientEvents {
+  result: (result: Result) => void
   notify: (msg: Libpq.NotifyMsg) => void
   close: () => void
 }
@@ -28,6 +29,12 @@ type ClientEventEmitter = InstanceType<typeof ClientEventEmitter>
  * You must call `connect` before you can execute queries. If you later call
  * `close`, you will have to call `connect` again before you can execute further
  * queries.
+ *
+ * Row streaming is possible through the `"result"` event. Results won't be
+ * buffered if a `"result"` listener is added.
+ *
+ * The `"notify"` event is emitted when a NOTIFY message is received from the
+ * database. This is useful for push-based data updates.
  */
 export class Client extends ClientEventEmitter {
   protected pq: Libpq = null!
@@ -250,7 +257,10 @@ function waitForDrain(pq: Libpq) {
   })
 }
 
-function processResult(pq: Libpq, client: ClientState): string {
+function processResult(
+  pq: Libpq,
+  client: ClientState & ClientEventEmitter,
+): string {
   const resultStatus = pq.resultStatus()
   switch (resultStatus) {
     case 'PGRES_FATAL_ERROR':
@@ -260,7 +270,12 @@ function processResult(pq: Libpq, client: ClientState): string {
     case 'PGRES_TUPLES_OK':
     case 'PGRES_COMMAND_OK':
     case 'PGRES_EMPTY_QUERY': {
-      client.results.push(buildResult(pq))
+      const result = buildResult(pq)
+      if (client.listenerCount('result')) {
+        client.emit('result', result)
+      } else {
+        client.results.push(result)
+      }
       break
     }
 
