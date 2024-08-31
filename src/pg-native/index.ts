@@ -1,7 +1,7 @@
 import Libpq from 'libpq'
 import assert from 'node:assert'
 import { EventEmitter } from 'node:events'
-import types from 'pg-types'
+import * as types from 'pg-types'
 import buildResult from './build-result'
 import CopyStream from './copy-stream'
 
