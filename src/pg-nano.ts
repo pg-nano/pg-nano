@@ -75,35 +75,28 @@ export class Postgres {
     }
   }
 
-  protected addConnection(
-    idleTimeout = this.config.idleTimeout,
-  ): Promise<Connection> {
-    const connection = new Connection(idleTimeout)
-    const connecting = this.connectWithRetry(connection).then(() => {
-      const index = this.pool.indexOf(connecting)
-      return (this.pool[index] = connection)
-    })
-    this.pool.push(connecting)
-    return connecting
-  }
-
   protected async connectWithRetry(
     connection: Connection,
+    signal?: AbortSignal,
     retries = Math.max(this.config.maxRetries, 0),
     delay = Math.max(this.config.initialRetryDelay, 0),
   ): Promise<void> {
     if (!this.dsn) {
       throw new Error('Postgres is not connected')
     }
+    signal?.throwIfAborted()
     try {
       await connection.connect(this.dsn)
     } catch (error) {
       if (retries > 0) {
+        signal?.throwIfAborted()
+
         if (delay > 0) {
           await sleep(delay)
         }
         return this.connectWithRetry(
           connection,
+          signal,
           retries - 1,
           Math.min(delay * 2, this.config.maxRetryDelay),
         )
@@ -112,7 +105,66 @@ export class Postgres {
     }
   }
 
-  protected async getConnection(): Promise<Connection> {
+  protected addConnection(
+    signal?: AbortSignal,
+    idleTimeout = this.config.idleTimeout,
+  ): Promise<Connection> {
+    const connection = new Connection(idleTimeout)
+
+    const connecting = this.connectWithRetry(connection, signal).then(
+      () => {
+        const index = this.pool.indexOf(connecting)
+        this.pool[index] = connection
+
+        connection.on('close', () => {
+          this.removeConnection(connection)
+        })
+
+        return connection
+      },
+      error => {
+        this.removeConnection(connecting)
+        throw error
+      },
+    )
+
+    this.pool.push(connecting)
+
+    if (debug.enabled) {
+      const index = this.pool.indexOf(connecting)
+      connecting.then(() => {
+        if (index === this.pool.length - 1) {
+          debug(
+            `open connections: ${this.pool.length} of ${this.config.maxConnections}`,
+          )
+        }
+      })
+    }
+
+    return connecting
+  }
+
+  protected removeConnection(connection: Connection | Promise<Connection>) {
+    const index = this.pool.indexOf(connection)
+    if (index !== -1) {
+      this.pool.splice(index, 1)
+
+      if (debug.enabled) {
+        const poolSize = this.pool.length
+        setImmediate(() => {
+          if (poolSize === this.pool.length) {
+            debug(
+              `open connections: ${poolSize} of ${this.config.maxConnections}`,
+            )
+          }
+        })
+      }
+    }
+  }
+
+  protected getConnection(
+    signal?: AbortSignal,
+  ): Connection | Promise<Connection> {
     const idleConnection = this.pool.find(
       conn => !isPromise(conn) && conn.status === ClientStatus.IDLE,
     )
@@ -120,14 +172,15 @@ export class Postgres {
       return idleConnection
     }
     if (this.pool.length < this.config.maxConnections) {
-      return this.addConnection()
+      return this.addConnection(signal)
     }
     return new Promise((resolve, reject) => {
+      signal?.throwIfAborted()
       this.backlog.push(err => {
         if (err) {
           reject(err)
         } else {
-          resolve(this.getConnection())
+          resolve(this.getConnection(signal))
         }
       })
     })
@@ -136,15 +189,18 @@ export class Postgres {
   /**
    * Connects to the database and initializes the connection pool.
    */
-  async connect(dsn: string) {
+  async connect(dsn: string, signal?: AbortSignal) {
     if (this.dsn != null) {
       throw new Error('Postgres is already connected')
     }
     this.setDSN(dsn)
     if (this.config.minConnections > 0) {
-      const firstConnection = this.addConnection(Number.POSITIVE_INFINITY)
+      const firstConnection = this.addConnection(
+        signal,
+        Number.POSITIVE_INFINITY,
+      )
       for (let i = 0; i < this.config.minConnections - 1; i++) {
-        this.addConnection(Number.POSITIVE_INFINITY)
+        this.addConnection(signal, Number.POSITIVE_INFINITY)
       }
       await firstConnection
     }
