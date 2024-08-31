@@ -43,12 +43,13 @@ export class Client extends ClientEventEmitter {
 
   constructor(readonly idleTimeout: number = 30e3) {
     super()
-    reset(castClient(this))
+    reset(castClient(this), ClientStatus.CLOSED)
   }
 
-  connect(dsn: string): Promise<void> {
+  async connect(dsn: string) {
     this.pq = new Libpq()
-    return util.promisify(this.pq.connect.bind(this.pq))(dsn)
+    await util.promisify(this.pq.connect.bind(this.pq))(dsn)
+    setStatus(castClient(this), ClientStatus.IDLE)
   }
 
   /**
@@ -102,7 +103,7 @@ export class Client extends ClientEventEmitter {
    * Close the database connection.
    */
   close() {
-    stopReading(this.pq, castClient(this))
+    stopReading(this.pq, castClient(this), ClientStatus.CLOSED)
     this.pq.finish()
     this.pq = null
     this.emit('close')
@@ -113,6 +114,7 @@ export enum ClientStatus {
   IDLE = 0,
   QUERY_WRITING = 1,
   QUERY_READING = 2,
+  CLOSED = 3,
 }
 
 interface ClientState {
@@ -128,8 +130,17 @@ function castClient(client: Client): ClientState & ClientEventEmitter {
   return client as any
 }
 
-function reset(client: ClientState): void {
-  client.status = ClientStatus.IDLE
+function setStatus(client: ClientState, newStatus: ClientStatus): void {
+  if (!debug.enabled || client.status !== newStatus) {
+    client.status = newStatus
+    if (debug.enabled) {
+      debug(`client status: ${ClientStatus[newStatus]}`)
+    }
+  }
+}
+
+function reset(client: ClientState, newStatus: ClientStatus): void {
+  setStatus(client, newStatus)
   client.reader = null
   client.results = []
   client.promise = new Promise((resolve, reject) => {
@@ -148,7 +159,7 @@ async function dispatchQuery(
   sql: string,
   params?: any[],
 ) {
-  stopReading(pq, client)
+  stopReading(pq, client, ClientStatus.QUERY_WRITING)
 
   const promise = client.promise
   const success = pq.setNonBlocking(true)
@@ -161,11 +172,9 @@ async function dispatchQuery(
     if (sent) {
       await waitForDrain(pq)
 
-      if (client.status !== ClientStatus.QUERY_READING) {
-        client.status = ClientStatus.QUERY_READING
-        pq.on('readable', (client.reader = () => read(pq, client)))
-        pq.startReader()
-      }
+      setStatus(client, ClientStatus.QUERY_READING)
+      pq.on('readable', (client.reader = () => read(pq, client)))
+      pq.startReader()
     } else {
       resolvePromise(client, new PgNativeError(pq.errorMessage()))
     }
@@ -229,15 +238,15 @@ function resolvePromise(client: ClientState, error?: PgNativeError) {
     client.resolve(client.results)
   }
 
-  reset(client)
+  reset(client, ClientStatus.IDLE)
 }
 
-function stopReading(pq: Libpq, client: ClientState) {
+function stopReading(pq: Libpq, client: ClientState, newStatus: ClientStatus) {
   if (client.status === ClientStatus.QUERY_READING) {
-    client.status = ClientStatus.IDLE
     pq.stopReader()
     pq.removeListener('readable', client.reader)
   }
+  setStatus(client, newStatus)
 }
 
 function waitForDrain(pq: Libpq) {
