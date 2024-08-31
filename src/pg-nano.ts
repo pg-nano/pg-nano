@@ -1,6 +1,9 @@
 import { isPromise } from 'node:util/types'
 import { sleep } from 'radashi'
+import type { Field, Result, Row } from './pg-native/build-result.js'
 import { ClientStatus, Client as Connection } from './pg-native/index.js'
+
+export type { Field, Result, Row }
 
 export interface PostgresConfig {
   /**
