@@ -242,17 +242,18 @@ function stopReading(pq: Libpq, client: ClientState) {
 
 function waitForDrain(pq: Libpq) {
   return new Promise<void>(function check(resolve, reject) {
-    const status = pq.flush()
-
-    if (status !== 0) {
-      if (status === -1) {
-        return reject(pq.errorMessage())
-      }
-
-      // You cannot read & write on a socket at the same time.
-      pq.writable(() => {
-        check(resolve, reject)
-      })
+    switch (pq.flush()) {
+      case 0:
+        resolve()
+        break
+      case -1:
+        reject(pq.errorMessage())
+        break
+      default:
+        // You cannot read & write on a socket at the same time.
+        pq.writable(() => {
+          check(resolve, reject)
+        })
     }
   })
 }
