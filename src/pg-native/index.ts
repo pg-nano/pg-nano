@@ -2,8 +2,8 @@ import Libpq from 'libpq'
 import { EventEmitter } from 'node:events'
 import util from 'node:util'
 import type { StrictEventEmitter } from 'strict-event-emitter-types'
-import { buildResult, type Result } from './build-result'
 import CopyStream from './copy-stream'
+import { buildResult, type Result } from './result'
 
 interface ClientEvents {
   notify: (msg: Libpq.NotifyMsg) => void

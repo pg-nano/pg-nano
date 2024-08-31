@@ -1,12 +1,12 @@
 import type Libpq from 'libpq'
 import * as types from 'pg-types'
 
-export class Result {
+export class Result<TRow extends Row = Row> {
   constructor(
     readonly command: string,
     readonly rowCount: number,
     readonly fields: Field[],
-    readonly rows: Row[],
+    readonly rows: TRow[],
   ) {}
 }
 
