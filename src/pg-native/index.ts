@@ -1,7 +1,9 @@
 import Libpq from 'libpq'
 import { EventEmitter } from 'node:events'
 import util from 'node:util'
+import { uid } from 'radashi'
 import type { StrictEventEmitter } from 'strict-event-emitter-types'
+import { debug } from './debug'
 import { buildResult, type Result } from './result'
 
 interface ClientEvents {
@@ -46,12 +48,27 @@ export class Client extends ClientEventEmitter {
    * Execute an unprepared query.
    */
   query(sql: string, params?: any[]) {
+    let debugId: string | undefined
+    if (debug.enabled) {
+      debugId = uid(8)
+      debug(`query:${debugId} dispatching`, { sql, params })
+    }
     const promise = dispatchQuery(this.pq, castClient(this), sql, params)
     if (Number.isFinite(this.idleTimeout)) {
       clearTimeout(this.idleTimeoutId)
       promise.finally(() => {
         this.idleTimeoutId = setTimeout(() => this.close(), this.idleTimeout)
       })
+    }
+    if (debug.enabled) {
+      promise.then(
+        results => {
+          debug(`query:${debugId} results`, results)
+        },
+        error => {
+          debug(`query:${debugId} error`, error)
+        },
+      )
     }
     return promise
   }
