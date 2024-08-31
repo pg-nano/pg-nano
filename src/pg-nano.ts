@@ -179,6 +179,35 @@ export class Postgres {
   }
 
   /**
+   * Executes a query and returns an array of rows.
+   *
+   * You may explicitly type the rows using generics.
+   */
+  async many<T extends Row>(
+    sql: string,
+    params?: any[] | AbortSignal,
+    signal?: AbortSignal,
+  ): Promise<T[]> {
+    const [result] = await this.query(sql, params, signal)
+    return result.rows as T[]
+  }
+
+  /**
+   * Executes a query and returns a single row. You must add `LIMIT 1` yourself
+   * or else the query will return more rows than needed.
+   *
+   * You may explicitly type the row using generics.
+   */
+  async one<T extends Row>(
+    sql: string,
+    params?: any[] | AbortSignal,
+    signal?: AbortSignal,
+  ): Promise<T | undefined> {
+    const [result] = await this.query(sql, params, signal)
+    return result.rows[0] as T | undefined
+  }
+
+  /**
    * Closes all connections in the pool.
    */
   async close() {
