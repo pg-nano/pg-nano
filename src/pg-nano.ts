@@ -45,7 +45,7 @@ export interface PostgresConfig {
 
 export class Postgres {
   protected pool: (Connection | Promise<Connection>)[] = []
-  protected backlog: (() => void)[] = []
+  protected backlog: ((err?: Error) => void)[] = []
 
   readonly dsn: string | null = null
   readonly config: Readonly<PostgresConfig>
@@ -115,9 +115,13 @@ export class Postgres {
     if (this.pool.length < this.config.maxConnections) {
       return this.addConnection()
     }
-    return new Promise(resolve => {
-      this.backlog.push(() => {
-        resolve(this.getConnection())
+    return new Promise((resolve, reject) => {
+      this.backlog.push(err => {
+        if (err) {
+          reject(err)
+        } else {
+          resolve(this.getConnection())
+        }
       })
     })
   }
@@ -126,8 +130,10 @@ export class Postgres {
    * Connects to the database and initializes the connection pool.
    */
   async connect(dsn: string) {
-    ;(this as { dsn: string }).dsn = dsn
-
+    if (this.dsn != null) {
+      throw new Error('Postgres is already connected')
+    }
+    this.setDSN(dsn)
     if (this.config.minConnections > 0) {
       const firstConnection = this.addConnection(Number.POSITIVE_INFINITY)
       for (let i = 0; i < this.config.minConnections - 1; i++) {
@@ -145,5 +151,33 @@ export class Postgres {
     return connection.query(sql, params).finally(() => {
       this.backlog.shift()?.()
     })
+  }
+
+  /**
+   * Closes all connections in the pool.
+   */
+  async close() {
+    if (this.dsn == null) {
+      return
+    }
+    this.setDSN(null)
+    const closing = Promise.all(
+      this.pool.map(connection =>
+        isPromise(connection)
+          ? connection.then(c => c.close())
+          : connection.close(),
+      ),
+    )
+    this.pool = []
+    if (this.backlog.length > 0) {
+      const error = new Error('Postgres client was closed')
+      this.backlog.forEach(fn => fn(error))
+      this.backlog = []
+    }
+    await closing
+  }
+
+  private setDSN(dsn: string | null) {
+    ;(this as { dsn: string | null }).dsn = dsn
   }
 }
