@@ -7,6 +7,7 @@ import CopyStream from './copy-stream'
 
 interface ClientEvents {
   notify: (msg: Libpq.NotifyMsg) => void
+  close: () => void
 }
 
 const ClientEventEmitter =
@@ -29,9 +30,10 @@ type ClientEventEmitter = InstanceType<typeof ClientEventEmitter>
  */
 export class Client extends ClientEventEmitter {
   protected pq: Libpq = null!
+  protected idleTimeoutId: any = null
   declare readonly status: ClientStatus
 
-  constructor() {
+  constructor(readonly idleTimeout: number = 30e3) {
     super()
     reset(castClient(this))
   }
@@ -45,7 +47,14 @@ export class Client extends ClientEventEmitter {
    * Execute an unprepared query.
    */
   query(sql: string, params?: any[]) {
-    return dispatchQuery(this.pq, castClient(this), sql, params)
+    const promise = dispatchQuery(this.pq, castClient(this), sql, params)
+    if (Number.isFinite(this.idleTimeout)) {
+      clearTimeout(this.idleTimeoutId)
+      promise.finally(() => {
+        this.idleTimeoutId = setTimeout(() => this.close(), this.idleTimeout)
+      })
+    }
+    return promise
   }
 
   getCopyStream(): CopyStream {
@@ -58,17 +67,10 @@ export class Client extends ClientEventEmitter {
    * Cancel the current query.
    */
   cancel() {
-    return new Promise<void>((resolve, reject) => {
-      const result = this.pq.cancel()
-
-      setImmediate(() => {
-        if (result === true) {
-          resolve()
-        } else {
-          reject(new Error(result))
-        }
-      })
-    })
+    const result = this.pq.cancel()
+    if (result !== true) {
+      throw new Error(result)
+    }
   }
 
   escapeLiteral(value: string): string {
@@ -83,13 +85,10 @@ export class Client extends ClientEventEmitter {
    * Close the database connection.
    */
   close() {
-    return new Promise<void>(resolve => {
-      stopReading(this.pq, castClient(this))
-      this.pq.finish()
-      this.pq = null
-
-      setImmediate(resolve)
-    })
+    stopReading(this.pq, castClient(this))
+    this.pq.finish()
+    this.pq = null
+    this.emit('close')
   }
 }
 
