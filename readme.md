@@ -32,6 +32,10 @@ pnpm add pg-nano
 ## Getting started
 
 1. Create a `sql` directory for your project. Put your SQL files in here. They can be named anything you want, but they must have one of these extensions: `.sql`, `.pgsql`, or `.psql`.
+  - For project structure, I'm a fan of “feature folders” (e.g. user-related statements all go in the `sql/users` directory).
+  - I also like to give each `CREATE` statement its own file (one exception: indexes and triggers belong in the same file as the table they are for).
+  - Lastly, note that you can write your `CREATE` statements *without* the `OR REPLACE` clause, since `pg-nano` will handle that for you (thanks to `pg-schema-diff`).
+
 2. Run `pnpm pg-nano init` to initialize your project. This will create a `pg-nano.ts` file in the current directory.
 
 Now you're ready to start using pg-nano.
