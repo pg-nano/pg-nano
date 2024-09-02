@@ -1,5 +1,11 @@
 # pg-nano
 
+<div align="center">
+  <p align="center">
+    <img src="https://github.com/pg-nano/pg-nano/raw/master/.github/img/banner.png" alt="pg-nano" width="100%" />
+  </p>
+</div>
+
 Harness the power of Postgres without limitations, using a simple, low-overhead approach with type-safe calls to Postgres UDFs from TypeScript.
 
 ## Our Approach
