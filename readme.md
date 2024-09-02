@@ -23,6 +23,20 @@ I've been using this in my own projects with great success, and I'm confident it
 
 I wanted a better way to work with Postgres and TypeScript. I believe that raw SQL is the best way to work with Postgres, but I found that existing libraries were not a good fit for my needs. I knew I wanted generated type definitions, but I also wanted an easy way to work with dynamic queries. I also discovered [stripe/pg-schema-diff](https://github.com/stripe/pg-schema-diff), which introduced me to the concept of “schema diffing” for migrations. It was then that I realized `pg-schema-diff` could be used for rapid schema development (effortless schema changes). This all culminated in the creation of pg-nano. Welcome to the future!
 
+### What does your tagline mean?
+
+> TypeScript-first, Node-API wrapper for libpq, centered on PL/pgSQL functions and rapid schema development 
+
+This tagline encapsulates the key features and design philosophy of pg-nano:
+
+1. "TypeScript-first": pg-nano is designed with TypeScript in mind, providing strong typing and excellent developer experience for TypeScript users.
+
+2. "Node-API wrapper for libpq": It's a thin wrapper around libpq (the official PostgreSQL C library) using Node-API, which provides high performance and direct access to PostgreSQL features.
+
+3. "centered on PL/pgSQL functions": pg-nano encourages the use of PostgreSQL's procedural language (PL/pgSQL) for complex database operations, allowing you to leverage the full power of PostgreSQL.
+
+4. "rapid schema development": pg-nano includes tools for quick and easy schema changes during development, streamlining the database development process.
+
 ## Installation
 
 ```
