@@ -19,6 +19,10 @@ This approach ensures clean database logic, robust TypeScript code, and an effic
 
 I've been using this in my own projects with great success, and I'm confident it can transform the way you work with Postgres and TypeScript too.
 
+### Why was pg-nano created?
+
+I wanted a better way to work with Postgres and TypeScript. I believe that raw SQL is the best way to work with Postgres, but I found that existing libraries were not a good fit for my needs. I knew I wanted generated type definitions, but I also wanted an easy way to work with dynamic queries. I also discovered [stripe/pg-schema-diff](https://github.com/stripe/pg-schema-diff), which introduced me to the concept of “schema diffing” for migrations. It was then that I realized `pg-schema-diff` could be used for rapid schema development (effortless schema changes). This all culminated in the creation of pg-nano. Welcome to the future!
+
 ## Installation
 
 ```
@@ -26,6 +30,11 @@ pnpm add pg-nano
 ```
 
 ## Getting started
+
+1. Create a `sql` directory for your project. Put your SQL files in here. They can be named anything you want, but they must have one of these extensions: `.sql`, `.pgsql`, or `.psql`.
+2. Run `pnpm pg-nano init` to initialize your project. This will create a `pg-nano.ts` file in the current directory.
+
+Now you're ready to start using pg-nano.
 
 ## Command-line usage
 
