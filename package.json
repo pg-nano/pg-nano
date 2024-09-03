@@ -1,27 +1,61 @@
 {
   "name": "pg-nano",
   "version": "0.0.0",
+  "type": "module",
+  "bin": "dist/pg-nano/cli.js",
+  "exports": {
+    "./config": {
+      "types": "./dist/pg-nano/config.d.ts",
+      "default": "./dist/pg-nano/config.js"
+    },
+    ".": {
+      "types": "./dist/pg-nano.d.ts",
+      "default": "./dist/pg-nano.js"
+    }
+  },
   "devDependencies": {
-    "@alloc/codegentool": "^1.3.2",
-    "@biomejs/biome": "^1.8.3",
+    "@biomejs/biome": "1.8.3",
     "@radashi-org/biome-config": "^1.0.2",
-    "@types/libpq": "^1.8.13",
-    "@types/node": "^14.14.33",
+    "@types/debug": "^4.1.12",
+    "@types/node": "^22.5.1",
+    "cjstoesm": "npm:@ph.fritsche/cjstoesm@2.1.3-alpha.1",
+    "debug": "^4.3.6",
+    "esbuild-plugin-copy": "^2.1.1",
+    "esbuild-plugin-license": "^1.2.3",
+    "mri": "^1.2.0",
+    "pg-native": "workspace:^",
     "pg-types": "workspace:^",
-    "postgres": "^3.4.4",
+    "postgres-interval": "workspace:^",
+    "postgres-range": "workspace:^",
+    "radashi": "12.2.0-beta.af825f4",
     "rimraf": "^6.0.1",
+    "strict-event-emitter-types": "^2.0.0",
+    "tinyrun": "^1.0.1",
     "tsup": "^8.2.4",
     "typescript": "^5.5.4",
-    "valibot": "^0.40.0"
+    "vitest": "^2.0.5"
   },
   "scripts": {
-    "build": "rimraf dist && tsup",
-    "dev": "rimraf dist && tsup --watch --sourcemap",
-    "format": "biome format --write src generators",
-    "lint": "biome lint --fix --unsafe src generators"
+    "build": "rimraf dist && tsup --dts",
+    "dev": "rimraf dist && DEV=1 tsup --watch --sourcemap",
+    "format": "biome check --fix --unsafe src generators package.json",
+    "lint": "tinyrun --names pg-nano,pg-native,biome 'tsc -p .' 'tsc -p src/pg-native' 'biome lint src generators'"
   },
-  "files": ["dist", "generators"],
+  "files": ["dist"],
   "dependencies": {
-    "libpq": "^1.8.13"
+    "@pg-nano/libpq": "workspace:^",
+    "@pg-nano/pg-schema-diff": "workspace:^",
+    "bundle-require": "^5.0.0",
+    "chokidar": "^3.6.0",
+    "esbuild": "^0.23.1",
+    "tinyspawn": "^1.3.2"
+  },
+  "pnpm": {
+    "overrides": {
+      "debug": "^4.3.6"
+    },
+    "patchedDependencies": {
+      "grab-github-release": "patches/grab-github-release.patch"
+    }
   }
 }

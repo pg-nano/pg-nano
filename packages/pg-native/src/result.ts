@@ -1,4 +1,4 @@
-import type Libpq from 'libpq'
+import type Libpq from '@pg-nano/libpq'
 import * as types from 'pg-types'
 
 export class Result<TRow extends Row = Row> {
@@ -31,7 +31,8 @@ function consumeCommand(pq: Libpq) {
 }
 
 function consumeRowCount(pq: Libpq) {
-  return Number.parseInt(pq.cmdTuples(), 10)
+  const cmdTuples = pq.cmdTuples()
+  return cmdTuples ? Number.parseInt(cmdTuples, 10) : 0
 }
 
 function consumeFields(pq: Libpq) {

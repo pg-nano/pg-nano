@@ -1,15 +1,19 @@
 import createDebug from 'debug'
-import type { EventEmitter } from 'node:events'
 import { isPromise } from 'node:util/types'
-import { isArray, sleep } from 'radashi'
-import { ClientStatus, Client as Connection } from './pg-native/index.js'
-import type { Field, Result, Row } from './pg-native/result.js'
+import {
+  Connection,
+  ConnectionStatus,
+  type QueryHook,
+  type Result,
+  type Row,
+  type SQLTemplate,
+} from 'pg-native'
+import { sleep } from 'radashi'
+import { Query, type QueryOptions } from './query'
 
 const debug = /** @__PURE__ */ createDebug('pg-nano')
 
-export type { Field, Result, Row }
-
-export interface PostgresConfig {
+export interface ClientOptions {
   /**
    * The minimum number of connections to maintain in the pool.
    * @default 1
@@ -50,16 +54,18 @@ export interface PostgresConfig {
 /**
  * A minimal connection pool for Postgres.
  *
+ * Queries are both promises and async iterables.
+ *
  * Note that `maxConnections` defaults to 100, which assumes you only have one
  * application server. If you have multiple application servers, you probably
  * want to lower this value by dividing it by the number of application servers.
  */
-export class Postgres {
+export class Client {
   protected pool: (Connection | Promise<Connection>)[] = []
   protected backlog: ((err?: Error) => void)[] = []
 
   readonly dsn: string | null = null
-  readonly config: Readonly<PostgresConfig>
+  readonly config: Readonly<ClientOptions>
 
   constructor({
     minConnections = 1,
@@ -68,7 +74,7 @@ export class Postgres {
     maxRetryDelay = 10e3,
     maxRetries = Number.POSITIVE_INFINITY,
     idleTimeout = 30e3,
-  }: Partial<PostgresConfig> = {}) {
+  }: Partial<ClientOptions> = {}) {
     this.config = {
       minConnections,
       maxConnections,
@@ -134,7 +140,7 @@ export class Postgres {
 
     this.pool.push(connecting)
 
-    if (debug.enabled) {
+    if (__DEV__) {
       const index = this.pool.indexOf(connecting)
       connecting.then(() => {
         if (index === this.pool.length - 1) {
@@ -153,7 +159,7 @@ export class Postgres {
     if (index !== -1) {
       this.pool.splice(index, 1)
 
-      if (debug.enabled) {
+      if (__DEV__) {
         const poolSize = this.pool.length
         setImmediate(() => {
           if (poolSize === this.pool.length) {
@@ -170,7 +176,7 @@ export class Postgres {
     signal?: AbortSignal,
   ): Connection | Promise<Connection> {
     const idleConnection = this.pool.find(
-      conn => !isPromise(conn) && conn.status === ClientStatus.IDLE,
+      conn => !isPromise(conn) && conn.status === ConnectionStatus.IDLE,
     )
     if (idleConnection) {
       return idleConnection
@@ -211,32 +217,23 @@ export class Postgres {
   }
 
   /**
-   * Executes a query on the database.
+   * Execute one or more commands.
    */
-  query<TRow extends Row = Row>(
-    sql: string,
-    params?: any[] | AbortSignal,
-    signal?: AbortSignal,
-  ): QueryPromise<Result<TRow>[]> {
-    if (params && !isArray(params)) {
-      signal = params
-      params = undefined
-    }
-
-    const connection = this.getConnection(signal)
-    const promise = this.dispatchQuery<TRow>(connection, sql, params, signal)
-
-    return makeAsyncIterable(promise, () =>
-      makeEventGenerator(connection, 'result'),
-    )
+  query<TRow extends Row = Row, TIteratorResult = Result<TRow>>(
+    sql: SQLTemplate,
+    transform?: (result: Result<TRow>) => TIteratorResult | TIteratorResult[],
+  ) {
+    return new Query<Result<TRow>[], TIteratorResult>(this, sql, transform)
   }
 
-  protected async dispatchQuery<TRow extends Row = Row>(
+  protected async dispatchQuery<
+    TRow extends Row = Row,
+    TResult = Result<TRow>[],
+  >(
     connection: Connection | Promise<Connection>,
-    sql: string,
-    params?: any[],
+    sql: SQLTemplate | QueryHook<TResult>,
     signal?: AbortSignal,
-  ): Promise<Result<TRow>[]> {
+  ): Promise<TResult> {
     signal?.throwIfAborted()
 
     if (isPromise(connection)) {
@@ -248,7 +245,7 @@ export class Postgres {
     try {
       signal?.throwIfAborted()
 
-      const queryPromise = connection.query(sql, params)
+      const queryPromise = connection.query(sql)
 
       if (signal) {
         const cancel = () => connection.cancel()
@@ -258,45 +255,70 @@ export class Postgres {
         })
       }
 
-      return (await queryPromise) as Result<TRow>[]
+      return await queryPromise
     } finally {
       this.backlog.shift()?.()
     }
   }
 
   /**
-   * Executes a query and returns an array of rows.
+   * Executes a query and returns an array of rows. This assumes only one
+   * command exists in the given query.
    *
-   * You may explicitly type the rows using generics.
+   * You may define the row type using generics.
    */
-  many<T extends Row>(
-    sql: string,
-    params?: any[] | AbortSignal,
-    signal?: AbortSignal,
-  ) {
-    const promise = this.query(sql, params, signal)
-    return transformAsyncIterable(
-      promise,
-      result => result.rows,
-    ) as QueryPromise<T[]>
+  many<TRow extends Row>(
+    sql: SQLTemplate,
+    options?: QueryOptions,
+  ): Query<TRow[]> {
+    const query = this.query<TRow, TRow>(sql, result => result.rows)
+    return query.withOptions({
+      ...options,
+      resolve: ([result]) => result.rows,
+    }) as any
   }
 
   /**
-   * Executes a query and returns a single row. You must add `LIMIT 1` yourself
-   * or else the query will return more rows than needed.
+   * Executes a query and returns a single row. This assumes only one command
+   * exists in the given query. If you don't limit the results, the promise will
+   * be rejected when more than one row is received.
    *
-   * You may explicitly type the row using generics.
+   * You may define the row type using generics.
    */
-  one<T extends Row>(
-    sql: string,
-    params?: any[] | AbortSignal,
-    signal?: AbortSignal,
-  ) {
-    const promise = this.query(sql, params, signal)
-    return transformAsyncIterable(
-      promise,
-      result => result.rows[0],
-    ) as QueryPromise<T | undefined>
+  async one<TRow extends Row>(
+    sql: SQLTemplate,
+    options?: QueryOptions,
+  ): Promise<TRow | undefined> {
+    const [result] = await this.query<TRow>(sql).withOptions(options)
+    if (result.rows.length > 1) {
+      throw new Error('Expected 1 row, got ' + result.rows.length)
+    }
+    return result.rows[0]
+  }
+
+  /**
+   * Execute a single command that returns a single row with a single value.
+   */
+  async scalar<T>(sql: SQLTemplate, options?: QueryOptions): Promise<T> {
+    const results = await this.query(sql).withOptions(options)
+    const row = results[0].rows[0]
+    for (const key in row) {
+      return row[key] as T
+    }
+    // Should be unreachable.
+    return undefined!
+  }
+
+  proxy<API extends object>(api: API): ClientProxy<API> {
+    return new Proxy(this, {
+      get(client, key) {
+        if (key in api) {
+          // biome-ignore lint/complexity/noBannedTypes:
+          return (api[key as keyof API] as Function).bind(null, client)
+        }
+        return client[key as keyof Client]
+      },
+    }) as any
   }
 
   /**
@@ -328,52 +350,19 @@ export class Postgres {
   }
 }
 
-export interface QueryPromise<T>
-  extends Promise<T>,
-    AsyncIterable<T extends (infer U)[] ? U : T> {}
-
-/**
- * Add the AsyncIterable protocol to an object.
- */
-function makeAsyncIterable<T extends object, Item>(
-  obj: T,
-  asyncIterator: () => AsyncIterator<Item>,
-): T & AsyncIterable<Item> {
-  const result: any = obj
-  result[Symbol.asyncIterator] = asyncIterator
-  return result
-}
-
-/**
- * Converts an EventEmitter and event name pair into an async generator.
- */
-async function* makeEventGenerator<T>(
-  emitter: EventEmitter | Promise<EventEmitter>,
-  eventName: string,
-): AsyncGenerator<Awaited<T>, never, unknown> {
-  if (isPromise(emitter)) {
-    emitter = await emitter
-  }
-  while (true) {
-    const { promise, resolve } = Promise.withResolvers<Awaited<T>>()
-    emitter.on(eventName, resolve)
-    try {
-      yield promise
-    } finally {
-      emitter.off(eventName, resolve)
-    }
-  }
-}
-
-/**
- * Creates a new AsyncIterable with transformed values from the input
- * AsyncIterable.
- */
-async function* transformAsyncIterable<T, U>(
-  iterable: AsyncIterable<T>,
-  transform: (value: T) => U | Promise<U>,
-): AsyncIterable<U> {
-  for await (const value of iterable) {
-    yield await transform(value)
-  }
+export type ClientProxy<API extends object> = {
+  [K in keyof API]: API[K] extends (
+    client: Client,
+    ...args: infer TArgs
+  ) => infer TResult
+    ? (...args: TArgs) => TResult
+    : never
+} & {
+  readonly dsn: string | null
+  readonly config: Readonly<ClientOptions>
+  query: Client['query']
+  many: Client['many']
+  one: Client['one']
+  scalar: Client['scalar']
+  close: Client['close']
 }

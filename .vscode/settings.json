@@ -4,5 +4,27 @@
   "editor.codeActionsOnSave": {
     "source.organizeImports": "explicit",
     "quickfix.biome": "explicit"
-  }
+  },
+  "search.exclude": {
+    "**/node_modules/**": true
+  },
+  "files.exclude": {
+    "**/pg-native/index.d.ts": true
+  },
+  "rewrap.wrappingColumn": 80,
+  "clangd.arguments": [
+    "--compile-commands-dir=${workspaceFolder}/packages/libpq/build"
+  ],
+  "pgFormatter.noSpaceFunction": false,
+  "pgFormatter.spaces": 2,
+  "pgFormatter.noExtraLine": true,
+  "pgFormatter.keepNewline": true,
+  "[postgres]": {
+    "editor.defaultFormatter": "bradymholt.pgformatter"
+  },
+  "plpgsqlLanguageServer.database": "pg-nano",
+  "plpgsqlLanguageServer.user": "alec",
+  "plpgsqlLanguageServer.password": "",
+  "plpgsqlLanguageServer.port": 5432,
+  "autoHide.autoHidePanel": false
 }

@@ -1,0 +1,59 @@
+diff --git a/dist/index.cjs b/dist/index.cjs
+deleted file mode 100644
+index a23197fd5220995405fb3b160ac39ac63a26b47e..0000000000000000000000000000000000000000
+diff --git a/dist/index.cjs.map b/dist/index.cjs.map
+deleted file mode 100644
+index 6d11408a37fb7ed8204c75651204202b7b193d27..0000000000000000000000000000000000000000
+diff --git a/dist/index.mjs b/dist/index.mjs
+index 1965810d04b1f1513d513a047ab60fef0d6f86e8..696c883f1b9f9d8e6041581e87577f3b6d4985a9 100644
+--- a/dist/index.mjs
++++ b/dist/index.mjs
+@@ -278,7 +278,7 @@ async function useCacheOrDownload(repo, version, url, archive, targetDirectory,
+   }
+   return { archivePath: cachePath, fromCache: true }
+ }
+-function unpack(archive, targetDirectory) {
++function unpack(archive, name, targetDirectory) {
+   log('unpack "%s"', archive);
+   return new Promise((resolve, reject) =>
+     open(archive, { lazyEntries: true }, (err, zip) => {
+@@ -286,7 +286,13 @@ function unpack(archive, targetDirectory) {
+       zip
+         .on('entry', entry => {
+           const { fileName } = entry;
+-          if (fileName.endsWith('/')) return new Error('directory in archive')
++          if (!fileName.startsWith(name)) {
++            zip.readEntry();
++            return;
++          }
++          if (fileName.endsWith('/')) {
++            return reject(new Error('directory in archive'));
++          }
+           const filePath = targetDirectory ? join(targetDirectory, fileName) : fileName;
+           log('write "%s"', filePath);
+           zip.openReadStream(entry, (err, stream) => {
+@@ -324,7 +330,7 @@ async function grab({ name, repository, version, platformSuffixes, archSuffixes,
+   }
+   const { archivePath, fromCache } = await useCacheOrDownload(repository, version, url, archive, targetDirectory, unpackExecutable, cache, token);
+   if (unpackExecutable) {
+-    const executable = await unpack(archivePath, targetDirectory);
++    const executable = await unpack(archivePath, name, targetDirectory);
+     await makeExecutable(executable);
+     if (!fromCache) {
+       log('remove "%s"', archivePath);
+diff --git a/package.json b/package.json
+index 3e44d37a4f88ef98a000876d85f0b36d32b3db05..adcfd3eb061f1b6cfc1e2f9986f752473e7b8e38 100644
+--- a/package.json
++++ b/package.json
+@@ -27,10 +27,9 @@
+   },
+   "type": "module",
+   "module": "dist/index.mjs",
+-  "main": "dist/index.cjs",
+   "types": "dist/index.d.ts",
+   "exports": {
+-    "require": "./dist/index.cjs",
++    "types": "./dist/index.d.ts",
+     "import": "./dist/index.mjs"
+   },
+   "bin": {

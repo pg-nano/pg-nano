@@ -1,8 +1,8 @@
 {
+  "include": ["src", "../../env.d.ts"],
   "compilerOptions": {
     "declaration": true,
     "emitDeclarationOnly": true,
-    "outDir": "../../dist/tmp",
     "allowSyntheticDefaultImports": true,
     "strict": false,
     "module": "esnext",

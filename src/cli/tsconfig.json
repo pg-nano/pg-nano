@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.json",
+  "include": ["./"],
+  "compilerOptions": {
+    "outDir": "../../dist/tmp",
+    "allowSyntheticDefaultImports": true,
+    "paths": {
+      "pg-nano": ["../mod.ts"],
+      "@pg-nano/config": ["../config/mod.ts"]
+    }
+  }
+}

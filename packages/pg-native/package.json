@@ -1,0 +1,6 @@
+{
+  "name": "pg-native",
+  "private": true,
+  "type": "module",
+  "main": "index.js"
+}

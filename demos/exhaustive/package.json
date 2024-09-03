@@ -1,0 +1,10 @@
+{
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "pg-nano": "workspace:^"
+  },
+  "devDependencies": {
+    "@alloc/codegentool": "^1.3.2"
+  }
+}

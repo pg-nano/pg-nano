@@ -1,0 +1,30 @@
+[submodule "packages/pg-int8"]
+	path = packages/pg-int8
+	url = https://github.com/charmander/pg-int8
+[submodule "packages/pg-numeric"]
+	path = packages/pg-numeric
+	url = https://github.com/charmander/pg-numeric
+[submodule "packages/pg-types"]
+	path = packages/pg-types
+	url = https://github.com/pg-nano/pg-types
+[submodule "packages/postgres-array"]
+	path = packages/postgres-array
+	url = https://github.com/bendrucker/postgres-array
+[submodule "packages/postgres-bytea"]
+	path = packages/postgres-bytea
+	url = https://github.com/pg-nano/postgres-bytea.git
+[submodule "packages/postgres-date"]
+	path = packages/postgres-date
+	url = https://github.com/pg-nano/postgres-date.git
+[submodule "packages/postgres-interval"]
+	path = packages/postgres-interval
+	url = https://github.com/bendrucker/postgres-interval
+[submodule "packages/postgres-range"]
+	path = packages/postgres-range
+	url = https://github.com/martianboy/postgres-range
+[submodule "packages/libpq"]
+	path = packages/libpq
+	url = https://github.com/pg-nano/node-libpq.git
+[submodule "packages/pg-schema-diff"]
+	path = packages/pg-schema-diff
+	url = https://github.com/pg-nano/pg-schema-diff.git

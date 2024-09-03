@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.json",
+  "include": ["**/*.ts"],
+  "compilerOptions": {
+    "paths": {
+      "pg-nano": ["../../src/mod.ts"],
+      "pg-nano/config": ["../../src/config/mod.ts"]
+    }
+  }
+}

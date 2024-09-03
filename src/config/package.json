@@ -1,0 +1,9 @@
+{
+  "name": "@pg-nano/config",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "@types/node": "^22.5.1",
+    "radashi": "12.2.0-beta.af825f4"
+  }
+}
