@@ -7,9 +7,9 @@ import type { Env } from './env'
 import {
   introspectNamespaces,
   introspectResultSet,
-  type PgObject,
   type PgCompositeType,
   type PgEnumType,
+  type PgObject,
 } from './introspect'
 import { log } from './log'
 import { parseMigrationPlan } from './parseMigrationPlan'
@@ -58,12 +58,37 @@ export async function generate(
   }
 
   const moduleBasename = path.basename(env.config.typescript.outFile) + '.js'
-  const foreignTypeRegex = /\b(Interval|Range|Circle|Point|JSON)\b/
+  const builtinTypeRegex = /\b(Interval|Range|Circle|Point|JSON)\b/
   const renderedObjects = new Map<PgObject, string>()
-  const unknownTypes = new Set<number>()
+  const unsupportedTypes = new Set<number>()
   const imports = new Set<string>()
 
-  const renderTypeReference = (typeOid: number, nspContext: string) => {
+  const addNamespacePrefix = (
+    typname: string,
+    nspname: string,
+    context: string,
+  ) => {
+    if (nspname !== context) {
+      let nspPrefix: string
+      if (nspname === 'public' && namespaces[context].names.includes(typname)) {
+        // When a type in the current namespace conflicts with a type in the
+        // public namespace, we need to import the public type (rather than
+        // use `public.foo`), because types in the public namespace are not
+        // actually wrapped with `namespace` syntax.
+        nspPrefix = `import('./${moduleBasename}')`
+      } else {
+        nspPrefix = pascal(nspname)
+      }
+      return nspPrefix + '.' + pascal(typname)
+    }
+    return pascal(typname)
+  }
+
+  /**
+   * Render a reference to a type, given a type OID and the current namespace
+   * context.
+   */
+  const renderTypeReference = (typeOid: number, context: string) => {
     let type = extendedTypeConversion[typeOid]
     if (type) {
       const enumType = oidToEnumType.get(typeOid)
@@ -86,34 +111,24 @@ export async function generate(
             )
           }
         }
-        if (introspectedType.nspname !== nspContext) {
-          let nspPrefix: string
-          if (
-            introspectedType.nspname === 'public' &&
-            namespaces[nspContext].names.includes(introspectedType.typname)
-          ) {
-            // When a type in the current namespace conflicts with a type in the
-            // public namespace, we need to import the public type (rather than
-            // use `public.foo`), because types in the public namespace are not
-            // actually wrapped with `namespace` syntax.
-            nspPrefix = `import('./${moduleBasename}')`
-          } else {
-            nspPrefix = pascal(introspectedType.nspname)
-          }
-
-          type = nspPrefix + '.' + pascal(introspectedType.typname)
+        if (introspectedType.nspname !== context) {
+          type = addNamespacePrefix(
+            introspectedType.typname,
+            introspectedType.nspname,
+            context,
+          )
         } else {
           type = pascal(introspectedType.typname)
         }
       } else {
-        const match = type.match(foreignTypeRegex)
+        const match = type.match(builtinTypeRegex)
         if (match) {
           imports.add('type ' + match[1])
         }
       }
     } else {
       type = 'unknown'
-      unknownTypes.add(typeOid)
+      unsupportedTypes.add(typeOid)
     }
     return type
   }
@@ -149,14 +164,19 @@ export async function generate(
       let TRow: string | undefined
       if (fn.proretset) {
         const setofType = funcsWithSetof.find(
-          func =>
-            fn.proname === unquote(func.id.name) &&
-            fn.nspname === unquote(func.id.schema ?? 'public'),
+          setofType =>
+            fn.proname === unquote(setofType.id.name) &&
+            fn.nspname === unquote(setofType.id.schema ?? 'public'),
         )
         if (setofType) {
-          TRow = pascal(unquote(setofType.referencedId.name))
+          TRow = addNamespacePrefix(
+            unquote(setofType.referencedId.name),
+            unquote(setofType.referencedId.schema ?? 'public'),
+            fn.nspname,
+          )
         } else {
           const columns = await introspectResultSet(client, fn, signal)
+
           TRow = `{${columns
             .map(({ name, dataTypeID }) => {
               return `${name}: ${renderTypeReference(dataTypeID, fn.nspname)}`
@@ -198,7 +218,7 @@ export async function generate(
       export interface ${pascal(type.typname)} {
         ${type.fields
           .map(field => {
-            return `${field.attname}: ${renderTypeReference(field.atttypid, type.nspname)}`
+            return `${field.attname}${field.attnotnull ? '' : '?'}: ${renderTypeReference(field.atttypid, type.nspname)}`
           })
           .join('\n')}
       }\n\n
@@ -239,13 +259,13 @@ export async function generate(
   // 5. Write the generated type definitions to a file.
   fs.writeFileSync(env.config.typescript.outFile, code.replace(/\s+$/, '\n'))
 
-  // 6. Warn about any unknown types.
-  for (const typeOid of unknownTypes) {
+  // 6. Warn about any unsupported types.
+  for (const typeOid of unsupportedTypes) {
     const typeName = await client.scalar<string>(sql`
       SELECT typname FROM pg_type WHERE oid = ${sql.val(typeOid)}
     `)
 
-    log.warn(`Unknown type: ${typeName} (${typeOid})`)
+    log.warn(`Unsupported type: ${typeName} (${typeOid})`)
   }
 
   // log.eraseLine()

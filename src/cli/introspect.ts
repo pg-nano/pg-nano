@@ -181,6 +181,7 @@ export type PgCompositeType = {
   fields: Array<{
     attname: string
     atttypid: number
+    attnotnull: boolean
   }>
 }
 
