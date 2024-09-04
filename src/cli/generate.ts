@@ -1,29 +1,29 @@
 import { spawn } from 'node:child_process'
-import fs from 'node:fs/promises'
+import fs from 'node:fs'
 import path from 'node:path'
-import type { Client } from 'pg-nano'
-import { camel } from 'radashi'
+import { camel, pascal } from 'radashi'
 import type { Env } from './env'
 import {
   introspectEnumTypes,
   introspectResultSet,
   introspectUserFunctions,
+  introspectUserTypes,
 } from './introspect'
 import { log } from './log'
 import { parseMigrationPlan } from './parseMigrationPlan'
-import { populateSchemaDir } from './schemaDir'
+import { prepareForMigration } from './prepare'
 import { typeConversion } from './typeConversion'
+import { dedent } from './util/dedent'
 
 export async function generate(
-  client: Client,
-  filePaths: string[],
   env: Env,
+  filePaths: string[],
   signal?: AbortSignal,
 ) {
+  const client = await env.client
+  const postMigration = await prepareForMigration(filePaths, env)
+
   log('Migrating database...')
-
-  await populateSchemaDir(filePaths, env)
-
   const applyProc = diffSchemas(env, 'apply')
 
   let applyStderr = ''
@@ -59,52 +59,78 @@ export async function generate(
   })
 
   if (applyStderr) {
-    throw new Error(applyStderr.replace(/.+? ERROR: /, ''))
+    throw new Error(applyStderr)
   }
+
+  await postMigration()
 
   log('Generating type definitions...')
 
-  const [functions, enumTypes] = await Promise.all([
+  const [functions, enumTypes, userTypes] = await Promise.all([
     introspectUserFunctions(client, signal),
     introspectEnumTypes(client, signal),
+    introspectUserTypes(client, signal),
   ])
 
-  log.eraseLine()
-  log.success('Generating type definitions... done')
-
-  const foreignTypes = ['Interval', 'Range', 'Circle', 'Point']
+  const foreignTypeRegex = /\b(Interval|Range|Circle|Point)\b/
   const imports = new Set<string>()
 
   let code = ''
 
+  const extendedTypeConversion = { ...typeConversion }
+  const convertTypeOid = (typeOid: number) => {
+    let type = extendedTypeConversion[typeOid]
+    if (type) {
+      const match = type.match(foreignTypeRegex)
+      if (match) {
+        imports.add('type ' + match[1])
+      }
+    } else {
+      type = 'unknown'
+      log.warn(`Unknown type: ${typeOid}`)
+    }
+    return type
+  }
+
+  for (const type of enumTypes) {
+    const jsName = pascal(type.typname)
+    extendedTypeConversion[type.oid] = jsName
+    extendedTypeConversion[type.typarray] = jsName + '[]'
+
+    code += dedent`
+      export type ${jsName} = ${type.labels.map(label => JSON.stringify(label)).join(' | ')}\n\n
+    `
+  }
+
+  for (const type of userTypes) {
+    const jsName = pascal(type.typname)
+    extendedTypeConversion[type.oid] = jsName
+    extendedTypeConversion[type.typarray] = jsName + '[]'
+
+    code += dedent`
+      export interface ${jsName} {
+        ${type.fields.map(field => `${field.attname}: ${convertTypeOid(field.atttypid)}`).join('\n')}
+      }\n\n
+    `
+  }
+
   for (const fn of functions) {
     const jsName = camel(fn.proname)
+    console.log(jsName, fn)
 
     const argNames = fn.proargnames?.map(name => camel(name.replace(/^p_/, '')))
     const argTypes = fn.proargtypes
-      ? fn.proargtypes
-          .split(' ')
-          .map((typeOid, index, argTypes) => {
-            let type = typeConversion[typeOid]
-            if (type) {
-              if (foreignTypes.includes(type)) {
-                imports.add(type)
-              }
-            } else {
-              type = 'unknown'
-              log.warn(`Unknown type: ${typeOid}`)
-            }
-            if (argNames) {
-              const jsName = argNames[index]
-              const optionalToken =
-                index >= argTypes.length - fn.pronargdefaults ? '?' : ''
+      .map((typeOid, index, argTypes) => {
+        if (argNames) {
+          const jsName = argNames[index]
+          const optionalToken =
+            index >= argTypes.length - fn.pronargdefaults ? '?' : ''
 
-              return `${jsName}${optionalToken}: ${type}`
-            }
-            return type
-          })
-          .join(', ')
-      : ''
+          return `${jsName}${optionalToken}: ${convertTypeOid(typeOid)}`
+        }
+        return convertTypeOid(typeOid)
+      })
+      .join(', ')
 
     const schema =
       fn.nspname !== 'public' ? `, ${JSON.stringify(fn.nspname)}` : ''
@@ -112,32 +138,38 @@ export async function generate(
     const params =
       argNames || schema ? `, ${JSON.stringify(argNames || null)}` : ''
 
-    if (fn.proargnames) {
-      code +=
-        `export declare namespace ${jsName} {\n` +
-        `  export type Params = {${argTypes}}\n` +
-        '}\n\n'
-    }
-
-    const TArgs = fn.proargnames ? `${jsName}.Params` : `[${argTypes}]`
+    const TParams = argNames ? `{${argTypes}}` : `[${argTypes}]`
     const TResult = fn.proretset
       ? await introspectResultSet(client, fn, signal).then(columns => {
-          return `{${columns.map(({ name, dataTypeID }) => `${name}: ${typeConversion[dataTypeID] || 'unknown'}`).join(', ')}}`
+          return `{${columns.map(({ name, dataTypeID }) => `${name}: ${convertTypeOid(dataTypeID)}`).join(', ')}}`
         })
-      : typeConversion[fn.prorettype] || 'unknown'
+      : convertTypeOid(fn.prorettype)
+
+    code += dedent`
+      export declare namespace ${jsName} {
+        export type Params = ${TParams}
+        export type Result = ${TResult}
+      }\n\n
+    `
 
     const declare = fn.proretset ? 'declareRoutine' : 'declareScalarRoutine'
     imports.add(declare)
 
-    const exportStmt = `export const ${jsName} = ${declare}<${TArgs}, ${TResult}>(${JSON.stringify(fn.proname)}${params}${schema})`
-
-    code += `${exportStmt}\n\n`
+    code += dedent`
+      export const ${jsName} = ${declare}<${jsName}.Params, ${jsName}.Result>(${JSON.stringify(fn.proname)}${params}${schema})\n\n
+    `
   }
 
-  code =
-    `import { ${[...imports].sort().join(', ')} } from 'pg-nano'\n\n` + code
+  code = dedent`
+    import { ${[...imports].sort().join(', ')} } from 'pg-nano'
 
-  await fs.writeFile(path.join(env.root, 'api.ts'), code.replace(/\s+$/, '\n'))
+    ${code}
+  `
+
+  fs.writeFileSync(path.join(env.root, 'api.ts'), code.replace(/\s+$/, '\n'))
+
+  // log.eraseLine()
+  log.success('Generating type definitions... done')
 }
 
 function diffSchemas(env: Env, command: 'apply' | 'plan') {
@@ -149,6 +181,8 @@ function diffSchemas(env: Env, command: 'apply' | 'plan') {
       env.config.migration.allowHazards.join(','),
       '--pre-plan-file',
       path.join(env.untrackedDir, 'pre-plan.sql'),
+      '--pre-apply-file',
+      path.join(env.untrackedDir, 'pre-apply.sql'),
     )
   }
 

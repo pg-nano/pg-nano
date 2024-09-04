@@ -1,5 +1,5 @@
 CREATE FUNCTION get_foo (p_id integer)
-  RETURNS SETOF "public"."foo"
+  RETURNS SETOF foo
   AS $$
 BEGIN
   RETURN QUERY

@@ -11,7 +11,7 @@ export type PgFunction = {
   proname: string
   proargnames: string[] | null
   /** Space-separated list of argument types */
-  proargtypes: string
+  proargtypes: number[]
   pronargdefaults: number
   prorettype: number
   proretset: boolean
@@ -26,7 +26,9 @@ export function introspectUserFunctions(client: Client, signal?: AbortSignal) {
    *   - not related to a trigger
    */
   const query = sql`
-    SELECT n.nspname, p.proname, p.proargnames, p.proargtypes, p.pronargdefaults, p.prorettype, p.proretset, p.provariadic
+    SELECT n.nspname, p.proname, p.proargnames, 
+           p.proargtypes::int[] AS proargtypes, 
+           p.pronargdefaults, p.prorettype, p.proretset, p.provariadic
     FROM pg_catalog.pg_proc p
     JOIN pg_catalog.pg_namespace n ON (n.oid = p.pronamespace)
     LEFT JOIN pg_catalog.pg_depend d ON d.objid = p.oid AND d.deptype = 'e'
@@ -46,15 +48,14 @@ export async function introspectResultSet(
   signal?: AbortSignal,
 ) {
   const stmtName = 'pg_nano_' + fn.proname
-  const types = fn.proargtypes ? fn.proargtypes.split(' ') : []
 
   await sendCommand(
     client,
     pq =>
       pq.sendPrepare(
         stmtName,
-        `SELECT * FROM ${fn.nspname}.${fn.proname}(${types.map((_, i) => `$${i + 1}`).join(', ')})`,
-        types.length,
+        `SELECT * FROM ${fn.nspname}.${fn.proname}(${fn.proargtypes.map((_, i) => `$${i + 1}`).join(', ')})`,
+        fn.proargtypes.length,
       ),
     signal,
   )
@@ -92,6 +93,7 @@ export function introspectArrayTypes(client: Client, signal?: AbortSignal) {
 export type PgEnumType = {
   oid: number
   typname: string
+  typarray: number
   labels: string[]
 }
 
@@ -100,6 +102,7 @@ export function introspectEnumTypes(client: Client, signal?: AbortSignal) {
     SELECT
       oid,
       typname,
+      typarray::oid,
       array(
         SELECT enumlabel
         FROM pg_catalog.pg_enum e
@@ -111,6 +114,43 @@ export function introspectEnumTypes(client: Client, signal?: AbortSignal) {
   `
 
   return client.many<PgEnumType>(query, { signal })
+}
+
+export type PgUserType = {
+  oid: number
+  typname: string
+  typarray: number
+  fields: Array<{
+    attname: string
+    atttypid: number
+  }>
+}
+
+export function introspectUserTypes(client: Client, signal?: AbortSignal) {
+  const query = sql`
+    SELECT
+      t.oid,
+      t.typname,
+      t.typarray::oid,
+      array_agg(
+        json_build_object(
+          'attname', a.attname,
+          'atttypid', a.atttypid::int
+        )
+        ORDER BY a.attnum
+      ) AS fields
+    FROM pg_catalog.pg_type t
+    JOIN pg_catalog.pg_class c ON c.oid = t.typrelid
+    JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid
+    JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace
+    WHERE t.typrelid != 0
+      AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+      AND a.attnum > 0
+      AND NOT a.attisdropped
+    GROUP BY t.oid, t.typname
+  `
+
+  return client.many<PgUserType>(query, { signal })
 }
 
 async function sendCommand<TResult = Result[]>(

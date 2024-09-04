@@ -14,21 +14,22 @@ sql.id = (str: string) => new SQLToken('id', str)
 sql.val = (value: unknown) => tokenizeValue<SQLToken>(value, tokenizer)
 
 /** Raw SQL syntax, dynamically inserted into the template. */
-sql.raw = (str: string) => new SQLToken('raw', str)
+sql.unsafe = (str: string) => new SQLTemplate([str], [])
 
 const tokenizer = {
-  val: (value: string) => new SQLToken('val', value),
-  raw: sql.raw,
+  val: (str: string) => new SQLToken('val', str),
+  raw: (str: string) => new SQLToken('raw', str),
 }
 
 export type SQLTemplateValue =
   | SQLTemplate
   | SQLToken
   | readonly SQLTemplateValue[]
+  | ''
 
 export class SQLTemplate {
   constructor(
-    readonly strings: TemplateStringsArray,
+    readonly strings: readonly string[],
     readonly values: SQLTemplateValue[],
   ) {}
 }

@@ -1,4 +1,17 @@
-DROP TABLE IF EXISTS foo;
+CREATE EXTENSION hstore;
+
+CREATE TYPE status_type AS ENUM (
+  'pending',
+  'active',
+  'inactive',
+  'archived'
+);
+
+CREATE TYPE address_type AS (
+  street varchar ( 100),
+  city varchar(50),
+  state varchar(50),
+  zip_code varchar(20));
 
 CREATE TABLE foo (
   id serial PRIMARY KEY,
@@ -20,5 +33,8 @@ CREATE TABLE foo (
   schedule tstzrange,
   priority smallint CHECK (priority BETWEEN 1 AND 5),
   uuid uuid DEFAULT gen_random_uuid (),
-  search_vector tsvector
+  search_vector tsvector,
+  status status_type DEFAULT 'pending',
+  address address_type,
+  product_attributes hstore
 );

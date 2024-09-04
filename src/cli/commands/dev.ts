@@ -2,7 +2,6 @@ import { watch } from 'chokidar'
 import { gray, strikethrough } from 'kleur/colors'
 import { statSync } from 'node:fs'
 import path from 'node:path'
-import { Client } from 'pg-nano'
 import { debounce, select } from 'radashi'
 import { type EnvOptions, getEnv } from '../env'
 import { generate } from '../generate'
@@ -12,10 +11,6 @@ type Options = EnvOptions & {}
 
 export default async function dev(cwd: string, options: Options = {}) {
   const env = await getEnv(cwd, options)
-
-  log('Connecting to database', fuzzPassword(env.config.dev.connectionString))
-  const client = new Client()
-  await client.connect(env.config.dev.connectionString)
 
   const watcher = watch(env.config.schema.include, {
     cwd: env.root,
@@ -32,7 +27,7 @@ export default async function dev(cwd: string, options: Options = {}) {
     controller.abort()
     controller = new AbortController()
 
-    const sqlRegex = /\.(p|sp|pg)?sql$/
+    const sqlRegex = /\.(p|pg)?sql$/
     const filePaths = Object.entries(watcher.getWatched()).flatMap(
       ([dir, files]) =>
         select(
@@ -42,7 +37,7 @@ export default async function dev(cwd: string, options: Options = {}) {
         ),
     )
 
-    generate(client, filePaths, env, controller.signal).catch(error => {
+    generate(env, filePaths, controller.signal).catch(error => {
       log.error(error.stack)
     })
   })
@@ -55,7 +50,6 @@ export default async function dev(cwd: string, options: Options = {}) {
     }
     if (path === env.configFilePath) {
       if (event === 'change') {
-        client.close()
         watcher.close()
 
         log.magenta('Config changed, refreshing...')
@@ -78,11 +72,4 @@ export default async function dev(cwd: string, options: Options = {}) {
       }
     }
   })
-}
-
-function fuzzPassword(connectionString: string) {
-  return connectionString.replace(
-    /\bpostgres:\/\/(\w+):[^@]+@/g,
-    'postgres://$1:***@',
-  )
 }

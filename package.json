@@ -22,6 +22,7 @@
     "debug": "^4.3.6",
     "esbuild-plugin-copy": "^2.1.1",
     "esbuild-plugin-license": "^1.2.3",
+    "is-localhost-ip": "^2.0.0",
     "mri": "^1.2.0",
     "pg-native": "workspace:^",
     "pg-types": "workspace:^",
@@ -41,7 +42,9 @@
     "format": "biome check --fix --unsafe src generators package.json",
     "lint": "tinyrun --names pg-nano,pg-native,biome 'tsc -p .' 'tsc -p src/pg-native' 'biome lint src generators'"
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "dependencies": {
     "@pg-nano/libpq": "workspace:^",
     "@pg-nano/pg-schema-diff": "workspace:^",

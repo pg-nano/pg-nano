@@ -3,6 +3,7 @@ import { isPromise } from 'node:util/types'
 import {
   Connection,
   ConnectionStatus,
+  PgNativeError,
   type QueryHook,
   type Result,
   type Row,
@@ -140,7 +141,7 @@ export class Client {
 
     this.pool.push(connecting)
 
-    if (__DEV__) {
+    if (process.env.NODE_ENV !== 'production' && debug.enabled) {
       const index = this.pool.indexOf(connecting)
       connecting.then(() => {
         if (index === this.pool.length - 1) {
@@ -159,7 +160,7 @@ export class Client {
     if (index !== -1) {
       this.pool.splice(index, 1)
 
-      if (__DEV__) {
+      if (process.env.NODE_ENV !== 'production' && debug.enabled) {
         const poolSize = this.pool.length
         setImmediate(() => {
           if (poolSize === this.pool.length) {
@@ -214,6 +215,7 @@ export class Client {
       }
       await firstConnection
     }
+    return this
   }
 
   /**
@@ -223,7 +225,12 @@ export class Client {
     sql: SQLTemplate,
     transform?: (result: Result<TRow>) => TIteratorResult | TIteratorResult[],
   ) {
-    return new Query<Result<TRow>[], TIteratorResult>(this, sql, transform)
+    return new Query<Result<TRow>[], TIteratorResult>(
+      this,
+      sql,
+      transform,
+      new PgNativeError(),
+    )
   }
 
   protected async dispatchQuery<
@@ -233,6 +240,7 @@ export class Client {
     connection: Connection | Promise<Connection>,
     sql: SQLTemplate | QueryHook<TResult>,
     signal?: AbortSignal,
+    trace?: PgNativeError,
   ): Promise<TResult> {
     signal?.throwIfAborted()
 
@@ -245,7 +253,7 @@ export class Client {
     try {
       signal?.throwIfAborted()
 
-      const queryPromise = connection.query(sql)
+      const queryPromise = connection.query(sql, trace)
 
       if (signal) {
         const cancel = () => connection.cancel()

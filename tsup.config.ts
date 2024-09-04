@@ -6,9 +6,6 @@ const commonOptions = {
   format: ['esm'],
   external: ['pg-native', 'pg-nano', 'debug'],
   minifySyntax: !process.env.DEV,
-  define: {
-    __DEV__: String(!!process.env.DEV),
-  },
 } satisfies Options
 
 export default defineConfig([

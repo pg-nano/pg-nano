@@ -1,6 +1,7 @@
 import type { UserConfig } from '@pg-nano/config'
 import { bundleRequire } from 'bundle-require'
 import path from 'node:path'
+import { Client } from 'pg-nano'
 import { allMigrationHazardTypes } from '../config/hazards'
 import { findConfigFile } from './findConfigFile'
 import { log } from './log'
@@ -17,10 +18,16 @@ export type Env = Awaited<ReturnType<typeof loadEnv>>
 
 export function getEnv(cwd: string, options: EnvOptions = {}) {
   const key = JSON.stringify([cwd, options.dsn])
-  if (!options.forceReload && cache.has(key)) {
-    return cache.get(key)!
+
+  let env = cache.get(key)
+  if (env) {
+    if (!options.forceReload) {
+      return env
+    }
+    env.then(env => env.close())
   }
-  const env = loadEnv(cwd, options)
+
+  env = loadEnv(cwd, options)
   cache.set(key, env)
   return env
 }
@@ -66,7 +73,11 @@ async function loadEnv(cwd: string, options: EnvOptions) {
   // Enable unsafe mode for local development.
   if (config.dev.connectionString.includes('localhost')) {
     config.migration.allowHazards.push(...allMigrationHazardTypes)
+  } else {
+    throw new Error('Non-local databases are not currently supported')
   }
+
+  let client: Promise<Client> | undefined
 
   return {
     root,
@@ -74,5 +85,24 @@ async function loadEnv(cwd: string, options: EnvOptions) {
     config,
     untrackedDir,
     schemaDir,
+    get client() {
+      return (client ??= (async () => {
+        log('Connecting to database', fuzzPassword(config.dev.connectionString))
+        const client = new Client()
+        await client.connect(config.dev.connectionString)
+        // await client.query(sql.unsafe('SET client_min_messages TO WARNING;'))
+        return client
+      })())
+    },
+    async close() {
+      return client?.then(client => client.close())
+    },
   }
+}
+
+function fuzzPassword(connectionString: string) {
+  return connectionString.replace(
+    /\bpostgres:\/\/(\w+):[^@]+@/g,
+    'postgres://$1:***@',
+  )
 }

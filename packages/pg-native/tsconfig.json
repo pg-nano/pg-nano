@@ -1,5 +1,5 @@
 {
-  "include": ["src", "../../env.d.ts"],
+  "include": ["src"],
   "compilerOptions": {
     "declaration": true,
     "emitDeclarationOnly": true,

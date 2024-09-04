@@ -22,9 +22,11 @@
   "[postgres]": {
     "editor.defaultFormatter": "bradymholt.pgformatter"
   },
-  "plpgsqlLanguageServer.database": "pg-nano",
-  "plpgsqlLanguageServer.user": "alec",
-  "plpgsqlLanguageServer.password": "",
+  "plpgsqlLanguageServer.host": "localhost",
   "plpgsqlLanguageServer.port": 5432,
+  "plpgsqlLanguageServer.user": "postgres",
+  "plpgsqlLanguageServer.password": "postgres",
+  "plpgsqlLanguageServer.database": "postgres",
+  "plpgsqlLanguageServer.definitionFiles": ["**/*.pgsql"],
   "autoHide.autoHidePanel": false
 }

@@ -5,7 +5,7 @@
  * Adapted from
  * https://github.com/pg-nano/pg-types/blob/master/lib/textParsers.js#L139
  */
-export const typeConversion: Record<string, string> = {
+export const typeConversion: Record<number, string> = {
   16: 'boolean', // bool
   17: 'Buffer', // bytea
   20: 'string', // int8

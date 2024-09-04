@@ -1,6 +1,7 @@
 export class PgNativeError extends Error {
-  constructor(message: string) {
-    super('[pg-native] ' + message)
+  query?: string
+  constructor(message?: string) {
+    super(message)
     this.name = 'PgNativeError'
   }
 }

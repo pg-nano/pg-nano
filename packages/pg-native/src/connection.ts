@@ -1,12 +1,13 @@
 import Libpq from '@pg-nano/libpq'
 import { EventEmitter } from 'node:events'
 import util from 'node:util'
-import { isArray, isFunction, uid } from 'radashi'
+import { isFunction, uid } from 'radashi'
 import type { StrictEventEmitter } from 'strict-event-emitter-types'
 import { debug } from './debug'
 import { PgNativeError } from './error'
 import { buildResult, type Result } from './result'
-import type { SQLTemplate, SQLTemplateValue } from './template'
+import { stringifyTemplate } from './stringify'
+import type { SQLTemplate } from './template'
 
 interface ConnectionEvents {
   result: (result: Result) => void
@@ -39,19 +40,19 @@ type ConnectionEmitter = InstanceType<typeof ConnectionEmitter>
  * database. This is useful for push-based data updates.
  */
 export class Connection extends ConnectionEmitter {
-  protected pq: Libpq = null!
   protected idleTimeoutId: any = null
+  protected declare pq: Libpq
   declare readonly status: ConnectionStatus
 
   constructor(readonly idleTimeout: number = 30e3) {
     super()
-    reset(toConnectionState(this), ConnectionStatus.CLOSED)
+    reset(unprotect(this), ConnectionStatus.CLOSED)
   }
 
   async connect(dsn: string) {
     this.pq = new Libpq()
     await util.promisify(this.pq.connect.bind(this.pq))(dsn)
-    setStatus(toConnectionState(this), ConnectionStatus.IDLE)
+    setStatus(unprotect(this), ConnectionStatus.IDLE)
   }
 
   /**
@@ -59,8 +60,9 @@ export class Connection extends ConnectionEmitter {
    */
   query<TResult = Result[]>(
     sql: SQLTemplate | QueryHook<TResult>,
+    trace?: PgNativeError,
   ): Promise<TResult> {
-    const promise = sendQuery(this.pq, toConnectionState(this), sql)
+    const promise = sendQuery(unprotect(this), sql, trace)
     if (Number.isFinite(this.idleTimeout)) {
       clearTimeout(this.idleTimeoutId)
       promise.finally(() => {
@@ -84,7 +86,7 @@ export class Connection extends ConnectionEmitter {
    * Close the database connection.
    */
   close() {
-    stopReading(this.pq, toConnectionState(this), ConnectionStatus.CLOSED)
+    stopReading(unprotect(this), ConnectionStatus.CLOSED)
     this.pq.finish()
     this.pq = null
     this.emit('close')
@@ -99,31 +101,31 @@ export enum ConnectionStatus {
 }
 
 interface ConnectionState {
+  pq: Libpq
   status: ConnectionStatus
   reader: (() => void) | null
   results: Result[]
   promise: Promise<Result[]>
   resolve: (response: Result[]) => void
   reject: (error: Error) => void
+  trace: PgNativeError
 }
 
-function toConnectionState(
-  conn: Connection,
-): ConnectionState & ConnectionEmitter {
+function unprotect(conn: Connection): ConnectionState & ConnectionEmitter {
   return conn as any
 }
 
 function setStatus(conn: ConnectionState, newStatus: ConnectionStatus): void {
-  if (!__DEV__ || conn.status !== newStatus) {
+  if (conn.status !== newStatus) {
     conn.status = newStatus
-    if (__DEV__) {
+    if (process.env.NODE_ENV !== 'production' && debug.enabled) {
       debug(`connection status: ${ConnectionStatus[newStatus]}`)
     }
   }
 }
 
 function reset(conn: ConnectionState, newStatus: ConnectionStatus): void {
-  setStatus(conn, newStatus)
+  stopReading(conn, newStatus)
   conn.reader = null
   conn.results = []
   conn.promise = new Promise((resolve, reject) => {
@@ -148,34 +150,39 @@ export type QueryHook<TResult> = (
  * socket.
  */
 async function sendQuery<TResult = Result[]>(
-  pq: Libpq,
   conn: ConnectionState & ConnectionEmitter,
   sql: SQLTemplate | QueryHook<TResult>,
+  trace?: PgNativeError,
 ): Promise<TResult> {
-  stopReading(pq, conn, ConnectionStatus.QUERY_WRITING)
+  conn.trace = trace ?? new PgNativeError()
+  stopReading(conn, ConnectionStatus.QUERY_WRITING)
 
   let debugId: string | undefined
+  if (process.env.NODE_ENV !== 'production' && debug.enabled) {
+    debugId = uid(8)
+  }
 
   const promise = conn.promise
-  const success = pq.setNonBlocking(true)
+  const success = conn.pq.setNonBlocking(true)
 
   if (success) {
     let sent: boolean | (() => Promise<TResult>)
     if (isFunction(sql)) {
-      sent = sql(pq)
+      sent = sql(conn.pq)
     } else {
-      const query = stringifyTemplate(sql, pq)
+      const query = stringifyTemplate(sql, conn.pq)
+      conn.trace.query = query
 
-      if (__DEV__) {
-        debugId = uid(8)
-        debug(`query:${debugId} writing`, { query })
+      if (process.env.NODE_ENV !== 'production' && debug.enabled) {
+        const indentedQuery = query.replace(/^|\n/g, '$&  ')
+        debug(`query:${debugId} writing\n${indentedQuery}`)
       }
 
-      sent = pq.sendQuery(query)
+      sent = conn.pq.sendQuery(query)
     }
 
     if (sent) {
-      await waitForDrain(pq)
+      await waitForDrain(conn.pq)
 
       if (isFunction(sent)) {
         try {
@@ -186,11 +193,11 @@ async function sendQuery<TResult = Result[]>(
         }
       } else {
         setStatus(conn, ConnectionStatus.QUERY_READING)
-        pq.once('readable', (conn.reader = () => read(pq, conn)))
-        pq.startReader()
+        conn.pq.on('readable', (conn.reader = () => read(conn)))
+        conn.pq.startReader()
       }
     } else {
-      resolvePromise(conn, new PgNativeError(pq.errorMessage()))
+      resolvePromise(conn, new PgNativeError(conn.pq.errorMessage()))
     }
   } else {
     resolvePromise(
@@ -199,13 +206,17 @@ async function sendQuery<TResult = Result[]>(
     )
   }
 
-  if (__DEV__) {
+  if (process.env.NODE_ENV !== 'production' && debug.enabled) {
     promise.then(
       results => {
-        debug(`query:${debugId} results`, results)
+        debug(
+          `query:${debugId} results\n  ${util.inspect(results, { depth: null }).replace(/\n/g, '\n  ')}`,
+        )
       },
       error => {
-        debug(`query:${debugId} error`, error)
+        debug(
+          `query:${debugId} error\n  ${util.inspect(error, { depth: null }).replace(/\n/g, '\n  ')}`,
+        )
       },
     )
   }
@@ -213,36 +224,10 @@ async function sendQuery<TResult = Result[]>(
   return promise as Promise<TResult>
 }
 
-function stringifyTemplate(template: SQLTemplate, pq: Libpq) {
-  let sql = ''
-  for (let i = 0; i < template.strings.length; i++) {
-    sql += template.strings[i]
-    if (i < template.values.length) {
-      sql += stringifyTemplateValue(template.values[i], pq)
-    }
-  }
-  return sql
-}
-
-function stringifyTemplateValue(arg: SQLTemplateValue, pq: Libpq) {
-  if (isArray(arg)) {
-    return arg.map(value => stringifyTemplateValue(value, pq)).join(', ')
-  }
-  if ('strings' in arg) {
-    return stringifyTemplate(arg, pq)
-  }
-  switch (arg.type) {
-    case 'id':
-      return pq.escapeIdentifier(arg.value)
-    case 'val':
-      return pq.escapeLiteral(arg.value)
-    case 'raw':
-      return arg.value
-  }
-}
-
 // called when libpq is readable
-function read(pq: Libpq, conn: ConnectionState & ConnectionEmitter): void {
+function read(conn: ConnectionState & ConnectionEmitter): void {
+  const { pq } = conn
+
   // read waiting data from the socket
   // e.g. clear the pending 'select'
   if (!pq.consumeInput()) {
@@ -258,7 +243,7 @@ function read(pq: Libpq, conn: ConnectionState & ConnectionEmitter): void {
 
   // load our result object
   while (pq.getResult()) {
-    const resultStatus = processResult(pq, conn)
+    const resultStatus = processResult(conn)
 
     // if the command initiated copy mode we need to break out of the read loop
     // so a substream can begin to read copy data
@@ -281,12 +266,19 @@ function read(pq: Libpq, conn: ConnectionState & ConnectionEmitter): void {
   let notice = pq.notifies()
   while (notice) {
     conn.emit('notify', notice)
-    notice = this.pq.notifies()
+    notice = pq.notifies()
   }
 }
 
-function resolvePromise(conn: ConnectionState, error?: PgNativeError) {
+function resolvePromise(conn: ConnectionState, error?: Error) {
   if (error) {
+    error.stack =
+      error.name +
+      ': ' +
+      error.message.replace(/^ERROR:\s+/, '').trimEnd() +
+      '\n' +
+      conn.trace.stack.replace(/^[^\n]+\n/, '')
+
     conn.reject(error)
   } else {
     conn.resolve(conn.results)
@@ -295,14 +287,10 @@ function resolvePromise(conn: ConnectionState, error?: PgNativeError) {
   reset(conn, ConnectionStatus.IDLE)
 }
 
-function stopReading(
-  pq: Libpq,
-  conn: ConnectionState,
-  newStatus: ConnectionStatus,
-) {
-  if (conn.status === ConnectionStatus.QUERY_READING) {
-    pq.stopReader()
-    pq.removeListener('readable', conn.reader)
+function stopReading(conn: ConnectionState, newStatus: ConnectionStatus) {
+  if (conn.pq && conn.status === ConnectionStatus.QUERY_READING) {
+    conn.pq.stopReader()
+    conn.pq.removeListener('readable', conn.reader)
   }
   setStatus(conn, newStatus)
 }
@@ -325,20 +313,17 @@ function waitForDrain(pq: Libpq) {
   })
 }
 
-function processResult(
-  pq: Libpq,
-  conn: ConnectionState & ConnectionEmitter,
-): string {
-  const resultStatus = pq.resultStatus()
+function processResult(conn: ConnectionState & ConnectionEmitter): string {
+  const resultStatus = conn.pq.resultStatus()
   switch (resultStatus) {
     case 'PGRES_FATAL_ERROR':
-      resolvePromise(conn, new PgNativeError(pq.resultErrorMessage()))
+      resolvePromise(conn, new PgNativeError(conn.pq.resultErrorMessage()))
       break
 
     case 'PGRES_TUPLES_OK':
     case 'PGRES_COMMAND_OK':
     case 'PGRES_EMPTY_QUERY': {
-      const result = buildResult(pq)
+      const result = buildResult(conn.pq)
       if (conn.listenerCount('result')) {
         conn.emit('result', result)
       } else {
