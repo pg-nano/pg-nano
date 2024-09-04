@@ -183,6 +183,7 @@ function diffSchemas(env: Env, command: 'apply' | 'plan') {
       path.join(env.untrackedDir, 'pre-plan.sql'),
       '--pre-apply-file',
       path.join(env.untrackedDir, 'pre-apply.sql'),
+      '--disable-plan-validation',
     )
   }
 

@@ -1,10 +1,6 @@
-export type Identifier = {
-  name: string
-  schema: string | undefined
-  endOffset: number
-}
+import { sql } from 'pg-nano'
 
-export function parseIdentifier(sql: string, startOffset = 0): Identifier {
+export function parseIdentifier(sql: string, startOffset = 0): SQLIdentifier {
   let schema: string | undefined
   let name = ''
 
@@ -44,9 +40,18 @@ export function parseIdentifier(sql: string, startOffset = 0): Identifier {
     }
   }
 
-  return {
-    name,
-    schema,
-    endOffset: cursor,
+  return new SQLIdentifier(name, schema, startOffset, cursor)
+}
+
+export class SQLIdentifier {
+  constructor(
+    public name: string,
+    public schema: string | undefined,
+    public start: number,
+    public end: number,
+  ) {}
+
+  toSQL() {
+    return sql.unsafe(`${this.schema ? `${this.schema}.` : ''}${this.name}`)
   }
 }

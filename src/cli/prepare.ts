@@ -8,7 +8,12 @@ import { log } from './log'
 import { parseIdentifier } from './parseIdentifier'
 import { dedent } from './util/dedent'
 
-type SQLObject = { name: string; stmt: string }
+type SQLObject = {
+  id: string
+  type: string
+  stmtIndex: number
+}
+
 type SQLFunc = SQLObject & { signature: string }
 
 export async function prepareForMigration(filePaths: string[], env: Env) {
@@ -17,93 +22,147 @@ export async function prepareForMigration(filePaths: string[], env: Env) {
   fs.rmSync(env.schemaDir, { recursive: true, force: true })
   fs.mkdirSync(env.schemaDir, { recursive: true })
 
-  const { pre: prePlanFiles, rest: schemaFiles } = group(filePaths, file => {
-    const name = path.basename(file)
-    return name[0] === '!' ? 'pre' : 'rest'
-  })
-
-  const fixedFuncs: SQLFunc[] = []
-  const declaredTypes: SQLObject[] = []
-
-  if (schemaFiles) {
-    for (const file of schemaFiles) {
-      const symlinkPath = path.join(
-        env.schemaDir,
-        path.basename(file, path.extname(file)) +
-          '.' +
-          md5Hash(file).slice(0, 8) +
-          '.sql',
-      )
-
-      const stmts = splitStatements(fs.readFileSync(file, 'utf8'))
-
-      for (let i = 0; i < stmts.length; i++) {
-        let stmt = stmts[i]
-
-        if (/CREATE\s+FUNCTION/.test(stmt)) {
-          // Currently, set-returning functions lead to migration issues (caused
-          // by non-existent tables). To avoid this, replace the `SETOF`
-          // expression with a placeholder `TABLE` expression. This is temporary
-          // and the function will be replaced after the migration, which is why
-          // we're collecting the file paths and SQL in this array.
-          stmt = await replace(
-            stmt,
-            /CREATE\s+FUNCTION\s+([^(]+?)\s*\(([\S\s]+?)\)\s+RETURNS\s+SETOF\s+(.+?)\s+AS\b/gi,
-            async (_, name, signature, rowType) => {
-              const rowTypeName = parseIdentifier(rowType)
-              const rowTypeExists = await client.scalar<boolean>(
-                sql`
-                  SELECT EXISTS (
-                    SELECT 1
-                    FROM pg_type t
-                    WHERE 
-                      t.typname = ${sql.val(rowTypeName.name)}
-                      AND t.typnamespace = ${sql.val(rowTypeName.schema ?? 'public')}::regnamespace
-                  );
-                `,
-              )
-              console.log('rowType %O exists? %O', rowType, rowTypeExists)
-              if (!rowTypeExists) {
-                fixedFuncs.push({ name, stmt, signature })
-                return `CREATE FUNCTION ${name} (${signature}) RETURNS TABLE(_ int) AS`
-              }
-              return ''
-            },
-          )
-        } else {
-          // Non-enum types are not supported by pg-schema-diff, so move them into
-          // the pre-apply file.
-          const typeMatch = /\bCREATE\s+TYPE\s+(.+?)\s+AS(\s+ENUM)?\b/i.exec(
-            stmt,
-          )
-          if (typeMatch) {
-            const [_, name, isEnum] = typeMatch
-            if (!isEnum) {
-              console.log('type %O', { name, stmt })
-              declaredTypes.push({ name, stmt })
-              stmt = ''
-            }
-          }
-        }
-
-        stmts[i] = stmt
-      }
-
-      try {
-        fs.unlinkSync(symlinkPath)
-      } catch {}
-      fs.writeFileSync(symlinkPath, sift(stmts).join('\n\n'))
-    }
-  }
+  const { pre: prePlanFiles, rest: schemaFiles = [] } = group(
+    filePaths,
+    file => {
+      const name = path.basename(file)
+      return name[0] === '!' ? 'pre' : 'rest'
+    },
+  )
 
   let prePlanDDL = dedent`
-    SET check_function_bodies = off;
+    SET check_function_bodies = off;\n\n
   `
 
   if (prePlanFiles) {
     prePlanDDL +=
-      '\n\n' +
-      prePlanFiles.map(file => fs.readFileSync(file, 'utf8')).join('\n\n')
+      prePlanFiles.map(file => fs.readFileSync(file, 'utf8')).join('\n\n') +
+      '\n\n'
+  }
+
+  const fixedFuncs: SQLFunc[] = []
+  const declaredTypes: SQLObject[] = []
+
+  const schemaObjects: SQLObject[] = []
+  const parsedSchemaFiles = schemaFiles.map(file => {
+    const stmts = splitStatements(fs.readFileSync(file, 'utf8'))
+    const objects = stmts.map((stmt,stmtIndex) => {
+      const match = stmt.match(
+        /(?:^|\n)CREATE\s+(?:OR\s+REPLACE\s+)?(\w+)\s+(?:IF\s+NOT\s+EXISTS\s+)?(.+?)\s+(?:AS\b|ON\b|\()/i,
+      )
+      if (match) {
+        let [, type, id] = match
+        type = type.toLowerCase()
+
+        return {
+          id,
+          type,
+          stmtIndex
+        }
+      }
+      return null
+    })
+    return { file, stmts, objects }
+  })
+
+  for (const { file, stmts, objects } of parsedSchemaFiles) {
+    const outFile = path.join(
+      env.schemaDir,
+      path.basename(file, path.extname(file)) +
+        '.' +
+        md5Hash(file).slice(0, 8) +
+        '.sql',
+    )
+
+    const unhandledStmts: string[] = []
+    for (let i = 0; i < stmts.length; i++) {
+      const stmt = stmts[i]
+      const object = objects[i]
+      if (!object) {
+        unhandledStmts.push(stmt)
+        continue
+      }
+      if (object.type === 'function') {
+        const matchedSetOf =
+          /\bRETURNS\s+SETOF\s+(.+?)\s+AS\b/i.exec(
+            stmt,
+          )
+
+        // When a function uses SETOF with a table identifier, that table may
+        // not exist before pg-schema-diff creates the function. This issue is
+        // tracked by https://github.com/stripe/pg-schema-diff/issues/129.
+        //
+        // Therefore, we need to ensure the table exists before applying the
+        // migration plan generated by pg-schema-diff.
+        if (matchedSetOf) {
+          const rowType = schemaObjects.find(
+            obj => obj.type === 'table' && compareIdentifiers(obj.id, matchedSetOf[1]),
+          )
+          if (rowType) {
+            const tableId = parseIdentifier(rowType.id)
+            const tableSchema = tableId.schema
+              ? unquote(tableId.schema)
+              : 'public'
+
+            const tableExists = await client.scalar<boolean>(sql`
+              SELECT EXISTS (
+                SELECT 1
+                FROM pg_tables
+                WHERE schemaname = ${sql.val(tableSchema)}
+                  AND tablename = ${sql.val(tableId.name)}
+              );
+            `)
+
+            // Ensure the table exists before the function is created/replaced.
+            // If the table already exists, we don't need to do anything, since
+            // pg-schema-diff will handle any changes to the table definition.
+            if (!tableExists) {
+              await client.query(sql`
+                CREATE TABLE ${tableId.toSQL()} (tmp int);
+                ALTER TABLE ${tableId.toSQL()} DROP COLUMN tmp;
+              `)
+            }
+          }
+        }
+      } else {
+        // Non-enum types are not supported by pg-schema-diff, so we need to
+        // diff them manually.
+        const typeMatch = /\bCREATE\s+TYPE\s+(.+?)\s+AS(\s+ENUM)?\b/i.exec(stmt)
+        if (typeMatch) {
+          const [_, qualifiedName, isEnum] = typeMatch
+          if (!isEnum) {
+            const typeId = parseIdentifier(qualifiedName)
+            const typeSchema = typeId.schema ? unquote(typeId.schema) : 'public'
+
+            const typeExists = await client.scalar<boolean>(sql`
+              SELECT EXISTS (
+                SELECT 1
+                FROM pg_type
+                WHERE typname = ${sql.val(unquote(typeId.name))}
+                  AND typnamespace = ${sql.val(typeSchema)}::regnamespace
+              );
+            `)
+
+            if (typeExists && (await hasTypeChanged(client, stmt))) {
+            } else {
+              await client.query(sql.unsafe(stmt))
+              stmt = ''
+            }
+          }
+        }
+      })
+
+      stmts[i] = stmt
+    }
+
+    const newSql = sift(stmts).join('\n\n').trim()
+    // console.log('=== %O ===', file)
+    // console.log(newSql)
+
+    try {
+      fs.unlinkSync(outFile)
+    } catch {}
+    fs.writeFileSync(outFile, newSql)
   }
 
   let preApplyDDL = ''
@@ -120,10 +179,14 @@ export async function prepareForMigration(filePaths: string[], env: Env) {
       }),
     )
 
-    if (changedTypes.length) {
-      preApplyDDL += '\n\n' + changedTypes.map(type => type.stmt).join('\n\n')
-    }
+    preApplyDDL += '\n\n' + declaredTypes.map(type => type.stmt).join('\n\n')
   }
+
+  console.log('=== === === pre-plan.sql === === ===')
+  console.log(prePlanDDL)
+  console.log('=== === === pre-apply.sql === === ===')
+  console.log(preApplyDDL)
+  console.log('=== === === === === === === === === ===')
 
   const prePlanFile = path.join(env.untrackedDir, 'pre-plan.sql')
   fs.writeFileSync(prePlanFile, prePlanDDL)
@@ -300,29 +363,16 @@ function splitStatements(stmts: string): string[] {
   return statements.map(stmt => stmt.trim() + ';')
 }
 
-async function replace(
+/**
+ * Replace a range of characters in a string with a replacement string.
+ */
+function replaceSubstring(
   input: string,
-  regex: RegExp,
-  replacer: (match: string, ...args: any[]) => string | Promise<string>,
-) {
-  let str = ''
-  let index = 0
-
-  let match: RegExpExecArray | null
-  while ((match = regex.exec(input))) {
-    const replacement = await replacer(
-      ...(match as unknown as Parameters<typeof replacer>),
-    )
-
-    str += input.slice(index, match.index) + replacement
-    index = match.index + match[0].length
-
-    if (!regex.global) {
-      break
-    }
-  }
-
-  return str + input.slice(index)
+  [start, length]: [start: number, length: number],
+  replacement: string,
+): string {
+  console.log('replaceSubstring', { input, start, length, replacement })
+  return input.slice(0, start) + replacement + input.slice(start + length)
 }
 
 // Remove surrounding double quotes if present.
@@ -331,4 +381,19 @@ function unquote(str: string) {
     return str.slice(1, -1)
   }
   return str
+}
+
+function compareIdentifiers(left: string, right: string) {
+  const leftParts = parseIdentifier(left)
+  const rightParts = parseIdentifier(right)
+
+  console.log('compareIdentifiers', { leftParts, rightParts })
+
+  const leftSchema = leftParts.schema ? unquote(leftParts.schema) : 'public'
+  const rightSchema = rightParts.schema ? unquote(rightParts.schema) : 'public'
+
+  return (
+    leftSchema === rightSchema &&
+    unquote(leftParts.name) === unquote(rightParts.name)
+  )
 }
