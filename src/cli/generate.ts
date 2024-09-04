@@ -181,8 +181,6 @@ function diffSchemas(env: Env, command: 'apply' | 'plan') {
       env.config.migration.allowHazards.join(','),
       '--pre-plan-file',
       path.join(env.untrackedDir, 'pre-plan.sql'),
-      '--pre-apply-file',
-      path.join(env.untrackedDir, 'pre-apply.sql'),
       '--disable-plan-validation',
     )
   }

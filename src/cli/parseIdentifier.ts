@@ -1,4 +1,5 @@
 import { sql } from 'pg-nano'
+import { unquote } from './util/unquote'
 
 export function parseIdentifier(sql: string, startOffset = 0): SQLIdentifier {
   let schema: string | undefined
@@ -51,7 +52,32 @@ export class SQLIdentifier {
     public end: number,
   ) {}
 
+  get nameVal() {
+    return sql.val(unquote(this.name))
+  }
+
+  /**
+   * Guaranteed to return a string literal, even if the schema is undefined (in
+   * which case it returns 'public').
+   */
+  get schemaVal() {
+    return this.schema ? sql.val(unquote(this.schema)) : sql.val('public')
+  }
+
   toSQL() {
     return sql.unsafe(`${this.schema ? `${this.schema}.` : ''}${this.name}`)
+  }
+
+  withSchema(schema: string) {
+    return new SQLIdentifier(this.name, schema, 0, 0)
+  }
+
+  compare(other: SQLIdentifier) {
+    const thisSchema = this.schema ? unquote(this.schema) : 'public'
+    const otherSchema = other.schema ? unquote(other.schema) : 'public'
+
+    return (
+      thisSchema === otherSchema && unquote(this.name) === unquote(other.name)
+    )
   }
 }
