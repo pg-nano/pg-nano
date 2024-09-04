@@ -5,8 +5,7 @@
     "outDir": "../../dist/tmp",
     "allowSyntheticDefaultImports": true,
     "paths": {
-      "pg-nano": ["../mod.ts"],
-      "@pg-nano/config": ["../config/mod.ts"]
+      "pg-nano": ["../mod.ts"]
     }
   }
 }

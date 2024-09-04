@@ -67,6 +67,13 @@ async function loadEnv(cwd: string, options: EnvOptions) {
       ...userConfig?.migration,
       allowHazards: userConfig?.migration?.allowHazards ?? [],
     },
+    typescript: {
+      ...userConfig?.typescript,
+      outFile: path.resolve(
+        root,
+        userConfig?.typescript?.outFile ?? 'sql/api.ts',
+      ),
+    },
   }
 
   // https://github.com/stripe/pg-schema-diff/issues/129

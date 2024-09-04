@@ -13,7 +13,8 @@ export default defineConfig([
     ...commonOptions,
     entry: {
       'pg-nano': 'src/mod.ts',
-      'pg-nano/config': 'src/config/mod.ts',
+      'pg-nano/config': 'src/config/config.ts',
+      'pg-nano/plugin': 'src/plugin/plugin.ts',
     },
     splitting: false,
     esbuildPlugins: [

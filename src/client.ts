@@ -3,7 +3,6 @@ import { isPromise } from 'node:util/types'
 import {
   Connection,
   ConnectionStatus,
-  PgNativeError,
   type QueryHook,
   type Result,
   type Row,
@@ -225,12 +224,7 @@ export class Client {
     sql: SQLTemplate,
     transform?: (result: Result<TRow>) => TIteratorResult | TIteratorResult[],
   ) {
-    return new Query<Result<TRow>[], TIteratorResult>(
-      this,
-      sql,
-      transform,
-      new PgNativeError(),
-    )
+    return new Query<Result<TRow>[], TIteratorResult>(this, sql, transform)
   }
 
   protected async dispatchQuery<
@@ -240,7 +234,7 @@ export class Client {
     connection: Connection | Promise<Connection>,
     sql: SQLTemplate | QueryHook<TResult>,
     signal?: AbortSignal,
-    trace?: PgNativeError,
+    singleRowMode?: boolean,
   ): Promise<TResult> {
     signal?.throwIfAborted()
 
@@ -253,7 +247,7 @@ export class Client {
     try {
       signal?.throwIfAborted()
 
-      const queryPromise = connection.query(sql, trace)
+      const queryPromise = connection.query(sql, singleRowMode)
 
       if (signal) {
         const cancel = () => connection.cancel()

@@ -6,6 +6,60 @@ import {
   type Result,
 } from 'pg-nano'
 
+export type PgObject = PgFunction | PgEnumType | PgCompositeType
+
+export type PgNamespace = {
+  name: string
+  functions: PgFunction[]
+  compositeTypes: PgCompositeType[]
+  enumTypes: PgEnumType[]
+  /**
+   * The names of every object in this namespace.
+   */
+  names: string[]
+}
+
+export async function introspectNamespaces(
+  client: Client,
+  signal?: AbortSignal,
+) {
+  const [functions, compositeTypes, enumTypes] = await Promise.all([
+    introspectFunctions(client, signal),
+    introspectCompositeTypes(client, signal),
+    introspectEnumTypes(client, signal),
+  ])
+
+  const namespaces: Record<string, PgNamespace> = {}
+  const getNamespace = (nspname: string) =>
+    (namespaces[nspname] ??= {
+      name: nspname,
+      functions: [],
+      compositeTypes: [],
+      enumTypes: [],
+      names: [],
+    })
+
+  for (const fn of functions) {
+    const nsp = getNamespace(fn.nspname)
+    nsp.functions.push(fn)
+    nsp.names.push(fn.proname)
+  }
+
+  for (const t of compositeTypes) {
+    const nsp = getNamespace(t.nspname)
+    nsp.compositeTypes.push(t)
+    nsp.names.push(t.typname)
+  }
+
+  for (const t of enumTypes) {
+    const nsp = getNamespace(t.nspname)
+    nsp.enumTypes.push(t)
+    nsp.names.push(t.typname)
+  }
+
+  return namespaces
+}
+
 export type PgFunction = {
   nspname: string
   proname: string
@@ -18,7 +72,7 @@ export type PgFunction = {
   provariadic: boolean
 }
 
-export function introspectUserFunctions(client: Client, signal?: AbortSignal) {
+export function introspectFunctions(client: Client, signal?: AbortSignal) {
   /**
    * Find the procs that are:
    *   - not built-in
@@ -93,6 +147,7 @@ export function introspectArrayTypes(client: Client, signal?: AbortSignal) {
 export type PgEnumType = {
   oid: number
   typname: string
+  nspname: string
   typarray: number
   labels: string[]
 }
@@ -100,9 +155,10 @@ export type PgEnumType = {
 export function introspectEnumTypes(client: Client, signal?: AbortSignal) {
   const query = sql`
     SELECT
-      oid,
-      typname,
-      typarray::oid,
+      t.oid,
+      t.typname,
+      n.nspname,
+      t.typarray::oid,
       array(
         SELECT enumlabel
         FROM pg_catalog.pg_enum e
@@ -110,15 +166,17 @@ export function introspectEnumTypes(client: Client, signal?: AbortSignal) {
         ORDER BY e.enumsortorder
       )::text[] AS labels
     FROM pg_catalog.pg_type t
+    JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace
     WHERE t.typtype = 'e'
   `
 
   return client.many<PgEnumType>(query, { signal })
 }
 
-export type PgUserType = {
+export type PgCompositeType = {
   oid: number
   typname: string
+  nspname: string
   typarray: number
   fields: Array<{
     attname: string
@@ -126,16 +184,18 @@ export type PgUserType = {
   }>
 }
 
-export function introspectUserTypes(client: Client, signal?: AbortSignal) {
+export function introspectCompositeTypes(client: Client, signal?: AbortSignal) {
   const query = sql`
     SELECT
       t.oid,
       t.typname,
+      n.nspname,
       t.typarray::oid,
       array_agg(
         json_build_object(
           'attname', a.attname,
-          'atttypid', a.atttypid::int
+          'atttypid', a.atttypid::int,
+          'attnotnull', a.attnotnull
         )
         ORDER BY a.attnum
       ) AS fields
@@ -150,7 +210,7 @@ export function introspectUserTypes(client: Client, signal?: AbortSignal) {
     GROUP BY t.oid, t.typname
   `
 
-  return client.many<PgUserType>(query, { signal })
+  return client.many<PgCompositeType>(query, { signal })
 }
 
 async function sendCommand<TResult = Result[]>(

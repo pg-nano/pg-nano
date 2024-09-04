@@ -1,4 +1,4 @@
-import type { PgNativeError, Result, SQLTemplate } from 'pg-native'
+import type { Result, SQLTemplate } from 'pg-native'
 import type { Client } from './mod'
 import { generateEvents, type UnwrapArray } from './util.js'
 
@@ -26,7 +26,6 @@ export class Query<
     protected transform?: (
       result: UnwrapArray<TPromiseResult>,
     ) => TIteratorResult | TIteratorResult[],
-    protected trace?: PgNativeError,
   ) {}
 
   /**
@@ -58,9 +57,9 @@ export class Query<
   }
 
   protected send(): Promise<any>
-  protected send(iterableMode: true): AsyncIterable<TIteratorResult>
+  protected send(singleRowMode: true): AsyncIterable<TIteratorResult>
   protected send(
-    iterableMode?: boolean,
+    singleRowMode?: boolean,
   ): Promise<any> | AsyncIterable<TIteratorResult> {
     const client = this.client as unknown as {
       getConnection: Client['getConnection']
@@ -72,9 +71,9 @@ export class Query<
       connection,
       this.sql,
       signal,
-      this.trace,
+      singleRowMode,
     )
-    return iterableMode
+    return singleRowMode
       ? generateEvents(connection, 'result', this.transform)
       : promise
   }

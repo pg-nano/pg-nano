@@ -5,16 +5,18 @@ import { sql } from 'pg-nano'
 import { camel, pascal } from 'radashi'
 import type { Env } from './env'
 import {
-  introspectEnumTypes,
+  introspectNamespaces,
   introspectResultSet,
-  introspectUserFunctions,
-  introspectUserTypes,
+  type PgObject,
+  type PgCompositeType,
+  type PgEnumType,
 } from './introspect'
 import { log } from './log'
 import { parseMigrationPlan } from './parseMigrationPlan'
 import { prepareForMigration } from './prepare'
 import { typeConversion } from './typeConversion'
 import { dedent } from './util/dedent'
+import { unquote } from './util/unquote'
 
 export async function generate(
   env: Env,
@@ -22,9 +24,235 @@ export async function generate(
   signal?: AbortSignal,
 ) {
   const client = await env.client
-  const postMigration = await prepareForMigration(filePaths, env)
+
+  const { funcsWithSetof } = await prepareForMigration(filePaths, env)
 
   log('Migrating database...')
+  await migrate(env)
+
+  log('Generating type definitions...')
+
+  // 1. Collect type information from the database.
+  const namespaces = await introspectNamespaces(client, signal)
+
+  const extendedTypeConversion = { ...typeConversion }
+  const oidToEnumType = new Map<number, PgEnumType>()
+  const oidToCompositeType = new Map<number, PgCompositeType>()
+
+  // 2. Add types to the type conversion map.
+  for (const nsp of Object.values(namespaces)) {
+    for (const type of nsp.enumTypes) {
+      oidToEnumType.set(type.oid, type)
+      extendedTypeConversion[type.oid] = type.typname
+
+      oidToEnumType.set(type.typarray, type)
+      extendedTypeConversion[type.typarray] = type.typname + '[]'
+    }
+    for (const type of nsp.compositeTypes) {
+      oidToCompositeType.set(type.oid, type)
+      extendedTypeConversion[type.oid] = type.typname
+
+      oidToCompositeType.set(type.typarray, type)
+      extendedTypeConversion[type.typarray] = type.typname + '[]'
+    }
+  }
+
+  const moduleBasename = path.basename(env.config.typescript.outFile) + '.js'
+  const foreignTypeRegex = /\b(Interval|Range|Circle|Point|JSON)\b/
+  const renderedObjects = new Map<PgObject, string>()
+  const unknownTypes = new Set<number>()
+  const imports = new Set<string>()
+
+  const renderTypeReference = (typeOid: number, nspContext: string) => {
+    let type = extendedTypeConversion[typeOid]
+    if (type) {
+      const enumType = oidToEnumType.get(typeOid)
+      const compositeType = oidToCompositeType.get(typeOid)
+      const introspectedType = enumType || compositeType
+
+      if (introspectedType) {
+        if (enumType) {
+          if (!renderedObjects.has(enumType)) {
+            renderedObjects.set(enumType, renderEnumType(enumType))
+          }
+        } else if (compositeType) {
+          if (!renderedObjects.has(compositeType)) {
+            // First set an empty string to avoid infinite recursion if there
+            // happens to be a circular reference.
+            renderedObjects.set(compositeType, '')
+            renderedObjects.set(
+              compositeType,
+              renderCompositeType(compositeType),
+            )
+          }
+        }
+        if (introspectedType.nspname !== nspContext) {
+          let nspPrefix: string
+          if (
+            introspectedType.nspname === 'public' &&
+            namespaces[nspContext].names.includes(introspectedType.typname)
+          ) {
+            // When a type in the current namespace conflicts with a type in the
+            // public namespace, we need to import the public type (rather than
+            // use `public.foo`), because types in the public namespace are not
+            // actually wrapped with `namespace` syntax.
+            nspPrefix = `import('./${moduleBasename}')`
+          } else {
+            nspPrefix = pascal(introspectedType.nspname)
+          }
+
+          type = nspPrefix + '.' + pascal(introspectedType.typname)
+        } else {
+          type = pascal(introspectedType.typname)
+        }
+      } else {
+        const match = type.match(foreignTypeRegex)
+        if (match) {
+          imports.add('type ' + match[1])
+        }
+      }
+    } else {
+      type = 'unknown'
+      unknownTypes.add(typeOid)
+    }
+    return type
+  }
+
+  // 3. Render type definitions for each function. This also builds up a list of
+  // dependencies (e.g. imports and type definitions).
+  for (const nsp of Object.values(namespaces)) {
+    for (const fn of nsp.functions) {
+      const jsName = camel(fn.proname)
+
+      const argNames = fn.proargnames?.map(name =>
+        camel(name.replace(/^p_/, '')),
+      )
+      const argTypes = fn.proargtypes
+        .map((typeOid, index, argTypes) => {
+          if (argNames) {
+            const jsName = argNames[index]
+            const optionalToken =
+              index >= argTypes.length - fn.pronargdefaults ? '?' : ''
+
+            return `${jsName}${optionalToken}: ${renderTypeReference(typeOid, fn.nspname)}`
+          }
+          return renderTypeReference(typeOid, fn.nspname)
+        })
+        .join(', ')
+
+      const schema =
+        fn.nspname !== 'public' ? `, ${JSON.stringify(fn.nspname)}` : ''
+
+      const params =
+        argNames || schema ? `, ${JSON.stringify(argNames || null)}` : ''
+
+      let TRow: string | undefined
+      if (fn.proretset) {
+        const setofType = funcsWithSetof.find(
+          func =>
+            fn.proname === unquote(func.id.name) &&
+            fn.nspname === unquote(func.id.schema ?? 'public'),
+        )
+        if (setofType) {
+          TRow = pascal(unquote(setofType.referencedId.name))
+        } else {
+          const columns = await introspectResultSet(client, fn, signal)
+          TRow = `{${columns
+            .map(({ name, dataTypeID }) => {
+              return `${name}: ${renderTypeReference(dataTypeID, fn.nspname)}`
+            })
+            .join(', ')}}`
+        }
+      }
+
+      const TParams = argNames ? `{${argTypes}}` : `[${argTypes}]`
+      const TResult = TRow ?? renderTypeReference(fn.prorettype, fn.nspname)
+
+      const declare = fn.proretset ? 'declareRoutine' : 'declareScalarRoutine'
+      imports.add(declare)
+
+      const fnCode = dedent`
+        export declare namespace ${jsName} {
+          export type Params = ${TParams}
+          export type Result = ${TResult}
+        }
+
+        export const ${jsName} = ${declare}<${jsName}.Params, ${jsName}.Result>(${JSON.stringify(fn.proname)}${params}${schema})\n\n
+      `
+
+      renderedObjects.set(fn, fnCode)
+    }
+  }
+
+  const renderEnumType = (type: PgEnumType) =>
+    dedent`
+      export type ${pascal(type.typname)} = ${type.labels
+        .map(label => {
+          return JSON.stringify(label)
+        })
+        .join(' | ')}\n\n
+    `
+
+  const renderCompositeType = (type: PgCompositeType) =>
+    dedent`
+      export interface ${pascal(type.typname)} {
+        ${type.fields
+          .map(field => {
+            return `${field.attname}: ${renderTypeReference(field.atttypid, type.nspname)}`
+          })
+          .join('\n')}
+      }\n\n
+    `
+
+  let code = dedent`
+    import { ${[...imports].sort().join(', ')} } from 'pg-nano'
+  `
+
+  // 4. Render type definitions for each namespace.
+  for (const nsp of Object.values(namespaces)) {
+    let nspCode = ''
+
+    for (const type of nsp.enumTypes) {
+      if (renderedObjects.has(type)) {
+        nspCode += renderedObjects.get(type)!
+      }
+    }
+
+    for (const type of nsp.compositeTypes) {
+      if (renderedObjects.has(type)) {
+        nspCode += renderedObjects.get(type)!
+      }
+    }
+
+    for (const fn of nsp.functions) {
+      nspCode += renderedObjects.get(fn)!
+    }
+
+    // Don't wrap type definitions for the public namespace, to improve
+    // ergonomics.
+    code +=
+      nsp.name === 'public'
+        ? nspCode
+        : `export namespace ${pascal(nsp.name)} {\n${indent(nspCode)}\n}`
+  }
+
+  // 5. Write the generated type definitions to a file.
+  fs.writeFileSync(env.config.typescript.outFile, code.replace(/\s+$/, '\n'))
+
+  // 6. Warn about any unknown types.
+  for (const typeOid of unknownTypes) {
+    const typeName = await client.scalar<string>(sql`
+      SELECT typname FROM pg_type WHERE oid = ${sql.val(typeOid)}
+    `)
+
+    log.warn(`Unknown type: ${typeName} (${typeOid})`)
+  }
+
+  // log.eraseLine()
+  log.success('Generating type definitions... done')
+}
+
+async function migrate(env: Env) {
   const applyProc = diffSchemas(env, 'apply')
 
   let applyStderr = ''
@@ -64,123 +292,6 @@ export async function generate(
   if (applyStderr) {
     throw new Error(applyStderr)
   }
-
-  await postMigration()
-
-  log('Generating type definitions...')
-
-  const [functions, enumTypes, userTypes] = await Promise.all([
-    introspectUserFunctions(client, signal),
-    introspectEnumTypes(client, signal),
-    introspectUserTypes(client, signal),
-  ])
-
-  const foreignTypeRegex = /\b(Interval|Range|Circle|Point|JSON)\b/
-  const unknownTypes = new Set<number>()
-  const imports = new Set<string>()
-
-  let code = ''
-
-  const extendedTypeConversion = { ...typeConversion }
-  const convertTypeOid = (typeOid: number) => {
-    let type = extendedTypeConversion[typeOid]
-    if (type) {
-      const match = type.match(foreignTypeRegex)
-      if (match) {
-        imports.add('type ' + match[1])
-      }
-    } else {
-      type = 'unknown'
-      unknownTypes.add(typeOid)
-    }
-    return type
-  }
-
-  for (const type of enumTypes) {
-    const jsName = pascal(type.typname)
-    extendedTypeConversion[type.oid] = jsName
-    extendedTypeConversion[type.typarray] = jsName + '[]'
-
-    code += dedent`
-      export type ${jsName} = ${type.labels.map(label => JSON.stringify(label)).join(' | ')}\n\n
-    `
-  }
-
-  for (const type of userTypes) {
-    const jsName = pascal(type.typname)
-    extendedTypeConversion[type.oid] = jsName
-    extendedTypeConversion[type.typarray] = jsName + '[]'
-
-    code += dedent`
-      export interface ${jsName} {
-        ${type.fields.map(field => `${field.attname}: ${convertTypeOid(field.atttypid)}`).join('\n')}
-      }\n\n
-    `
-  }
-
-  for (const fn of functions) {
-    const jsName = camel(fn.proname)
-
-    const argNames = fn.proargnames?.map(name => camel(name.replace(/^p_/, '')))
-    const argTypes = fn.proargtypes
-      .map((typeOid, index, argTypes) => {
-        if (argNames) {
-          const jsName = argNames[index]
-          const optionalToken =
-            index >= argTypes.length - fn.pronargdefaults ? '?' : ''
-
-          return `${jsName}${optionalToken}: ${convertTypeOid(typeOid)}`
-        }
-        return convertTypeOid(typeOid)
-      })
-      .join(', ')
-
-    const schema =
-      fn.nspname !== 'public' ? `, ${JSON.stringify(fn.nspname)}` : ''
-
-    const params =
-      argNames || schema ? `, ${JSON.stringify(argNames || null)}` : ''
-
-    const TParams = argNames ? `{${argTypes}}` : `[${argTypes}]`
-    const TResult = fn.proretset
-      ? await introspectResultSet(client, fn, signal).then(columns => {
-          return `{${columns.map(({ name, dataTypeID }) => `${name}: ${convertTypeOid(dataTypeID)}`).join(', ')}}`
-        })
-      : convertTypeOid(fn.prorettype)
-
-    code += dedent`
-      export declare namespace ${jsName} {
-        export type Params = ${TParams}
-        export type Result = ${TResult}
-      }\n\n
-    `
-
-    const declare = fn.proretset ? 'declareRoutine' : 'declareScalarRoutine'
-    imports.add(declare)
-
-    code += dedent`
-      export const ${jsName} = ${declare}<${jsName}.Params, ${jsName}.Result>(${JSON.stringify(fn.proname)}${params}${schema})\n\n
-    `
-  }
-
-  code = dedent`
-    import { ${[...imports].sort().join(', ')} } from 'pg-nano'
-
-    ${code}
-  `
-
-  fs.writeFileSync(path.join(env.root, 'api.ts'), code.replace(/\s+$/, '\n'))
-
-  for (const typeOid of unknownTypes) {
-    const typeName = await client.scalar<string>(sql`
-      SELECT typname FROM pg_type WHERE oid = ${sql.val(typeOid)}
-    `)
-
-    log.warn(`Unknown type: ${typeName} (${typeOid})`)
-  }
-
-  // log.eraseLine()
-  log.success('Generating type definitions... done')
 }
 
 function diffSchemas(env: Env, command: 'apply' | 'plan') {
@@ -210,4 +321,8 @@ function diffSchemas(env: Env, command: 'apply' | 'plan') {
     env.schemaDir,
     ...applyArgs,
   ])
+}
+
+function indent(text: string, count = 2) {
+  return text.replace(/^/gm, ' '.repeat(count))
 }

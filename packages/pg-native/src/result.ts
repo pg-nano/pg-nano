@@ -17,13 +17,27 @@ export interface Field {
   dataTypeID: number
 }
 
+const emptyArray = Object.freeze([]) as never[]
+const getEmptyResult = memoize((command: string) =>
+  Object.freeze(new Result(command, 0, emptyArray, emptyArray)),
+)
+
 export function buildResult(pq: Libpq) {
   const command = consumeCommand(pq)
   const rowCount = consumeRowCount(pq)
-  const fields = consumeFields(pq)
-  const rows = consumeRows(pq, fields)
 
-  return new Result(command, rowCount, fields, rows)
+  let result: Result
+  if (rowCount > 0) {
+    const fields = consumeFields(pq)
+    const rows = consumeRows(pq, fields)
+
+    result = new Result(command, rowCount, fields, rows)
+  } else {
+    result = getEmptyResult(command)
+  }
+
+  pq.clear()
+  return result
 }
 
 function consumeCommand(pq: Libpq) {
@@ -49,29 +63,34 @@ function consumeFields(pq: Libpq) {
 function consumeRows(pq: Libpq, fields: Field[]) {
   const rows = new Array(pq.ntuples())
   for (let i = 0; i < rows.length; i++) {
-    rows[i] = consumeRowAsObject(pq, i, fields)
+    rows[i] = consumeRow(pq, i, fields)
   }
   return rows
 }
 
-function consumeRowAsObject(pq: Libpq, rowIndex: number, fields: Field[]) {
+function consumeRow(pq: Libpq, tupleNo: number, fields: Field[]) {
   const row: Record<string, unknown> = {}
-  for (let colIndex = 0; colIndex < fields.length; colIndex++) {
-    row[fields[colIndex].name] = readValue(pq, rowIndex, colIndex, fields)
+  for (let fieldNo = 0; fieldNo < fields.length; fieldNo++) {
+    row[fields[fieldNo].name] = consumeValue(pq, tupleNo, fieldNo, fields)
   }
   return row
 }
 
-function readValue(
+function consumeValue(
   pq: Libpq,
-  rowIndex: number,
-  colIndex: number,
+  tupleNo: number,
+  fieldNo: number,
   fields: Field[],
 ) {
-  const rawValue = pq.getvalue(rowIndex, colIndex)
-  if (rawValue === '' && pq.getisnull(rowIndex, colIndex)) {
+  const rawValue = pq.getvalue(tupleNo, fieldNo)
+  if (rawValue === '' && pq.getisnull(tupleNo, fieldNo)) {
     return null
   }
-  const parseValue = types.getTypeParser(fields[colIndex].dataTypeID)
+  const parseValue = types.getTypeParser(fields[fieldNo].dataTypeID)
   return parseValue(rawValue)
+}
+
+function memoize<T>(fn: (arg: string) => T): (arg: string) => T {
+  const cache: Record<string, T> = {}
+  return (arg: string) => (cache[arg] ||= fn(arg))
 }

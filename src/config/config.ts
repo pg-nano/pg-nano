@@ -1,3 +1,4 @@
+import type { Plugin } from '@pg-nano/plugin'
 import type { MigrationHazardType } from './hazards'
 
 export interface UserConfig {
@@ -31,6 +32,16 @@ export interface UserConfig {
   migration?: {
     allowHazards?: MigrationHazardType[]
   }
+  typescript?: {
+    /**
+     * The file to write the generated TypeScript definitions to. This includes
+     * the UDF wrapper functions.
+     *
+     * @default 'sql/api.ts'
+     */
+    outFile?: string
+  }
+  plugins?: Plugin[]
 }
 
 export function defineConfig(config: UserConfig) {

@@ -4,7 +4,7 @@ import util from 'node:util'
 import { isFunction, uid } from 'radashi'
 import type { StrictEventEmitter } from 'strict-event-emitter-types'
 import { debug } from './debug'
-import { PgNativeError } from './error'
+import { PgNativeError, PgResultError } from './error'
 import { buildResult, type Result } from './result'
 import { stringifyTemplate } from './stringify'
 import type { SQLTemplate } from './template'
@@ -60,9 +60,9 @@ export class Connection extends ConnectionEmitter {
    */
   query<TResult = Result[]>(
     sql: SQLTemplate | QueryHook<TResult>,
-    trace?: PgNativeError,
+    singleRowMode?: boolean,
   ): Promise<TResult> {
-    const promise = sendQuery(unprotect(this), sql, trace)
+    const promise = sendQuery(unprotect(this), sql, singleRowMode)
     if (Number.isFinite(this.idleTimeout)) {
       clearTimeout(this.idleTimeoutId)
       promise.finally(() => {
@@ -105,10 +105,9 @@ interface ConnectionState {
   status: ConnectionStatus
   reader: (() => void) | null
   results: Result[]
-  promise: Promise<Result[]>
+  promise: Promise<any>
   resolve: (response: Result[]) => void
   reject: (error: Error) => void
-  trace: PgNativeError
 }
 
 function unprotect(conn: Connection): ConnectionState & ConnectionEmitter {
@@ -152,62 +151,14 @@ export type QueryHook<TResult> = (
 async function sendQuery<TResult = Result[]>(
   conn: ConnectionState & ConnectionEmitter,
   sql: SQLTemplate | QueryHook<TResult>,
-  trace?: PgNativeError,
+  singleRowMode?: boolean,
 ): Promise<TResult> {
-  conn.trace = trace ?? new PgNativeError()
   stopReading(conn, ConnectionStatus.QUERY_WRITING)
 
   let debugId: string | undefined
   if (process.env.NODE_ENV !== 'production' && debug.enabled) {
     debugId = uid(8)
-  }
-
-  const promise = conn.promise
-  const success = conn.pq.setNonBlocking(true)
-
-  if (success) {
-    let sent: boolean | (() => Promise<TResult>)
-    if (isFunction(sql)) {
-      sent = sql(conn.pq)
-    } else {
-      const query = stringifyTemplate(sql, conn.pq)
-      conn.trace.query = query
-
-      if (process.env.NODE_ENV !== 'production' && debug.enabled) {
-        const indentedQuery = query.replace(/^|\n/g, '$&  ')
-        debug(`query:${debugId} writing\n${indentedQuery}`)
-      }
-
-      sent = conn.pq.sendQuery(query)
-    }
-
-    if (sent) {
-      await waitForDrain(conn.pq)
-
-      if (isFunction(sent)) {
-        try {
-          conn.results = (await sent()) as any
-          resolvePromise(conn)
-        } catch (error) {
-          resolvePromise(conn, error)
-        }
-      } else {
-        setStatus(conn, ConnectionStatus.QUERY_READING)
-        conn.pq.on('readable', (conn.reader = () => read(conn)))
-        conn.pq.startReader()
-      }
-    } else {
-      resolvePromise(conn, new PgNativeError(conn.pq.errorMessage()))
-    }
-  } else {
-    resolvePromise(
-      conn,
-      new PgNativeError('Unable to set non-blocking to true'),
-    )
-  }
-
-  if (process.env.NODE_ENV !== 'production' && debug.enabled) {
-    promise.then(
+    conn.promise.then(
       results => {
         debug(
           `query:${debugId} results\n  ${util.inspect(results, { depth: null }).replace(/\n/g, '\n  ')}`,
@@ -221,7 +172,54 @@ async function sendQuery<TResult = Result[]>(
     )
   }
 
-  return promise as Promise<TResult>
+  if (!conn.pq.setNonBlocking(true)) {
+    return resolvePromise(
+      conn,
+      new PgNativeError('Unable to set non-blocking to true'),
+    )
+  }
+
+  let sent: boolean | (() => Promise<TResult>)
+
+  if (isFunction(sql)) {
+    sent = sql(conn.pq)
+  } else {
+    const query = stringifyTemplate(sql, conn.pq)
+
+    if (process.env.NODE_ENV !== 'production' && debug.enabled) {
+      const indentedQuery = query.replace(/^|\n/g, '$&  ')
+      debug(`query:${debugId} writing\n${indentedQuery}`)
+    }
+
+    sent = conn.pq.sendQuery(query)
+  }
+
+  if (!sent) {
+    return resolvePromise(conn, new PgNativeError(conn.pq.errorMessage()))
+  }
+
+  if (singleRowMode && !conn.pq.setSingleRowMode()) {
+    return resolvePromise(
+      conn,
+      new PgNativeError('Unable to set single row mode'),
+    )
+  }
+
+  await waitForDrain(conn.pq)
+
+  if (isFunction(sent)) {
+    try {
+      conn.results = (await sent()) as any
+      return resolvePromise(conn)
+    } catch (error) {
+      return resolvePromise(conn, error)
+    }
+  }
+
+  setStatus(conn, ConnectionStatus.QUERY_READING)
+  conn.pq.on('readable', (conn.reader = () => read(conn)))
+  conn.pq.startReader()
+  return conn.promise
 }
 
 // called when libpq is readable
@@ -243,16 +241,7 @@ function read(conn: ConnectionState & ConnectionEmitter): void {
 
   // load our result object
   while (pq.getResult()) {
-    const resultStatus = processResult(conn)
-
-    // if the command initiated copy mode we need to break out of the read loop
-    // so a substream can begin to read copy data
-    if (
-      resultStatus === 'PGRES_COPY_BOTH' ||
-      resultStatus === 'PGRES_COPY_OUT'
-    ) {
-      break
-    }
+    processResult(conn)
 
     // if reading multiple results, sometimes the following results might cause
     // a blocking read. in this scenario yield back off the reader until libpq is readable
@@ -272,19 +261,14 @@ function read(conn: ConnectionState & ConnectionEmitter): void {
 
 function resolvePromise(conn: ConnectionState, error?: Error) {
   if (error) {
-    error.stack =
-      error.name +
-      ': ' +
-      error.message.replace(/^ERROR:\s+/, '').trimEnd() +
-      '\n' +
-      conn.trace.stack.replace(/^[^\n]+\n/, '')
-
     conn.reject(error)
   } else {
     conn.resolve(conn.results)
   }
 
+  const promise = conn.promise
   reset(conn, ConnectionStatus.IDLE)
+  return promise
 }
 
 function stopReading(conn: ConnectionState, newStatus: ConnectionStatus) {
@@ -313,32 +297,29 @@ function waitForDrain(pq: Libpq) {
   })
 }
 
-function processResult(conn: ConnectionState & ConnectionEmitter): string {
+function processResult(conn: ConnectionState & ConnectionEmitter) {
   const resultStatus = conn.pq.resultStatus()
   switch (resultStatus) {
-    case 'PGRES_FATAL_ERROR':
-      resolvePromise(conn, new PgNativeError(conn.pq.resultErrorMessage()))
+    case 'PGRES_FATAL_ERROR': {
+      const error = new PgResultError(conn.pq.resultErrorMessage())
+      Object.assign(error, conn.pq.resultErrorFields())
+      resolvePromise(conn, error)
+      break
+    }
+
+    case 'PGRES_SINGLE_TUPLE':
+      conn.emit('result', buildResult(conn.pq))
       break
 
     case 'PGRES_TUPLES_OK':
     case 'PGRES_COMMAND_OK':
     case 'PGRES_EMPTY_QUERY': {
-      const result = buildResult(conn.pq)
-      if (conn.listenerCount('result')) {
-        conn.emit('result', result)
-      } else {
-        conn.results.push(result)
-      }
+      conn.results.push(buildResult(conn.pq))
       break
     }
-
-    case 'PGRES_COPY_OUT':
-    case 'PGRES_COPY_BOTH':
-      break
 
     default:
       console.warn(`[pg-native] Unrecognized result status: ${resultStatus}`)
       break
   }
-  return resultStatus
 }

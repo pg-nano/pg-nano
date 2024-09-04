@@ -66,7 +66,7 @@ export const createAccount = declareScalarRoutine<createAccount.Params, createAc
 
 export declare namespace getFoo {
   export type Params = {id: number}
-  export type Result = {address: AddressType, binary_data: Buffer, coordinates: Point, created_at: Date, description: string, id: number, ip_address: string, is_active: boolean, mac_address: string, matrix: number[], metadata: JSON, name: string, price_range: Range<number>, priority: number, product_attributes: unknown, schedule: Range<Date>, score: string, search_vector: unknown, status: StatusType, tags: string[], updated_at: Date, uuid: string}
+  export type Result = Foo
 }
 
 export const getFoo = declareRoutine<getFoo.Params, getFoo.Result>("get_foo", ["id"])

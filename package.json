@@ -8,6 +8,10 @@
       "types": "./dist/pg-nano/config.d.ts",
       "default": "./dist/pg-nano/config.js"
     },
+    "./plugin": {
+      "types": "./dist/pg-nano/plugin.d.ts",
+      "default": "./dist/pg-nano/plugin.js"
+    },
     ".": {
       "types": "./dist/pg-nano.d.ts",
       "default": "./dist/pg-nano.js"
@@ -42,9 +46,7 @@
     "format": "biome check --fix --unsafe src generators package.json",
     "lint": "tinyrun --names pg-nano,pg-native,biome 'tsc -p .' 'tsc -p src/pg-native' 'biome lint src generators'"
   },
-  "files": [
-    "dist"
-  ],
+  "files": ["dist"],
   "dependencies": {
     "@pg-nano/libpq": "workspace:^",
     "@pg-nano/pg-schema-diff": "workspace:^",

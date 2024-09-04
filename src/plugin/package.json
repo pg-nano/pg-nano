@@ -1,0 +1,7 @@
+{
+  "name": "@pg-nano/plugin",
+  "type": "module",
+  "private": true,
+  "description": "Type definitions for a pg-nano plugin",
+  "main": "plugin.js"
+}

@@ -257,11 +257,20 @@ importers:
         specifier: ^1.2.2
         version: 1.6.0(@types/node@22.5.1)(terser@5.31.6)
 
+  plugins/crud:
+    dependencies:
+      '@pg-nano/plugin':
+        specifier: workspace:^
+        version: link:../../src/plugin
+
   src/cli:
     devDependencies:
       '@pg-nano/config':
         specifier: workspace:^
         version: link:../config
+      '@pg-nano/plugin':
+        specifier: workspace:^
+        version: link:../plugin
       '@types/node':
         specifier: ^22.5.1
         version: 22.5.1
@@ -280,12 +289,17 @@ importers:
 
   src/config:
     devDependencies:
+      '@pg-nano/plugin':
+        specifier: workspace:^
+        version: link:../plugin
       '@types/node':
         specifier: ^22.5.1
         version: 22.5.1
       radashi:
         specifier: 12.2.0-beta.af825f4
         version: 12.2.0-beta.af825f4
+
+  src/plugin: {}
 
 packages:
 

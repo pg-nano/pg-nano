@@ -1,8 +1,10 @@
 {
   "name": "@pg-nano/config",
-  "private": true,
   "type": "module",
+  "private": true,
+  "main": "config.js",
   "devDependencies": {
+    "@pg-nano/plugin": "workspace:^",
     "@types/node": "^22.5.1",
     "radashi": "12.2.0-beta.af825f4"
   }

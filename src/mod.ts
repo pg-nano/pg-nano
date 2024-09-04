@@ -5,6 +5,8 @@ export * from './types.js'
 
 export {
   Interval,
+  PgNativeError,
+  PgResultError,
   Range,
   buildResult,
   sql,

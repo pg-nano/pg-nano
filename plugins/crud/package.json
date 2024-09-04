@@ -1,0 +1,8 @@
+{
+  "name": "@pg-nano/plugin-crud",
+  "version": "0.1.0",
+  "main": "crud.js",
+  "devDependencies": {
+    "@pg-nano/plugin": "workspace:^"
+  }
+}
