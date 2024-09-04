@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
+import { sql } from 'pg-nano'
 import { camel, pascal } from 'radashi'
 import type { Env } from './env'
 import {
@@ -31,24 +32,26 @@ export async function generate(
     applyStderr += data
   })
 
-  const successRegex = /(No plan generated|Finished executing)/
-  const commentRegex = /^\s+-- /
+  if (env.config.verbose) {
+    const successRegex = /(No plan generated|Finished executing)/
+    const commentRegex = /^\s+-- /
 
-  let completed = false
-  for await (const line of parseMigrationPlan(applyProc.stdout)) {
-    if (line.type === 'title') {
-      if (line.text === 'Complete') {
-        completed = true
-      } else {
-        log(line.text)
-      }
-    } else if (line.type === 'body') {
-      if (completed || successRegex.test(line.text)) {
-        log.success(line.text)
-      } else if (commentRegex.test(line.text)) {
-        log.comment(line.text)
-      } else {
-        log.command(line.text)
+    let completed = false
+    for await (const line of parseMigrationPlan(applyProc.stdout)) {
+      if (line.type === 'title') {
+        if (line.text === 'Complete') {
+          completed = true
+        } else {
+          log(line.text)
+        }
+      } else if (line.type === 'body') {
+        if (completed || successRegex.test(line.text)) {
+          log.success(line.text)
+        } else if (commentRegex.test(line.text)) {
+          log.comment(line.text)
+        } else {
+          log.command(line.text)
+        }
       }
     }
   }
@@ -73,6 +76,7 @@ export async function generate(
   ])
 
   const foreignTypeRegex = /\b(Interval|Range|Circle|Point)\b/
+  const unknownTypes = new Set<number>()
   const imports = new Set<string>()
 
   let code = ''
@@ -87,7 +91,7 @@ export async function generate(
       }
     } else {
       type = 'unknown'
-      log.warn(`Unknown type: ${typeOid}`)
+      unknownTypes.add(typeOid)
     }
     return type
   }
@@ -116,7 +120,6 @@ export async function generate(
 
   for (const fn of functions) {
     const jsName = camel(fn.proname)
-    console.log(jsName, fn)
 
     const argNames = fn.proargnames?.map(name => camel(name.replace(/^p_/, '')))
     const argTypes = fn.proargtypes
@@ -167,6 +170,14 @@ export async function generate(
   `
 
   fs.writeFileSync(path.join(env.root, 'api.ts'), code.replace(/\s+$/, '\n'))
+
+  for (const typeOid of unknownTypes) {
+    const typeName = await client.scalar<string>(sql`
+      SELECT typname FROM pg_type WHERE oid = ${sql.val(typeOid)}
+    `)
+
+    log.warn(`Unknown type: ${typeName} (${typeOid})`)
+  }
 
   // log.eraseLine()
   log.success('Generating type definitions... done')

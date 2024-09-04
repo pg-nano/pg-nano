@@ -25,36 +25,36 @@ export interface Post {
   content: string
 }
 
-export interface Foo {
-  uuid: string
-  coordinates: Point
-  updated_at: Date
-  created_at: Date
-  mac_address: string
-  id: number
-  priority: number
-  is_active: boolean
-  ip_address: string
-  binary_data: Buffer
-  description: string
-  metadata: unknown
-  tags: string[]
-  price_range: Range<number>
-  schedule: Range<Date>
-  score: string
-  name: string
-  search_vector: unknown
-  matrix: number[]
-  status: StatusType
-  product_attributes: unknown
-  address: unknown
-}
-
 export interface AddressType {
   street: string
   city: string
   state: string
   zip_code: string
+}
+
+export interface Foo {
+  address: AddressType
+  binary_data: Buffer
+  coordinates: Point
+  created_at: Date
+  description: string
+  id: number
+  ip_address: string
+  is_active: boolean
+  mac_address: string
+  matrix: number[]
+  metadata: unknown
+  name: string
+  price_range: Range<number>
+  priority: number
+  product_attributes: unknown
+  schedule: Range<Date>
+  score: string
+  search_vector: unknown
+  status: StatusType
+  tags: string[]
+  updated_at: Date
+  uuid: string
 }
 
 export declare namespace createAccount {
@@ -66,7 +66,7 @@ export const createAccount = declareScalarRoutine<createAccount.Params, createAc
 
 export declare namespace getFoo {
   export type Params = {id: number}
-  export type Result = {uuid: string, coordinates: Point, updated_at: Date, created_at: Date, mac_address: string, id: number, priority: number, is_active: boolean, ip_address: string, binary_data: Buffer, description: string, metadata: unknown, tags: string[], price_range: Range<number>, schedule: Range<Date>, score: string, name: string, search_vector: unknown, matrix: number[], status: StatusType, product_attributes: unknown, address: AddressType}
+  export type Result = {address: AddressType, binary_data: Buffer, coordinates: Point, created_at: Date, description: string, id: number, ip_address: string, is_active: boolean, mac_address: string, matrix: number[], metadata: unknown, name: string, price_range: Range<number>, priority: number, product_attributes: unknown, schedule: Range<Date>, score: string, search_vector: unknown, status: StatusType, tags: string[], updated_at: Date, uuid: string}
 }
 
 export const getFoo = declareRoutine<getFoo.Params, getFoo.Result>("get_foo", ["id"])

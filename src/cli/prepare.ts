@@ -39,7 +39,6 @@ export async function prepareForMigration(filePaths: string[], env: Env) {
       '\n\n'
   }
 
-  const schemaObjects: SQLObject[] = []
   const parsedSchemaFiles = schemaFiles.map(file => {
     const stmts = splitStatements(fs.readFileSync(file, 'utf8'))
     const objects = stmts.map((stmt, stmtIndex) => {
@@ -85,6 +84,10 @@ export async function prepareForMigration(filePaths: string[], env: Env) {
     return false
   })
 
+  const schemaObjects = parsedSchemaFiles.flatMap(({ objects }) =>
+    sift(objects),
+  )
+
   for (const { file, stmts, objects } of parsedSchemaFiles) {
     const outFile = path.join(
       env.schemaDir,
@@ -118,6 +121,7 @@ export async function prepareForMigration(filePaths: string[], env: Env) {
           const referencedTable = schemaObjects.find(
             obj => obj.type === 'table' && obj.id.compare(referencedId),
           )
+
           if (
             referencedTable &&
             !stubbedTables.has(referencedTable) &&
@@ -136,10 +140,14 @@ export async function prepareForMigration(filePaths: string[], env: Env) {
       // diff them manually.
       else if (object.type === 'type' && !stmt.match(/\bAS\s+ENUM\b/i)) {
         const typeExists = await doesObjectExist(object)
-        if (typeExists && (await hasTypeChanged(client, object, stmt))) {
-        } else {
+        if (!typeExists) {
           await client.query(sql.unsafe(stmt))
           stmts[i] = ''
+        } else if (await hasTypeChanged(client, object, stmt)) {
+          await client.query(sql`
+            DROP TYPE ${object.id.toSQL()} CASCADE;
+            ${sql.unsafe(stmt)}
+          `)
         }
       }
     }
@@ -147,6 +155,10 @@ export async function prepareForMigration(filePaths: string[], env: Env) {
     tryit(fs.unlinkSync)(outFile)
     fs.writeFileSync(outFile, sift(stmts).join('\n\n'))
   }
+
+  await client.query(sql`
+    DROP SCHEMA IF EXISTS nano CASCADE;
+  `)
 
   const prePlanFile = path.join(env.untrackedDir, 'pre-plan.sql')
   fs.writeFileSync(prePlanFile, prePlanDDL)
@@ -221,70 +233,8 @@ async function hasTypeChanged(client: Client, type: SQLObject, stmt: string) {
     `,
   )
 
-  // Clean up the temporary type.
-  await client.query(sql`DROP TYPE IF EXISTS ${tmpId.toSQL()} CASCADE;`)
-
   return hasChanges
 }
-
-// async function hasFunctionChanged(client: Client, func: SQLFile) {
-//   const funcName = parseIdentifier(func.stmts)
-
-//   const hasChanges = await client.scalar<boolean>(
-//     sql`
-//       WITH function1 AS (
-//         SELECT
-//           p.proname AS function_name,
-//           p.proargtypes::oid[] AS argument_types,
-//           p.prorettype AS return_type,
-//           p.prosrc AS function_body,
-//           p.probin AS internal_body,
-//           p.provariadic AS variadic_type,
-//           p.proisagg AS is_aggregate,
-//           p.prokind AS function_kind
-//         FROM
-//           pg_proc p
-//         JOIN
-//           pg_namespace n ON p.pronamespace = n.oid
-//         WHERE
-//           p.proname = ${sql.val(typeName.identifier)}
-//           AND n.nspname = ${sql.val(typeName.namespace ?? 'public')}
-//       ),
-//       function2 AS (
-//         SELECT
-//           p.proname AS function_name,
-//           p.proargtypes::oid[] AS argument_types,
-//           p.prorettype AS return_type,
-//           p.prosrc AS function_body,
-//           p.probin AS internal_body,
-//           p.provariadic AS variadic_type,
-//           p.proisagg AS is_aggregate,
-//           p.prokind AS function_kind
-//         FROM
-//           pg_proc p
-//         JOIN
-//           pg_namespace n ON p.pronamespace = n.oid
-//         WHERE
-//           p.proname = 'my_function'
-//           AND n.nspname = 'schema2'
-//       )
-//       SELECT
-//         f1.function_name = f2.function_name AND
-//         f1.argument_types = f2.argument_types AND
-//         f1.return_type = f2.return_type AND
-//         COALESCE(f1.function_body, '') = COALESCE(f2.function_body, '') AND
-//         COALESCE(f1.internal_body, '') = COALESCE(f2.internal_body, '') AND
-//         f1.variadic_type = f2.variadic_type AND
-//         f1.is_aggregate = f2.is_aggregate AND
-//         f1.function_kind = f2.function_kind AS functions_are_equal
-//       FROM
-//         function1 f1,
-//         function2 f2;
-//     `,
-//   )
-
-//   return hasChanges
-// }
 
 /**
  * Split a string of SQL statements into individual statements. This assumes

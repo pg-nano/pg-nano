@@ -15,6 +15,10 @@ async function main() {
         process.cwd(),
         mri(argv, {
           string: ['dsn'],
+          boolean: ['verbose'],
+          alias: {
+            v: 'verbose',
+          },
         }),
       )
       break

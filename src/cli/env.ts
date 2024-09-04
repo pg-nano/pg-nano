@@ -1,13 +1,14 @@
 import type { UserConfig } from '@pg-nano/config'
 import { bundleRequire } from 'bundle-require'
 import path from 'node:path'
-import { Client } from 'pg-nano'
+import { Client, sql } from 'pg-nano'
 import { allMigrationHazardTypes } from '../config/hazards'
 import { findConfigFile } from './findConfigFile'
 import { log } from './log'
 
 export type EnvOptions = {
   dsn?: string
+  verbose?: boolean
   /** Skip cache and reload environment */
   forceReload?: boolean
 }
@@ -49,6 +50,7 @@ async function loadEnv(cwd: string, options: EnvOptions) {
 
   const config = {
     ...userConfig,
+    verbose: options.verbose,
     dev: {
       ...userConfig?.dev,
       connectionString:
@@ -90,7 +92,7 @@ async function loadEnv(cwd: string, options: EnvOptions) {
         log('Connecting to database', fuzzPassword(config.dev.connectionString))
         const client = new Client()
         await client.connect(config.dev.connectionString)
-        // await client.query(sql.unsafe('SET client_min_messages TO WARNING;'))
+        await client.query(sql.unsafe('SET client_min_messages TO WARNING;'))
         return client
       })())
     },
