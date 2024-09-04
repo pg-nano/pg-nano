@@ -12,8 +12,8 @@ export const typeConversion: Record<number, string> = {
   21: 'number', // int2
   23: 'number', // int4
   26: 'number', // oid
-  114: 'unknown', // json
-  199: 'unknown[]', // json[]
+  114: 'JSON', // json
+  199: 'JSON[]', // json[]
   600: 'Point', // point
   651: 'string[]', // cidr[]
   700: 'number', // float4/real
@@ -46,8 +46,8 @@ export const typeConversion: Record<number, string> = {
   1231: 'string[]', // numeric[]
   1270: 'string[]', // timetz[]
   2951: 'string[]', // uuid[]
-  3802: 'unknown', // jsonb
-  3807: 'unknown[]', // jsonb[]
+  3802: 'JSON', // jsonb
+  3807: 'JSON[]', // jsonb[]
   3904: 'Range<number>', // int4range
   3906: 'Range<number>', // numrange
   3907: 'string[]', // numrange[]

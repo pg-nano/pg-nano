@@ -1,4 +1,4 @@
-import { declareRoutine, declareScalarRoutine, type Point, type Range } from 'pg-nano'
+import { declareRoutine, declareScalarRoutine, type JSON, type Point, type Range } from 'pg-nano'
 
 export type StatusType = "pending" | "active" | "inactive" | "archived"
 
@@ -43,7 +43,7 @@ export interface Foo {
   is_active: boolean
   mac_address: string
   matrix: number[]
-  metadata: unknown
+  metadata: JSON
   name: string
   price_range: Range<number>
   priority: number
@@ -66,7 +66,7 @@ export const createAccount = declareScalarRoutine<createAccount.Params, createAc
 
 export declare namespace getFoo {
   export type Params = {id: number}
-  export type Result = {address: AddressType, binary_data: Buffer, coordinates: Point, created_at: Date, description: string, id: number, ip_address: string, is_active: boolean, mac_address: string, matrix: number[], metadata: unknown, name: string, price_range: Range<number>, priority: number, product_attributes: unknown, schedule: Range<Date>, score: string, search_vector: unknown, status: StatusType, tags: string[], updated_at: Date, uuid: string}
+  export type Result = {address: AddressType, binary_data: Buffer, coordinates: Point, created_at: Date, description: string, id: number, ip_address: string, is_active: boolean, mac_address: string, matrix: number[], metadata: JSON, name: string, price_range: Range<number>, priority: number, product_attributes: unknown, schedule: Range<Date>, score: string, search_vector: unknown, status: StatusType, tags: string[], updated_at: Date, uuid: string}
 }
 
 export const getFoo = declareRoutine<getFoo.Params, getFoo.Result>("get_foo", ["id"])

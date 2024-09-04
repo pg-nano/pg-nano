@@ -75,7 +75,7 @@ export async function generate(
     introspectUserTypes(client, signal),
   ])
 
-  const foreignTypeRegex = /\b(Interval|Range|Circle|Point)\b/
+  const foreignTypeRegex = /\b(Interval|Range|Circle|Point|JSON)\b/
   const unknownTypes = new Set<number>()
   const imports = new Set<string>()
 
