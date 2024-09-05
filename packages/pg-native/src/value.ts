@@ -13,77 +13,65 @@ const call = <This, Args extends any[], Return>(
   ...args: Args
 ): Return => fn.call(ctx, ...args)
 
-interface Tokenizer<Token> {
-  val: (value: string) => Token
-  raw: (value: string) => Token
-}
-
-type EscapedType = 'json' | 'range' | 'string'
 type Escape = (value: string, type: EscapedType) => string
+type EscapedType =
+  | 'array'
+  | 'date'
+  | 'interval'
+  | 'hex'
+  | 'json'
+  | 'pattern'
+  | 'range'
+  | 'string'
 
-export function tokenizeValue<Token>(
-  value: unknown,
-  sql: Tokenizer<Token>,
-  escape: Escape = noEscape,
-): Token {
+export function escapeValue(value: unknown, escape: Escape = noEscape): string {
   if (value == null) {
-    return sql.raw('null')
+    return 'null'
   }
   const type = typeof value
   switch (type) {
     case 'string':
-      return sql.val(escape(value.toString(), type))
+      return escape(value.toString(), type)
     case 'number':
     case 'boolean':
     case 'bigint':
-      return sql.raw(value.toString())
-    case 'object':
-      return tokenizeObject(value, sql, escape)
+      return value.toString()
+    case 'object': {
+      let obj = value as object
+      if (isArray(obj)) {
+        return escape(escapeArray(obj), 'array')
+      }
+      switch (obj.constructor) {
+        case Interval:
+          return escape((obj as Interval).toISOString(), 'interval')
+        case Range:
+          return escape(stringifyRange(obj as Range<any>), 'range')
+      }
+      switch (call(objectToString, obj).slice(8, -1)) {
+        case 'Date':
+          return escape((obj as Date).toISOString(), 'date')
+        case 'RegExp':
+          return escape((obj as RegExp).source, 'pattern')
+      }
+      if (isTypedArray(obj)) {
+        obj = Buffer.from(obj)
+      }
+      if (Buffer.isBuffer(obj)) {
+        return escape('\\x' + obj.toString('hex'), 'hex')
+      }
+      return escape(JSON.stringify(obj), 'json')
+    }
   }
   throw new Error(`Unsupported type: ${type}`)
 }
 
-function tokenizeObject<Token>(
-  obj: unknown,
-  sql: Tokenizer<Token>,
-  escape: Escape,
-): Token {
-  if (isArray(obj)) {
-    return sql.val(tokenizeArray(obj))
-  }
-  switch (obj.constructor) {
-    case Interval:
-      return sql.val((obj as Interval).toISOString())
-    case Range:
-      return sql.val(escape(stringifyRange(obj as Range<any>), 'range'))
-  }
-  switch (call(objectToString, obj).slice(8, -1)) {
-    case 'Date':
-      return sql.val((obj as Date).toISOString())
-    case 'RegExp':
-      return sql.val((obj as RegExp).source)
-  }
-  if (isTypedArray(obj)) {
-    obj = Buffer.from(obj)
-  }
-  if (Buffer.isBuffer(obj)) {
-    return sql.val('\\x' + obj.toString('hex'))
-  }
-  return sql.val(escape(JSON.stringify(obj), 'json'))
-}
-
-const elementTokenizer = {
-  const: noEscape<string>,
-  raw: noEscape<string>,
-}
-
-function tokenizeArray(array: any[]) {
+function escapeArray(array: any[]) {
   let sql = '{'
   for (const value of array) {
     if (sql.length > 1) {
       sql += ','
     }
-    sql += tokenizeValue(value, elementTokenizer, escapeArrayElement)
+    sql += escapeValue(value, escapeArrayElement)
   }
   return sql + '}'
 }
@@ -93,11 +81,13 @@ const DOUBLE_QUOTE_RE = /"/g
 const SINGLE_QUOTE_RE = /'/g
 
 function escapeArrayElement(str: string, type: EscapedType) {
-  return type === 'json'
-    ? "'" +
+  return type === 'hex' || type === 'array'
+    ? str
+    : type === 'json'
+      ? "'" +
         str.replace(BACKSLASH_RE, '\\\\').replace(SINGLE_QUOTE_RE, "\\'") +
         "'"
-    : '"' +
+      : '"' +
         str.replace(BACKSLASH_RE, '\\\\').replace(DOUBLE_QUOTE_RE, '\\"') +
         '"'
 }

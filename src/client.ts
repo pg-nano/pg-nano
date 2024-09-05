@@ -3,6 +3,7 @@ import { isPromise } from 'node:util/types'
 import {
   Connection,
   ConnectionStatus,
+  stringifyTemplate,
   type QueryHook,
   type Result,
   type Row,
@@ -345,6 +346,18 @@ export class Client {
       this.backlog = []
     }
     await closing
+  }
+
+  /**
+   * Returns a stringified version of the template. It's async because it uses
+   * libpq's escaping functions.
+   */
+  async stringify(template: SQLTemplate) {
+    // Since we're not sending anything to the server, it's perfectly fine to
+    // use a non-idle connection.
+    const connection = await (this.pool[0] || this.getConnection())
+    // biome-ignore lint/complexity/useLiteralKeys: Protected access
+    return stringifyTemplate(template, connection['pq'])
   }
 
   private setDSN(dsn: string | null) {

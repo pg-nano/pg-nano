@@ -1,75 +1,95 @@
+export type PgTypeMapping = {
+  oid: number
+  name: string
+  jsType: string
+  schema: string
+}
+
+const type = (oid: number, name: string, jsType: string): PgTypeMapping => ({
+  oid,
+  name,
+  jsType,
+  schema: 'pg_catalog',
+})
+
 /**
- * Type conversion from Postgres type OIDs to TypeScript types. This is
- * hard-coded because runtime type parsing is hard-coded.
+ * Type mappings from Postgres type OIDs to TypeScript types. This is intended
+ * to contain every text parser supported by pg-types.
  *
- * Adapted from
- * https://github.com/pg-nano/pg-types/blob/master/lib/textParsers.js#L139
+ * @see https://github.com/pg-nano/pg-types/blob/master/lib/textParsers.js#L139
  */
-export const typeConversion: Record<number, string> = {
-  16: 'boolean', // bool
-  17: 'Buffer', // bytea
-  20: 'string', // int8
-  21: 'number', // int2
-  23: 'number', // int4
-  26: 'number', // oid
-  114: 'JSON', // json
-  199: 'JSON[]', // json[]
-  600: 'Point', // point
-  651: 'string[]', // cidr[]
-  700: 'number', // float4/real
-  701: 'number', // float8/double
-  718: 'Circle', // circle
-  791: 'string[]', // money[]
-  1000: 'boolean[]',
-  1001: 'Buffer[]', // bytea[]
-  1005: 'number[]', // int2[]
-  1007: 'number[]', // int4[]
-  1008: 'string[]', // regproc[]
-  1009: 'string[]', // text[]
-  1014: 'string[]', // char[]
-  1015: 'string[]', // varchar[]
-  1016: 'number[]', // int8[]
-  1017: 'Point[]', // point[]
-  1021: 'number[]', // float4[]
-  1022: 'number[]', // float8[]
-  1028: 'number[]', // oid[]
-  1040: 'string[]', // macaddr[]
-  1041: 'string[]', // inet[]
-  1114: 'Date', // timestamp without time zone
-  1115: 'Date[]', // timestamp without time zone[]
-  1182: 'string[]', // date[]
-  1183: 'string[]', // time[]
-  1184: 'Date', // timestamp with time zone
-  1185: 'Date[]', // timestamp with time zone[]
-  1186: 'Interval', // interval
-  1187: 'Interval[]', // interval[]
-  1231: 'string[]', // numeric[]
-  1270: 'string[]', // timetz[]
-  2951: 'string[]', // uuid[]
-  3802: 'JSON', // jsonb
-  3807: 'JSON[]', // jsonb[]
-  3904: 'Range<number>', // int4range
-  3906: 'Range<number>', // numrange
-  3907: 'string[]', // numrange[]
-  3908: 'Range<Date>', // tsrange
-  3910: 'Range<Date>', // tstzrange
-  3912: 'Range<string>', // daterange
-  3926: 'Range<string>', // int8range
+export const typeMappings: PgTypeMapping[] = [
+  type(16, 'bool', 'boolean'),
+  type(17, 'bytea', 'Buffer'),
+  type(20, 'int8', 'string'),
+  type(21, 'int2', 'number'),
+  type(23, 'int4', 'number'),
+  type(26, 'oid', 'number'),
+  type(114, 'json', 'JSON'),
+  type(199, 'json[]', 'JSON[]'),
+  type(600, 'point', 'Point'),
+  type(651, 'cidr[]', 'string[]'),
+  type(700, 'float4', 'number'),
+  type(701, 'float8', 'number'),
+  type(718, 'circle', 'Circle'),
+  type(791, 'money[]', 'string[]'),
+  type(1000, 'bool[]', 'boolean[]'),
+  type(1001, 'bytea[]', 'Buffer[]'),
+  type(1005, 'int2[]', 'number[]'),
+  type(1007, 'int4[]', 'number[]'),
+  type(1008, 'regproc[]', 'string[]'),
+  type(1009, 'text[]', 'string[]'),
+  type(1014, 'char[]', 'string[]'),
+  type(1015, 'varchar[]', 'string[]'),
+  type(1016, 'int8[]', 'number[]'),
+  type(1017, 'point[]', 'Point[]'),
+  type(1021, 'float4[]', 'number[]'),
+  type(1022, 'float8[]', 'number[]'),
+  type(1028, 'oid[]', 'number[]'),
+  type(1040, 'macaddr[]', 'string[]'),
+  type(1041, 'inet[]', 'string[]'),
+  type(1114, 'timestamp', 'Date'),
+  type(1115, 'timestamp[]', 'Date[]'),
+  type(1182, 'date[]', 'string[]'),
+  type(1183, 'time[]', 'string[]'),
+  type(1184, 'timestamptz', 'Date'),
+  type(1185, 'timestamptz[]', 'Date[]'),
+  type(1186, 'interval', 'Interval'),
+  type(1187, 'interval[]', 'Interval[]'),
+  type(1231, 'numeric[]', 'string[]'),
+  type(1270, 'timetz[]', 'string[]'),
+  type(2951, 'uuid[]', 'string[]'),
+  type(3802, 'jsonb', 'JSON'),
+  type(3807, 'jsonb[]', 'JSON[]'),
+  type(3904, 'int4range', 'Range<number>'),
+  type(3906, 'numrange', 'Range<number>'),
+  type(3907, 'numrange[]', 'string[]'),
+  type(3908, 'tsrange', 'Range<Date>'),
+  type(3910, 'tstzrange', 'Range<Date>'),
+  type(3912, 'daterange', 'Range<string>'),
+  type(3926, 'int8range', 'Range<string>'),
 
   /* String types (not parsed by pg-types) */
-  18: 'string', // char
-  19: 'string', // name
-  24: 'string', // regproc
-  25: 'string', // text
-  650: 'string', // cidr
-  790: 'string', // money
-  829: 'string', // macaddr
-  869: 'string', // inet
-  1042: 'string', // bpchar
-  1043: 'string', // varchar
-  1082: 'string', // date
-  1083: 'string', // time
-  1266: 'string', // timetz
-  1700: 'string', // numeric
-  2950: 'string', // uuid
-}
+  type(18, 'char', 'string'),
+  type(19, 'name', 'string'),
+  type(24, 'regproc', 'string'),
+  type(25, 'text', 'string'),
+  type(650, 'cidr', 'string'),
+  type(790, 'money', 'string'),
+  type(829, 'macaddr', 'string'),
+  type(869, 'inet', 'string'),
+  type(1042, 'bpchar', 'string'),
+  type(1043, 'varchar', 'string'),
+  type(1082, 'date', 'string'),
+  type(1083, 'time', 'string'),
+  type(1266, 'timetz', 'string'),
+  type(1700, 'numeric', 'string'),
+  type(2950, 'uuid', 'string'),
+]
+
+/**
+ * Quick lookup for JS types by Postgres type OID.
+ */
+export const typeConversion: Record<number, string> = Object.fromEntries(
+  typeMappings.map(t => [t.oid, t.jsType]),
+)

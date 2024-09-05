@@ -57,6 +57,13 @@ export interface Foo {
   uuid: string
 }
 
+export interface CourseEnrollment {
+  student_id: number
+  course_id: number
+  enrollment_date: string
+  grade: string
+}
+
 export declare namespace createAccount {
   export type Params = {username: string, email: string, password: string, salt: string, firstName?: string, lastName?: string, dateOfBirth?: string}
   export type Result = number

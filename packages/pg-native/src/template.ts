@@ -1,25 +1,31 @@
-import { tokenizeValue } from './value'
+export const sql = /* @__PURE__ */ (() => {
+  function sql(strings: TemplateStringsArray, ...values: SQLTemplateValue[]) {
+    return new SQLTemplate(strings, values)
+  }
 
-export function sql(
-  strings: TemplateStringsArray,
-  ...values: SQLTemplateValue[]
-) {
-  return new SQLTemplate(strings, values)
-}
+  /** A database identifier, escaped with double quotes. */
+  sql.id = (...ids: string[]): SQLToken =>
+    ids.length === 1
+      ? { type: 'id', id: ids[0] }
+      : sql.join(
+          '.',
+          ids.map(id => ({ type: 'id', id })),
+        )
 
-/** A database identifier, escaped with double quotes. */
-sql.id = (str: string) => new SQLToken('id', str)
+  /** A literal value, escaped with single quotes. */
+  sql.val = (value: unknown): SQLToken => ({ type: 'val', value })
 
-/** A literal value, escaped with single quotes. */
-sql.val = (value: unknown) => tokenizeValue<SQLToken>(value, tokenizer)
+  /** Joins an array of SQLTemplateValues with a separator. */
+  sql.join = (
+    separator: SQLTokenJoinSeparator | SQLTemplateValue,
+    list: SQLTemplateValue[],
+  ): SQLToken => ({ type: 'join', list, separator })
 
-/** Raw SQL syntax, dynamically inserted into the template. */
-sql.unsafe = (str: string) => new SQLTemplate([str], [])
+  /** Raw SQL syntax, dynamically inserted into the template. */
+  sql.unsafe = (str: string) => new SQLTemplate([str], [])
 
-const tokenizer = {
-  val: (str: string) => new SQLToken('val', str),
-  raw: (str: string) => new SQLToken('raw', str),
-}
+  return sql
+})()
 
 export type SQLTemplateValue =
   | SQLTemplate
@@ -34,9 +40,23 @@ export class SQLTemplate {
   ) {}
 }
 
-export class SQLToken {
-  constructor(
-    readonly type: 'id' | 'val' | 'raw',
-    readonly value: string,
-  ) {}
+type SQLTokenType = 'id' | 'val' | 'join'
+type SQLTokenJoinSeparator = ';' | ',' | '.' | ' '
+type SQLTokenValue = {
+  id: {
+    id: string
+  }
+  val: {
+    value: unknown
+  }
+  join: {
+    list: SQLTemplateValue[]
+    separator: SQLTokenJoinSeparator | SQLTemplateValue
+  }
 }
+
+export type SQLToken = SQLTokenType extends infer Type
+  ? Type extends SQLTokenType
+    ? { type: Type } & SQLTokenValue[Type]
+    : never
+  : never

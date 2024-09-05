@@ -38,8 +38,8 @@ export async function prepareForMigration(filePaths: string[], env: Env) {
       '\n\n'
   }
 
-  const parsedSchemaFiles = schemaFiles.map(file => {
-    const stmts = splitStatements(fs.readFileSync(file, 'utf8'))
+  const parseSchemaFile = (content: string, filename: string) => {
+    const stmts = splitStatements(content)
     const objects = stmts.map((stmt, stmtIndex) => {
       const match = stmt.match(
         /(?:^|\n)CREATE\s+(?:OR\s+REPLACE\s+)?(?:TEMP|TEMPORARY\s+)?(?:RECURSIVE\s+)?(\w+)\s+(?:IF\s+NOT\s+EXISTS\s+)?(.+?)(?:\s+\w+|\s*[;(])/i,
@@ -56,7 +56,11 @@ export async function prepareForMigration(filePaths: string[], env: Env) {
       }
       return null
     })
-    return { file, stmts, objects }
+    return { file: filename, stmts, objects }
+  }
+
+  const parsedSchemaFiles = schemaFiles.map(file => {
+    return parseSchemaFile(fs.readFileSync(file, 'utf8'), file)
   })
 
   const doesObjectExist = memo(async (object: SQLObject) => {

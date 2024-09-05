@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
-import { sql } from 'pg-nano'
+import { Client, sql } from 'pg-nano'
 import { camel, pascal } from 'radashi'
 import type { Env } from './env'
 import {
@@ -14,7 +14,11 @@ import {
 import { log } from './log'
 import { parseMigrationPlan } from './parseMigrationPlan'
 import { prepareForMigration } from './prepare'
-import { typeConversion } from './typeConversion'
+import {
+  type PgTypeMapping,
+  typeConversion,
+  typeMappings,
+} from './typeConversion'
 import { dedent } from './util/dedent'
 import { unquote } from './util/unquote'
 
@@ -30,30 +34,61 @@ export async function generate(
   log('Migrating database...')
   await migrate(env)
 
+  if (await generatePluginQueries(env)) {
+    return
+  }
+
   log('Generating type definitions...')
 
   // 1. Collect type information from the database.
   const namespaces = await introspectNamespaces(client, signal)
 
+  const extendedTypeMappings = [...typeMappings]
   const extendedTypeConversion = { ...typeConversion }
   const oidToEnumType = new Map<number, PgEnumType>()
   const oidToCompositeType = new Map<number, PgCompositeType>()
 
   // 2. Add types to the type conversion map.
   for (const nsp of Object.values(namespaces)) {
+    const addExtendedType = (type: PgTypeMapping) => {
+      extendedTypeConversion[type.oid] = type.name
+      extendedTypeMappings.push(type)
+    }
+
     for (const type of nsp.enumTypes) {
       oidToEnumType.set(type.oid, type)
-      extendedTypeConversion[type.oid] = type.typname
+      addExtendedType({
+        oid: type.oid,
+        name: type.typname,
+        jsType: pascal(type.typname),
+        schema: nsp.name,
+      })
 
       oidToEnumType.set(type.typarray, type)
-      extendedTypeConversion[type.typarray] = type.typname + '[]'
+      addExtendedType({
+        oid: type.typarray,
+        name: type.typname + '[]',
+        jsType: pascal(type.typname) + '[]',
+        schema: nsp.name,
+      })
     }
+
     for (const type of nsp.compositeTypes) {
       oidToCompositeType.set(type.oid, type)
-      extendedTypeConversion[type.oid] = type.typname
+      addExtendedType({
+        oid: type.oid,
+        name: type.typname,
+        jsType: pascal(type.typname),
+        schema: nsp.name,
+      })
 
       oidToCompositeType.set(type.typarray, type)
-      extendedTypeConversion[type.typarray] = type.typname + '[]'
+      addExtendedType({
+        oid: type.typarray,
+        name: type.typname + '[]',
+        jsType: pascal(type.typname) + '[]',
+        schema: nsp.name,
+      })
     }
   }
 
@@ -345,4 +380,95 @@ function diffSchemas(env: Env, command: 'apply' | 'plan') {
 
 function indent(text: string, count = 2) {
   return text.replace(/^/gm, ' '.repeat(count))
+}
+
+async function generatePluginQueries(env: Env) {
+  if (!env.config.plugins.some(p => p.queries)) {
+    return false
+  }
+
+  log('Running plugins...')
+
+  const pluginDsn = new URL(env.config.dev.connectionString)
+  pluginDsn.username = 'nano_plugin'
+  pluginDsn.password = ''
+
+  const client = await env.client
+  await client.query(sql`
+    DO $$ 
+    BEGIN
+      IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'nano_plugin') THEN
+        CREATE ROLE nano_plugin NOINHERIT;
+
+        -- Grant connect permission to the new role
+        GRANT CONNECT ON DATABASE ${sql.id(pluginDsn.pathname.slice(1))} TO nano_plugin;
+
+        -- Grant usage on schema public to the new role
+        GRANT USAGE ON SCHEMA public TO nano_plugin;
+
+        -- Grant select permission on all tables in public schema to the new role
+        GRANT SELECT ON ALL TABLES IN SCHEMA public TO nano_plugin;
+
+        -- Alter default privileges to grant select on future tables to the new role
+        ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO nano_plugin;
+      END IF;
+    END
+    $$;
+  `)
+
+  const pluginClient = new Client()
+  await pluginClient.connect(pluginDsn.toString())
+
+  const pluginSqlFiles: { file: string; content: string }[] = []
+
+  for (const plugin of env.config.plugins) {
+    if (plugin.queries) {
+      const template = await plugin.queries({
+        client: pluginClient,
+        sql,
+      })
+      if (template) {
+        const outFile = path.join(
+          env.config.typescript.pluginSqlDir,
+          plugin.name.replace(/\//g, '__') + '.sql',
+        )
+
+        let oldContent = ''
+        try {
+          oldContent = fs.readFileSync(outFile, 'utf8')
+        } catch (error: any) {
+          if (error.code !== 'ENOENT') {
+            throw error
+          }
+        }
+
+        const content = await pluginClient.stringify(template)
+        if (content !== oldContent) {
+          pluginSqlFiles.push({
+            file: outFile,
+            content,
+          })
+        }
+      }
+    }
+  }
+
+  const count = pluginSqlFiles.length
+  if (count > 0) {
+    log(`Writing ${count} plugin SQL file${count === 1 ? '' : 's'}`)
+
+    for (const { file, content } of pluginSqlFiles) {
+      fs.writeFileSync(file, content)
+    }
+  } else {
+    log.success('Plugin-generated SQL is up to date')
+  }
+
+  return count > 0
+}
+
+function reverseLookup<K extends string, V extends string>(
+  lookup: Record<K, V>,
+) {
+  return new Map(Object.entries(lookup).map(([key, value]) => [value, key]))
 }

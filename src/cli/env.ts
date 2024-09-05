@@ -1,3 +1,4 @@
+/// <reference types="@pg-nano/plugin" />
 import type { UserConfig } from '@pg-nano/config'
 import { bundleRequire } from 'bundle-require'
 import path from 'node:path'
@@ -51,6 +52,7 @@ async function loadEnv(cwd: string, options: EnvOptions) {
   const config = {
     ...userConfig,
     verbose: options.verbose,
+    plugins: userConfig?.plugins ?? [],
     dev: {
       ...userConfig?.dev,
       connectionString:
@@ -72,6 +74,10 @@ async function loadEnv(cwd: string, options: EnvOptions) {
       outFile: path.resolve(
         root,
         userConfig?.typescript?.outFile ?? 'sql/api.ts',
+      ),
+      pluginSqlDir: path.resolve(
+        root,
+        userConfig?.typescript?.pluginSqlDir ?? 'sql/nano_plugins',
       ),
     },
   }

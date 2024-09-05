@@ -1,8 +1,9 @@
 import type Libpq from '@pg-nano/libpq'
-import { isArray } from 'radashi'
+import { isArray, isString } from 'radashi'
 import { dedent } from '../../../src/cli/util/dedent.js'
 import { debug } from './debug'
 import type { SQLTemplate, SQLTemplateValue } from './template'
+import { escapeValue } from './value.js'
 
 export function stringifyTemplate(
   template: SQLTemplate,
@@ -50,8 +51,25 @@ export function stringifyTemplateValue(
     case 'id':
       return pq.escapeIdentifier(arg.value)
     case 'val':
-      return pq.escapeLiteral(arg.value)
-    case 'raw':
-      return arg.value
+      return escapeValue(arg.value, str => pq.escapeLiteral(str))
+    case 'join': {
+      const list: string[] = []
+
+      for (const value of arg.list) {
+        const sql = stringifyTemplateValue(value, pq)
+        if (sql) {
+          list.push(sql)
+        }
+      }
+
+      if (list.length > 1) {
+        const separator = isString(arg.separator)
+          ? arg.separator
+          : stringifyTemplateValue(arg.separator, pq)
+
+        return list.join(separator)
+      }
+      return list[0] ?? ''
+    }
   }
 }
