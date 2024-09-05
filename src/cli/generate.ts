@@ -40,55 +40,57 @@ export async function generate(
 
   log('Generating type definitions...')
 
-  // 1. Collect type information from the database.
+  // Step 1: Collect type information from the database.
   const namespaces = await introspectNamespaces(client, signal)
+
+  type PgUserType = {
+    kind: 'enum' | 'composite'
+    arity: 'scalar' | 'array'
+    meta: PgEnumType | PgCompositeType
+    mapping: PgTypeMapping
+  }
+
+  const userTypes = new Map<number, PgUserType>()
 
   const extendedTypeMappings = [...typeMappings]
   const extendedTypeConversion = { ...typeConversion }
-  const oidToEnumType = new Map<number, PgEnumType>()
-  const oidToCompositeType = new Map<number, PgCompositeType>()
 
-  // 2. Add types to the type conversion map.
+  // Step 2: Add types to the type conversion map.
   for (const nsp of Object.values(namespaces)) {
-    const addExtendedType = (type: PgTypeMapping) => {
-      extendedTypeConversion[type.oid] = type.name
-      extendedTypeMappings.push(type)
+    const registerTypeMapping = (
+      typeOid: number,
+      typeName: string,
+      typeSuffix = '',
+    ) => {
+      const mapping: PgTypeMapping = {
+        oid: typeOid,
+        name: typeName + typeSuffix,
+        jsType: pascal(typeName) + typeSuffix,
+        schema: nsp.name,
+      }
+      extendedTypeConversion[typeOid] = typeName + typeSuffix
+      extendedTypeMappings.push(mapping)
+      return mapping
     }
 
-    for (const type of nsp.enumTypes) {
-      oidToEnumType.set(type.oid, type)
-      addExtendedType({
-        oid: type.oid,
-        name: type.typname,
-        jsType: pascal(type.typname),
-        schema: nsp.name,
-      })
-
-      oidToEnumType.set(type.typarray, type)
-      addExtendedType({
-        oid: type.typarray,
-        name: type.typname + '[]',
-        jsType: pascal(type.typname) + '[]',
-        schema: nsp.name,
-      })
-    }
-
-    for (const type of nsp.compositeTypes) {
-      oidToCompositeType.set(type.oid, type)
-      addExtendedType({
-        oid: type.oid,
-        name: type.typname,
-        jsType: pascal(type.typname),
-        schema: nsp.name,
-      })
-
-      oidToCompositeType.set(type.typarray, type)
-      addExtendedType({
-        oid: type.typarray,
-        name: type.typname + '[]',
-        jsType: pascal(type.typname) + '[]',
-        schema: nsp.name,
-      })
+    for (const [kind, types] of [
+      ['enum', nsp.enumTypes],
+      ['composite', nsp.compositeTypes],
+    ] as const) {
+      for (const type of types) {
+        userTypes.set(type.oid, {
+          kind,
+          arity: 'scalar',
+          meta: type,
+          mapping: registerTypeMapping(type.oid, type.typname),
+        })
+        userTypes.set(type.typarray, {
+          kind,
+          arity: 'array',
+          meta: type,
+          mapping: registerTypeMapping(type.typarray, type.typname, '[]'),
+        })
+      }
     }
   }
 
@@ -126,34 +128,29 @@ export async function generate(
   const renderTypeReference = (typeOid: number, context: string) => {
     let type = extendedTypeConversion[typeOid]
     if (type) {
-      const enumType = oidToEnumType.get(typeOid)
-      const compositeType = oidToCompositeType.get(typeOid)
-      const introspectedType = enumType || compositeType
-
-      if (introspectedType) {
-        if (enumType) {
-          if (!renderedObjects.has(enumType)) {
-            renderedObjects.set(enumType, renderEnumType(enumType))
-          }
-        } else if (compositeType) {
-          if (!renderedObjects.has(compositeType)) {
+      const userType = userTypes.get(typeOid)
+      if (userType) {
+        const object = userType.meta
+        if (!renderedObjects.has(object)) {
+          if (userType.kind === 'enum') {
+            renderedObjects.set(object, renderEnumType(object as PgEnumType))
+          } else if (userType.kind === 'composite') {
             // First set an empty string to avoid infinite recursion if there
             // happens to be a circular reference.
-            renderedObjects.set(compositeType, '')
+            renderedObjects.set(object, '')
             renderedObjects.set(
-              compositeType,
-              renderCompositeType(compositeType),
+              object,
+              renderCompositeType(object as PgCompositeType),
             )
           }
         }
-        if (introspectedType.nspname !== context) {
-          type = addNamespacePrefix(
-            introspectedType.typname,
-            introspectedType.nspname,
-            context,
-          )
+        if (object.nspname !== context) {
+          type = addNamespacePrefix(object.typname, object.nspname, context)
+          if (userType.arity === 'array') {
+            type += '[]'
+          }
         } else {
-          type = pascal(introspectedType.typname)
+          type = userType.mapping.jsType
         }
       } else {
         const match = type.match(builtinTypeRegex)
@@ -168,8 +165,18 @@ export async function generate(
     return type
   }
 
-  // 3. Render type definitions for each function. This also builds up a list of
-  // dependencies (e.g. imports and type definitions).
+  // Step 3: Run the `generate` hook for each plugin.
+  for (const plugin of env.config.plugins) {
+    if (plugin.generate) {
+      await plugin.generate({
+        types: extendedTypeMappings,
+        namespaces,
+      })
+    }
+  }
+
+  // Step 4: Render type definitions for each function. This also builds up a
+  // list of dependencies (e.g. imports and type definitions).
   for (const nsp of Object.values(namespaces)) {
     for (const fn of nsp.functions) {
       const jsName = camel(fn.proname)
@@ -263,7 +270,7 @@ export async function generate(
     import { ${[...imports].sort().join(', ')} } from 'pg-nano'
   `
 
-  // 4. Render type definitions for each namespace.
+  // Step 5: Concatenate type definitions for each namespace.
   for (const nsp of Object.values(namespaces)) {
     let nspCode = ''
 
@@ -291,10 +298,10 @@ export async function generate(
         : `export namespace ${pascal(nsp.name)} {\n${indent(nspCode)}\n}`
   }
 
-  // 5. Write the generated type definitions to a file.
+  // Step 6: Write the generated type definitions to a file.
   fs.writeFileSync(env.config.typescript.outFile, code.replace(/\s+$/, '\n'))
 
-  // 6. Warn about any unsupported types.
+  // Step 7: Warn about any unsupported types.
   for (const typeOid of unsupportedTypes) {
     const typeName = await client.scalar<string>(sql`
       SELECT typname FROM pg_type WHERE oid = ${sql.val(typeOid)}
@@ -465,10 +472,4 @@ async function generatePluginQueries(env: Env) {
   }
 
   return count > 0
-}
-
-function reverseLookup<K extends string, V extends string>(
-  lookup: Record<K, V>,
-) {
-  return new Map(Object.entries(lookup).map(([key, value]) => [value, key]))
 }
