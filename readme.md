@@ -87,12 +87,12 @@ await client.connect('postgres://user:password@localhost:5432/database')
 
 Upon running `pg-nano dev`, type definitions are generated and saved to your SQL folder as `api.ts`. You may choose to commit this file to your repository.
 
-To call your Postgres functions from TypeScript, use the `client.proxy` method. Put the following code in the same module where you created the `Client` instance.
+To call your Postgres functions from TypeScript, use the `client.withQueries` method. Put the following code in the same module where you created the `Client` instance.
 
 ```ts
 import * as API from './sql/api'
 
-export default client.proxy(API)
+export default client.withQueries(API)
 ```
 
 Let's say you have a Postgres function like this:
@@ -230,6 +230,10 @@ The `Client` instance automatically manages its own connections. When you're fin
 ```ts
 await client.close()
 ```
+
+### Reserved namespace
+
+The `nano` schema is reserved for use by pg-nano. It is used to store temporary objects during diffing. You should not use the `nano` schema in your own project, since it will be dropped by `pg-nano` during development.
 
 ## Development
 

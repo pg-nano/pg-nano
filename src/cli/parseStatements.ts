@@ -5,6 +5,7 @@ import {
   splitWithScannerSync,
 } from '@pg-nano/pg-parser'
 import util from 'node:util'
+import { log } from './log'
 import { SQLIdentifier } from './parseIdentifier'
 
 const inspect = (value: any) =>
@@ -85,6 +86,17 @@ export async function parseStatements(sql: string) {
         columns,
       })
     } else {
+      const cleanedStmt = stmt
+        .replace(/(^|\n) *--[^\n]+/g, '')
+        .replace(/\s+/g, ' ')
+
+      log.warn('Unhandled statement:')
+      log.warn(
+        '  ' +
+          (cleanedStmt.length > 50
+            ? cleanedStmt.slice(0, 50) + '…'
+            : cleanedStmt),
+      )
     }
   }
 

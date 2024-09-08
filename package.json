@@ -41,6 +41,7 @@
     "vitest": "^2.0.5"
   },
   "scripts": {
+    "prepare": "pnpm -s build",
     "build": "rimraf dist && tsup --dts",
     "dev": "rimraf dist && DEV=1 tsup --watch --sourcemap",
     "format": "biome check --fix --unsafe src generators package.json",
@@ -56,15 +57,11 @@
     "bundle-require": "^5.0.0",
     "chokidar": "^3.6.0",
     "esbuild": "^0.23.1",
-    "pg-query-native": "^1.3.1",
     "tinyspawn": "^1.3.2"
   },
   "pnpm": {
     "overrides": {
       "debug": "^4.3.6"
-    },
-    "patchedDependencies": {
-      "grab-github-release": "patches/grab-github-release.patch"
     }
   }
 }

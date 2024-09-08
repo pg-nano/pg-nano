@@ -1,20 +1,12 @@
-import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
-import { type Client, sql } from 'pg-nano'
-import { group, map, memo, sift } from 'radashi'
+import { sql } from 'pg-nano'
+import { group, map, memo } from 'radashi'
 import type { Env } from './env'
-import { log } from './log'
 import type { SQLIdentifier } from './parseIdentifier'
 import { parseStatements } from './parseStatements'
 import { type SortedStatement, sortStatements } from './sortStatements'
 import { dedent } from './util/dedent'
-
-type SQLObject = {
-  id: SQLIdentifier
-  type: string
-  stmtIndex: number
-}
 
 export async function prepareForMigration(filePaths: string[], env: Env) {
   const client = await env.client
@@ -46,29 +38,52 @@ export async function prepareForMigration(filePaths: string[], env: Env) {
     return { file, statements }
   })
 
-  const doesObjectExist = memo(async (object: SQLObject) => {
-    if (object.type === 'table') {
-      return await client.queryOneColumn<boolean>(sql`
+  const objectExistence = {
+    table: {
+      from: 'pg_tables',
+      schemaKey: 'schemaname',
+      nameKey: 'tablename',
+    },
+    type: {
+      from: 'pg_type',
+      schemaKey: 'typnamespace',
+      nameKey: 'typname',
+    },
+    function: {
+      from: 'pg_proc',
+      schemaKey: 'pronamespace',
+      nameKey: 'proname',
+    },
+    view: {
+      from: 'pg_views',
+      schemaKey: 'schemaname',
+      nameKey: 'viewname',
+    },
+    sequence: {
+      from: 'pg_sequences',
+      schemaKey: 'schemaname',
+      nameKey: 'sequencename',
+    },
+    extension: {
+      from: 'pg_extension',
+      schemaKey: 'extnamespace',
+      nameKey: 'extname',
+    },
+  }
+
+  const doesObjectExist = memo(
+    (type: keyof typeof objectExistence, id: SQLIdentifier) => {
+      const { from, schemaKey, nameKey } = objectExistence[type]
+      return client.queryOneColumn<boolean>(sql`
         SELECT EXISTS (
           SELECT 1
-          FROM pg_tables
-          WHERE schemaname = ${object.id.schemaVal}
-            AND tablename = ${object.id.nameVal}
+          FROM ${sql.id(from)}
+          WHERE ${sql.id(schemaKey)} = ${id.schemaVal}
+            AND ${sql.id(nameKey)} = ${id.nameVal}
         );
       `)
-    }
-    if (object.type === 'type') {
-      return await client.queryOneColumn<boolean>(sql`
-        SELECT EXISTS (
-          SELECT 1
-          FROM pg_type
-          WHERE typname = ${object.id.nameVal}
-            AND typnamespace = ${object.id.schemaVal}::regnamespace
-        );
-      `)
-    }
-    return false
-  })
+    },
+  )
 
   const allStatements = sortStatements(
     parsedSchemaFiles.flatMap(f => f.statements),
@@ -77,14 +92,34 @@ export async function prepareForMigration(filePaths: string[], env: Env) {
   const allTables = allStatements.filter(stmt => stmt.type === 'table')
 
   /** These statements must be executed before planning a migration. */
-  const executedStmts = new Set<SortedStatement>()
+  const executionQueue = new Set<SortedStatement>()
 
   /** These statements won't be executed. */
   const unusedStmts: SortedStatement[] = []
 
   for (const stmt of allStatements) {
-    // Non-enum types are not supported by pg-schema-diff, so we need to
-    // diff them manually.
+    for (const dep of stmt.dependencies) {
+      if (dep.type in objectExistence) {
+        executionQueue.add(dep)
+      } else {
+        console.warn('Missing dependency: %s (%s)', dep.id.toString(), dep.type)
+      }
+    }
+  }
+
+  // The "nano" schema is used to store temporary objects during diffing.
+  await client.query(sql`
+    DROP SCHEMA IF EXISTS nano CASCADE;
+    CREATE SCHEMA nano;
+  `)
+
+  const objectDiffing = {
+    type: async (stmt: SortedStatement) => {},
+  }
+
+  for (const stmt of executionQueue) {
+    const objectExists = await doesObjectExist(stmt.type, stmt.id)
+
     if (object.type === 'type' && !stmt.match(/\bAS\s+ENUM\b/i)) {
       const typeExists = await doesObjectExist(object)
       if (!typeExists) {
@@ -99,18 +134,7 @@ export async function prepareForMigration(filePaths: string[], env: Env) {
     }
   }
 
-  if (unusedStmts.length) {
-    log.warn('Unhandled statement:')
-    log.warn(
-      unusedStmts
-        .map(({ stmt }) => {
-          stmt = stmt.replace(/(^|\n) *--[^\n]+/g, '').replace(/\s+/g, ' ')
-          return '  ' + (stmt.length > 50 ? stmt.slice(0, 50) + '…' : stmt)
-        })
-        .join('\n\n'),
-    )
-  }
-
+  // Drop the "nano" schema now that diffing is complete.
   await client.query(sql`
     DROP SCHEMA IF EXISTS nano CASCADE;
   `)
@@ -119,99 +143,4 @@ export async function prepareForMigration(filePaths: string[], env: Env) {
   fs.writeFileSync(prePlanFile, prePlanDDL)
 
   return allStatements
-}
-
-function md5Hash(input: string): string {
-  return crypto.createHash('md5').update(input).digest('hex')
-}
-
-/**
- * Compare a type to the existing type in the database.
- *
- * @returns `true` if the type has changed, `false` otherwise.
- */
-async function hasTypeChanged(client: Client, type: SQLObject, stmt: string) {
-  const tmpId = type.id.withSchema('nano')
-  const tmpStmt = stmt.replace(type.id.toString(), tmpId.toString())
-
-  // Add the current type to the database (but under the "nano" schema), so we
-  // can compare it to the existing type.
-  await client.query(sql`
-    CREATE SCHEMA IF NOT EXISTS nano;
-    DROP TYPE IF EXISTS ${tmpId.toSQL()} CASCADE;
-    ${sql.unsafe(tmpStmt)}
-  `)
-
-  const selectTypeById = (id: SQLIdentifier) => sql`
-    SELECT
-      a.attname AS column_name,
-      a.atttypid AS type_id,
-      a.attnum AS column_number
-    FROM
-      pg_attribute a
-    JOIN
-      pg_type t ON t.oid = a.attrelid
-    WHERE
-      t.typname = ${id.nameVal}
-      AND t.typnamespace = ${id.schemaVal}::regnamespace
-    ORDER BY
-      a.attnum
-  `
-
-  const hasChanges = await client.queryOneColumn<boolean>(
-    sql`
-      WITH type1 AS (
-        ${selectTypeById(type.id)}
-      ),
-      type2 AS (
-        ${selectTypeById(tmpId)}
-      )
-      SELECT 
-        EXISTS (
-          SELECT 1
-          FROM (
-            SELECT * FROM type1
-            EXCEPT
-            SELECT * FROM type2
-          ) diff1
-        ) OR
-        EXISTS (
-          SELECT 1
-          FROM (
-            SELECT * FROM type2
-            EXCEPT
-            SELECT * FROM type1
-          ) diff2
-        ) AS has_changes;
-    `,
-  )
-
-  return hasChanges
-}
-
-/**
- * Split a string of SQL statements into individual statements. This assumes
- * your SQL is properly indented.
- */
-function splitStatements(stmts: string): string[] {
-  const regex = /;\s*\n(?=\S)/g
-  const statements = stmts.split(regex)
-  if (statements.length > 1) {
-    const falsePositive = /^(BEGIN|END|\$\$)/i
-    statements.forEach((stmt, i) => {
-      if (falsePositive.test(stmt)) {
-        // Find the previous non-empty statement and merge them.
-        for (let j = i - 1; j >= 0; j--) {
-          if (statements[j] === '') {
-            continue
-          }
-          statements[j] += stmt
-          break
-        }
-        statements[i] = ''
-      }
-    })
-    return sift(statements).map(stmt => stmt.trim() + ';')
-  }
-  return statements
 }
