@@ -7,7 +7,9 @@ import { type EnvOptions, getEnv } from '../env'
 import { generate } from '../generate'
 import { log } from '../log'
 
-type Options = EnvOptions & {}
+type Options = EnvOptions & {
+  refreshPluginRole?: boolean
+}
 
 export default async function dev(cwd: string, options: Options = {}) {
   const env = await getEnv(cwd, options)
@@ -37,7 +39,10 @@ export default async function dev(cwd: string, options: Options = {}) {
         ),
     )
 
-    generate(env, filePaths, controller.signal).catch(error => {
+    generate(env, filePaths, {
+      refreshPluginRole: options.refreshPluginRole && !options.forceReload,
+      signal: controller.signal,
+    }).catch(error => {
       log.error(error.stack)
     })
   })

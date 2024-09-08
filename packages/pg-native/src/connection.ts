@@ -56,13 +56,13 @@ export class Connection extends ConnectionEmitter {
   }
 
   /**
-   * Execute a dynamic query.
+   * Execute a dynamic query which may contain multiple statements.
    */
   query<TResult = Result[]>(
-    sql: SQLTemplate | QueryHook<TResult>,
+    command: SQLTemplate | QueryHook<TResult>,
     singleRowMode?: boolean,
   ): Promise<TResult> {
-    const promise = sendQuery(unprotect(this), sql, singleRowMode)
+    const promise = sendQuery(unprotect(this), command, singleRowMode)
     if (Number.isFinite(this.idleTimeout)) {
       clearTimeout(this.idleTimeoutId)
       promise.finally(() => {
@@ -150,7 +150,7 @@ export type QueryHook<TResult> = (
  */
 async function sendQuery<TResult = Result[]>(
   conn: ConnectionState & ConnectionEmitter,
-  sql: SQLTemplate | QueryHook<TResult>,
+  command: SQLTemplate | QueryHook<TResult>,
   singleRowMode?: boolean,
 ): Promise<TResult> {
   stopReading(conn, ConnectionStatus.QUERY_WRITING)
@@ -181,10 +181,10 @@ async function sendQuery<TResult = Result[]>(
 
   let sent: boolean | (() => Promise<TResult>)
 
-  if (isFunction(sql)) {
-    sent = sql(conn.pq)
+  if (isFunction(command)) {
+    sent = command(conn.pq)
   } else {
-    const query = stringifyTemplate(sql, conn.pq)
+    const query = stringifyTemplate(command, conn.pq)
 
     if (process.env.NODE_ENV !== 'production' && debug.enabled) {
       const indentedQuery = query.replace(/^|\n/g, '$&  ')

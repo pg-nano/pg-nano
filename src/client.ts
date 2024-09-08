@@ -222,10 +222,10 @@ export class Client {
    * Execute one or more commands.
    */
   query<TRow extends Row = Row, TIteratorResult = Result<TRow>>(
-    sql: SQLTemplate,
+    commands: SQLTemplate,
     transform?: (result: Result<TRow>) => TIteratorResult | TIteratorResult[],
   ) {
-    return new Query<Result<TRow>[], TIteratorResult>(this, sql, transform)
+    return new Query<Result<TRow>[], TIteratorResult>(this, commands, transform)
   }
 
   protected async dispatchQuery<
@@ -233,7 +233,7 @@ export class Client {
     TResult = Result<TRow>[],
   >(
     connection: Connection | Promise<Connection>,
-    sql: SQLTemplate | QueryHook<TResult>,
+    commands: SQLTemplate | QueryHook<TResult>,
     signal?: AbortSignal,
     singleRowMode?: boolean,
   ): Promise<TResult> {
@@ -248,7 +248,7 @@ export class Client {
     try {
       signal?.throwIfAborted()
 
-      const queryPromise = connection.query(sql, singleRowMode)
+      const queryPromise = connection.query(commands, singleRowMode)
 
       if (signal) {
         const cancel = () => connection.cancel()
@@ -271,10 +271,10 @@ export class Client {
    * You may define the row type using generics.
    */
   many<TRow extends Row>(
-    sql: SQLTemplate,
+    command: SQLTemplate,
     options?: QueryOptions,
   ): Query<TRow[]> {
-    const query = this.query<TRow, TRow>(sql, result => result.rows)
+    const query = this.query<TRow, TRow>(command, result => result.rows)
     return query.withOptions({
       ...options,
       resolve: ([result]) => result.rows,
@@ -289,10 +289,10 @@ export class Client {
    * You may define the row type using generics.
    */
   async one<TRow extends Row>(
-    sql: SQLTemplate,
+    command: SQLTemplate,
     options?: QueryOptions,
   ): Promise<TRow | undefined> {
-    const [result] = await this.query<TRow>(sql).withOptions(options)
+    const [result] = await this.query<TRow>(command).withOptions(options)
     if (result.rows.length > 1) {
       throw new Error('Expected 1 row, got ' + result.rows.length)
     }
@@ -302,8 +302,8 @@ export class Client {
   /**
    * Execute a single command that returns a single row with a single value.
    */
-  async scalar<T>(sql: SQLTemplate, options?: QueryOptions): Promise<T> {
-    const results = await this.query(sql).withOptions(options)
+  async scalar<T>(command: SQLTemplate, options?: QueryOptions): Promise<T> {
+    const results = await this.query(command).withOptions(options)
     const row = results[0].rows[0]
     for (const key in row) {
       return row[key] as T

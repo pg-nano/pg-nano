@@ -1,3 +1,4 @@
+import type { QualifiedName } from '@pg-nano/pg-parser'
 import { sql } from 'pg-nano'
 import { unquote } from './util/unquote'
 
@@ -47,9 +48,9 @@ export function parseIdentifier(sql: string, startOffset = 0): SQLIdentifier {
 export class SQLIdentifier {
   constructor(
     public name: string,
-    public schema: string | undefined,
-    public start: number,
-    public end: number,
+    public schema: string | undefined = undefined,
+    public start: number | undefined = undefined,
+    public end: number | undefined = undefined,
   ) {}
 
   get nameVal() {
@@ -64,12 +65,31 @@ export class SQLIdentifier {
     return this.schema ? sql.val(unquote(this.schema)) : sql.val('public')
   }
 
+  /**
+   * Returns the identifier as it was written in the source code.
+   */
+  toString() {
+    return this.schema ? `${this.schema}.${this.name}` : this.name
+  }
+
+  /**
+   * Returns a SQL token for the identifier (for use in a `sql` template).
+   */
   toSQL() {
     return sql.unsafe(`${this.schema ? `${this.schema}.` : ''}${this.name}`)
   }
 
+  /**
+   * Return a fully qualified identifier in string form. If no schema was
+   * specified at parse time, it's assumed to be "public" unless otherwise
+   * specified.
+   */
+  toQualifiedName(defaultSchema?: string) {
+    return `${this.schema ?? defaultSchema ?? 'public'}.${this.name}`
+  }
+
   withSchema(schema: string) {
-    return new SQLIdentifier(this.name, schema, 0, 0)
+    return new SQLIdentifier(this.name, schema)
   }
 
   compare(other: SQLIdentifier) {
@@ -79,5 +99,10 @@ export class SQLIdentifier {
     return (
       thisSchema === otherSchema && unquote(this.name) === unquote(other.name)
     )
+  }
+
+  static fromQualifiedName(names: QualifiedName) {
+    const [name, schema] = names.map(name => name.String.sval).reverse()
+    return new SQLIdentifier(name, schema)
   }
 }

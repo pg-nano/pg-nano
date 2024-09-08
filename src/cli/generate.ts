@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
-import { Client, sql } from 'pg-nano'
+import { Client, sql, type SQLTemplate } from 'pg-nano'
 import { camel, pascal } from 'radashi'
 import type { Env } from './env'
 import {
@@ -22,26 +22,31 @@ import {
 import { dedent } from './util/dedent'
 import { unquote } from './util/unquote'
 
+export type GenerateOptions = {
+  refreshPluginRole?: boolean
+  signal?: AbortSignal
+}
+
 export async function generate(
   env: Env,
   filePaths: string[],
-  signal?: AbortSignal,
+  options: GenerateOptions = {},
 ) {
   const client = await env.client
 
-  const { funcsWithSetof } = await prepareForMigration(filePaths, env)
+  await prepareForMigration(filePaths, env)
 
   log('Migrating database...')
   await migrate(env)
 
-  if (await generatePluginQueries(env)) {
+  if (await generatePluginQueries(env, options)) {
     return
   }
 
   log('Generating type definitions...')
 
   // Step 1: Collect type information from the database.
-  const namespaces = await introspectNamespaces(client, signal)
+  const namespaces = await introspectNamespaces(client, options.signal)
 
   type PgUserType = {
     kind: 'enum' | 'composite'
@@ -217,7 +222,7 @@ export async function generate(
             fn.nspname,
           )
         } else {
-          const columns = await introspectResultSet(client, fn, signal)
+          const columns = await introspectResultSet(client, fn, options.signal)
 
           TRow = `{${columns
             .map(({ name, dataTypeID }) => {
@@ -230,8 +235,8 @@ export async function generate(
       const TParams = argNames ? `{${argTypes}}` : `[${argTypes}]`
       const TResult = TRow ?? renderTypeReference(fn.prorettype, fn.nspname)
 
-      const declare = fn.proretset ? 'declareRoutine' : 'declareScalarRoutine'
-      imports.add(declare)
+      const wrap = fn.proretset ? 'fnReturningMany' : 'fnReturningAny'
+      imports.add(wrap)
 
       const fnCode = dedent`
         export declare namespace ${jsName} {
@@ -239,7 +244,7 @@ export async function generate(
           export type Result = ${TResult}
         }
 
-        export const ${jsName} = ${declare}<${jsName}.Params, ${jsName}.Result>(${JSON.stringify(fn.proname)}${params}${schema})\n\n
+        export const ${jsName} = ${wrap}<${jsName}.Params, ${jsName}.Result>(${JSON.stringify(fn.proname)}${params}${schema})\n\n
       `
 
       renderedObjects.set(fn, fnCode)
@@ -389,7 +394,7 @@ function indent(text: string, count = 2) {
   return text.replace(/^/gm, ' '.repeat(count))
 }
 
-async function generatePluginQueries(env: Env) {
+async function generatePluginQueries(env: Env, options: GenerateOptions) {
   if (!env.config.plugins.some(p => p.queries)) {
     return false
   }
@@ -398,27 +403,45 @@ async function generatePluginQueries(env: Env) {
 
   const pluginDsn = new URL(env.config.dev.connectionString)
   pluginDsn.username = 'nano_plugin'
-  pluginDsn.password = ''
+  pluginDsn.password = 'postgres'
+
+  let onExistingRole: SQLTemplate
+  if (options.refreshPluginRole) {
+    onExistingRole = sql`
+      REVOKE ALL ON DATABASE ${sql.id(pluginDsn.pathname.slice(1))} FROM nano_plugin;
+
+      REVOKE ALL ON SCHEMA public FROM nano_plugin;
+      REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM nano_plugin;
+
+      REVOKE ALL ON SCHEMA information_schema FROM nano_plugin;
+      REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA information_schema FROM nano_plugin;
+
+      REVOKE ALL ON SCHEMA pg_catalog FROM nano_plugin;
+      REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA pg_catalog FROM nano_plugin;
+
+      DROP ROLE IF EXISTS nano_plugin;
+    `
+  } else {
+    onExistingRole = sql`RETURN;`
+  }
 
   const client = await env.client
   await client.query(sql`
     DO $$ 
     BEGIN
-      IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'nano_plugin') THEN
-        CREATE ROLE nano_plugin NOINHERIT;
-
-        -- Grant connect permission to the new role
-        GRANT CONNECT ON DATABASE ${sql.id(pluginDsn.pathname.slice(1))} TO nano_plugin;
-
-        -- Grant usage on schema public to the new role
-        GRANT USAGE ON SCHEMA public TO nano_plugin;
-
-        -- Grant select permission on all tables in public schema to the new role
-        GRANT SELECT ON ALL TABLES IN SCHEMA public TO nano_plugin;
-
-        -- Alter default privileges to grant select on future tables to the new role
-        ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO nano_plugin;
+      IF EXISTS (SELECT FROM pg_roles WHERE rolname = 'nano_plugin') THEN
+        ${onExistingRole}
       END IF;
+
+      CREATE ROLE nano_plugin WITH LOGIN PASSWORD ${sql.val(pluginDsn.password)} NOINHERIT;
+
+      GRANT CONNECT ON DATABASE ${sql.id(pluginDsn.pathname.slice(1))} TO nano_plugin;
+      GRANT SELECT ON ALL TABLES IN SCHEMA information_schema TO nano_plugin;
+      GRANT SELECT ON ALL TABLES IN SCHEMA pg_catalog TO nano_plugin;
+      GRANT SELECT ON ALL TABLES IN SCHEMA public TO nano_plugin;
+      GRANT USAGE ON SCHEMA information_schema TO nano_plugin;
+      GRANT USAGE ON SCHEMA pg_catalog TO nano_plugin;
+      GRANT USAGE ON SCHEMA public TO nano_plugin;
     END
     $$;
   `)
@@ -437,7 +460,7 @@ async function generatePluginQueries(env: Env) {
       if (template) {
         const outFile = path.join(
           env.config.typescript.pluginSqlDir,
-          plugin.name.replace(/\//g, '__') + '.sql',
+          plugin.name.replace(/\//g, '__') + '.pgsql',
         )
 
         let oldContent = ''
@@ -449,7 +472,7 @@ async function generatePluginQueries(env: Env) {
           }
         }
 
-        const content = await pluginClient.stringify(template)
+        const content = dedent(await pluginClient.stringify(template))
         if (content !== oldContent) {
           pluginSqlFiles.push({
             file: outFile,
@@ -464,6 +487,13 @@ async function generatePluginQueries(env: Env) {
   if (count > 0) {
     log(`Writing ${count} plugin SQL file${count === 1 ? '' : 's'}`)
 
+    // Clear out any old plugin-generated SQL files.
+    fs.rmSync(env.config.typescript.pluginSqlDir, {
+      recursive: true,
+      force: true,
+    })
+
+    fs.mkdirSync(env.config.typescript.pluginSqlDir, { recursive: true })
     for (const { file, content } of pluginSqlFiles) {
       fs.writeFileSync(file, content)
     }

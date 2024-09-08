@@ -7,22 +7,42 @@ function sqlRoutineCall(schema: string, name: string, values: any[]) {
   return sql`${sql.id(schema)}.${sql.id(name)}(${values.map(sql.val)})`
 }
 
-export type Routine<
+/**
+ * A function returned by `fnReturningMany`.
+ */
+export type FnReturningMany<
   TArgs extends object,
   TRow extends Row,
 > = TArgs extends any[]
   ? (client: Client, ...args: TArgs) => Query<TRow[]>
   : (client: Client, args: TArgs) => Query<TRow[]>
 
-export type ScalarRoutine<TArgs extends object, TResult> = TArgs extends any[]
+/**
+ * A function returned by `fnReturningOne`.
+ */
+export type FnReturningOne<
+  TArgs extends object,
+  TRow extends Row,
+> = TArgs extends any[]
+  ? (client: Client, ...args: TArgs) => Query<TRow | null>
+  : (client: Client, args: TArgs) => Query<TRow | null>
+
+/**
+ * A function returned by `fnReturningAny`.
+ */
+export type FnReturningAny<TArgs extends object, TResult> = TArgs extends any[]
   ? (client: Client, ...args: TArgs) => Promise<TResult>
   : (client: Client, args: TArgs) => Promise<TResult>
 
-export function declareRoutine<TArgs extends object, TRow extends Row>(
+/**
+ * Create a TypeScript wrapper for a Postgres function that returns a result
+ * set, which may be empty.
+ */
+export function fnReturningMany<TArgs extends object, TRow extends Row>(
   name: string,
   params?: string[] | null,
   schema = 'public',
-): Routine<TArgs, TRow> {
+): FnReturningMany<TArgs, TRow> {
   const routine = params
     ? (client: Client, args: TArgs) =>
         client.many(
@@ -34,11 +54,38 @@ export function declareRoutine<TArgs extends object, TRow extends Row>(
   return routine as any
 }
 
-export function declareScalarRoutine<TArgs extends object, TResult>(
+/**
+ * Create a TypeScript wrapper for a Postgres function that may return a single
+ * row, or nothing.
+ */
+export function fnReturningOne<TArgs extends object, TRow extends Row>(
   name: string,
   params?: string[] | null,
   schema = 'public',
-): ScalarRoutine<TArgs, TResult> {
+): FnReturningMany<TArgs, TRow> {
+  const routine = params
+    ? (client: Client, args: TArgs) =>
+        client.one(
+          sql`SELECT * FROM ${sqlRoutineCall(schema, name, arrifyParams(args, params))} LIMIT 1`,
+        )
+    : (client: Client, ...args: any[]) =>
+        client.one(
+          sql`SELECT * FROM ${sqlRoutineCall(schema, name, args)} LIMIT 1`,
+        )
+
+  return routine as any
+}
+
+/**
+ * Create a TypeScript wrapper for a Postgres function that returns a single
+ * value that can be of any type (whereas `many` and `one` are restricted to row
+ * types).
+ */
+export function fnReturningAny<TArgs extends object, TResult>(
+  name: string,
+  params?: string[] | null,
+  schema = 'public',
+): FnReturningAny<TArgs, TResult> {
   const routine = params
     ? (client: Client, args: TArgs) =>
         client.scalar(

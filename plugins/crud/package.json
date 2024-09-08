@@ -4,5 +4,8 @@
   "main": "crud.js",
   "devDependencies": {
     "@pg-nano/plugin": "workspace:^"
+  },
+  "dependencies": {
+    "irregular-plurals": "^4.0.0"
   }
 }

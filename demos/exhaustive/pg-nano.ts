@@ -1,3 +1,4 @@
+import crud from '@pg-nano/plugin-crud'
 import { defineConfig } from 'pg-nano/config'
 
 export default defineConfig({
@@ -7,4 +8,8 @@ export default defineConfig({
   schema: {
     include: ['**/*.pgsql'],
   },
+  typescript: {
+    outFile: 'sql/api.ts',
+  },
+  plugins: [crud()],
 })

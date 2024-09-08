@@ -35,6 +35,7 @@ export const typeMappings: PgTypeMapping[] = [
   type(791, 'money[]', 'string[]'),
   type(1000, 'bool[]', 'boolean[]'),
   type(1001, 'bytea[]', 'Buffer[]'),
+  type(1003, 'name[]', 'string[]'),
   type(1005, 'int2[]', 'number[]'),
   type(1007, 'int4[]', 'number[]'),
   type(1008, 'regproc[]', 'string[]'),

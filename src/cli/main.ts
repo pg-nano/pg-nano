@@ -15,7 +15,7 @@ async function main() {
         process.cwd(),
         mri(argv, {
           string: ['dsn'],
-          boolean: ['verbose'],
+          boolean: ['verbose', 'refreshPluginRole'],
           alias: {
             v: 'verbose',
           },

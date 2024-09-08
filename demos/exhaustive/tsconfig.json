@@ -4,7 +4,8 @@
   "compilerOptions": {
     "paths": {
       "pg-nano": ["../../src/mod.ts"],
-      "pg-nano/config": ["../../src/config/config.ts"]
+      "pg-nano/config": ["../../src/config/config.ts"],
+      "@pg-nano/plugin-crud": ["../../plugins/crud/crud.ts"]
     }
   }
 }
