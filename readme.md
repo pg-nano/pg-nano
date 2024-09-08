@@ -126,9 +126,18 @@ Input values are automatically stringified and escaped, and output values are au
 
 ### Dynamic queries
 
-In case you need to dynamically generate a query, the `Client` instance provides `many`, `one`, and `scalar` methods. Dynamic queries are not type-safe and their result must be manually typed.
+In case you need to dynamically generate a query, the `Client` instance provides the following methods: 
 
-Dynamic queries can be unsafe if not handled properly. To ensure you don't accidentally allow a SQL injection attack, you must use our `sql` tagged template literal for dynamic queries.
+- **query(sql)**: Execute one or more statements, returning an array of `Result` objects (one per statement).
+- **queryRows(sql)**: Execute one statement that returns multiple rows.
+- **queryOneRow(sql)**: Execute one statement that returns a single row.
+- **queryOneColumn(sql)**: Execute one statement that returns a single column value.
+
+**_Type safety:_** Dynamic queries are not type-safe and their result must be manually typed. For example, `queryRows<User>()` will return an array of `User` objects, which only you can guarantee is the correct type.
+
+**_Security:_** Dynamic queries can be unsafe if not handled properly. To ensure you don't accidentally allow a SQL injection attack, you must use our `sql` tagged template literal to define the query.
+
+**_Options:_** Each method also accepts an optional `options` parameter. As of now, this only supports the `signal` option, which allows you to cancel the query early when this signal is aborted.
 
 ```ts
 import { sql } from 'pg-nano'
@@ -142,7 +151,7 @@ type User = {
 }
 
 function getUsersOlderThan(age: number) {
-  return client.many<User>(
+  return client.queryRows<User>(
     sql`
       SELECT * FROM users
       WHERE age >= ${sql.val(age)}
@@ -157,11 +166,48 @@ console.log(selectedUsers) // => [{ id: 1, name: 'Baby Yoda', age: 50 }]
 
 Queries defined with `sql` can be nested within other `sql` queries.
 
-For string interpolation, `sql` comes with the following methods:
+```ts
+import { sql } from 'pg-nano'
 
-- `sql.val(value: any)`: For literal values.
-- `sql.id(value: string)`: For identifiers (e.g. table names, column names).
-- `sql.raw(value: string)`: For raw SQL syntax.
+// Define two separate SELECT statements
+const activeUsersQuery = sql`
+  SELECT id, name
+  FROM users
+  WHERE status = 'active'
+`
+
+const recentOrdersQuery = sql`
+  SELECT user_id, COUNT(*) as order_count
+  FROM orders
+  WHERE order_date >= DATE_SUB(CURRENT_DATE, INTERVAL 30 DAY)
+  GROUP BY user_id
+`
+
+// Combine the queries to get active users with their recent order counts
+const activeUsersWithRecentOrders = sql`
+  SELECT u.id, u.name, COALESCE(o.order_count, 0) as recent_order_count
+  FROM (${activeUsersQuery}) u
+  LEFT JOIN (${recentOrdersQuery}) o ON u.id = o.user_id
+  ORDER BY recent_order_count DESC
+`
+
+// Execute the combined query
+const result = await client.queryRows(activeUsersWithRecentOrders)
+console.log(result)
+// Example output:
+// [
+//   { id: 1, name: 'Zara', recent_order_count: 5 },
+//   { id: 2, name: 'Raj', recent_order_count: 3 },
+//   { id: 3, name: 'Mei', recent_order_count: 0 },
+// ]
+```
+
+For value interpolation, `sql` comes with the following methods:
+
+- `sql.val(value)`: For literal values.
+- `sql.id(...names)`: For identifiers (e.g. table names, column names).
+- `sql.join(separator, list)`: For joining an array of template values with a given separator.
+- `sql.unsafe(string)`: For raw SQL syntax.
 
 ### Streaming results
 

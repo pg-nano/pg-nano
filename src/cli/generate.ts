@@ -308,7 +308,7 @@ export async function generate(
 
   // Step 7: Warn about any unsupported types.
   for (const typeOid of unsupportedTypes) {
-    const typeName = await client.scalar<string>(sql`
+    const typeName = await client.queryOneColumn<string>(sql`
       SELECT typname FROM pg_type WHERE oid = ${sql.val(typeOid)}
     `)
 

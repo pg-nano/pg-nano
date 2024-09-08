@@ -45,11 +45,13 @@ export function fnReturningMany<TArgs extends object, TRow extends Row>(
 ): FnReturningMany<TArgs, TRow> {
   const routine = params
     ? (client: Client, args: TArgs) =>
-        client.many(
+        client.queryRows(
           sql`SELECT * FROM ${sqlRoutineCall(schema, name, arrifyParams(args, params))}`,
         )
     : (client: Client, ...args: any[]) =>
-        client.many(sql`SELECT * FROM ${sqlRoutineCall(schema, name, args)}`)
+        client.queryRows(
+          sql`SELECT * FROM ${sqlRoutineCall(schema, name, args)}`,
+        )
 
   return routine as any
 }
@@ -65,11 +67,11 @@ export function fnReturningOne<TArgs extends object, TRow extends Row>(
 ): FnReturningMany<TArgs, TRow> {
   const routine = params
     ? (client: Client, args: TArgs) =>
-        client.one(
+        client.queryOneRow(
           sql`SELECT * FROM ${sqlRoutineCall(schema, name, arrifyParams(args, params))} LIMIT 1`,
         )
     : (client: Client, ...args: any[]) =>
-        client.one(
+        client.queryOneRow(
           sql`SELECT * FROM ${sqlRoutineCall(schema, name, args)} LIMIT 1`,
         )
 
@@ -88,11 +90,11 @@ export function fnReturningAny<TArgs extends object, TResult>(
 ): FnReturningAny<TArgs, TResult> {
   const routine = params
     ? (client: Client, args: TArgs) =>
-        client.scalar(
+        client.queryOneColumn(
           sql`SELECT ${sqlRoutineCall(schema, name, arrifyParams(args, params))}`,
         )
     : (client: Client, ...args: any[]) =>
-        client.scalar(sql`SELECT ${sqlRoutineCall(schema, name, args)}`)
+        client.queryOneColumn(sql`SELECT ${sqlRoutineCall(schema, name, args)}`)
 
   return routine as any
 }

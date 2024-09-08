@@ -5,7 +5,7 @@ export default function (): Plugin {
     name: '@pg-nano/plugin-crud',
     async queries(context) {
       const { client, sql } = context
-      const tables = await client.many<PgTable>(sql`
+      const tables = await client.queryRows<PgTable>(sql`
         SELECT
           t.relname AS name,
           array_agg(a.attname) FILTER (WHERE a.attnum = ANY(conkey)) AS primary_key_columns,

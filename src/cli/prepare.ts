@@ -48,7 +48,7 @@ export async function prepareForMigration(filePaths: string[], env: Env) {
 
   const doesObjectExist = memo(async (object: SQLObject) => {
     if (object.type === 'table') {
-      return await client.scalar<boolean>(sql`
+      return await client.queryOneColumn<boolean>(sql`
         SELECT EXISTS (
           SELECT 1
           FROM pg_tables
@@ -58,7 +58,7 @@ export async function prepareForMigration(filePaths: string[], env: Env) {
       `)
     }
     if (object.type === 'type') {
-      return await client.scalar<boolean>(sql`
+      return await client.queryOneColumn<boolean>(sql`
         SELECT EXISTS (
           SELECT 1
           FROM pg_type
@@ -158,7 +158,7 @@ async function hasTypeChanged(client: Client, type: SQLObject, stmt: string) {
       a.attnum
   `
 
-  const hasChanges = await client.scalar<boolean>(
+  const hasChanges = await client.queryOneColumn<boolean>(
     sql`
       WITH type1 AS (
         ${selectTypeById(type.id)}

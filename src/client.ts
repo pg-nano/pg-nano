@@ -270,7 +270,7 @@ export class Client {
    *
    * You may define the row type using generics.
    */
-  many<TRow extends Row>(
+  queryRows<TRow extends Row>(
     command: SQLTemplate,
     options?: QueryOptions,
   ): Query<TRow[]> {
@@ -288,7 +288,7 @@ export class Client {
    *
    * You may define the row type using generics.
    */
-  async one<TRow extends Row>(
+  async queryOneRow<TRow extends Row>(
     command: SQLTemplate,
     options?: QueryOptions,
   ): Promise<TRow | undefined> {
@@ -302,7 +302,10 @@ export class Client {
   /**
    * Execute a single command that returns a single row with a single value.
    */
-  async scalar<T>(command: SQLTemplate, options?: QueryOptions): Promise<T> {
+  async queryOneColumn<T>(
+    command: SQLTemplate,
+    options?: QueryOptions,
+  ): Promise<T> {
     const results = await this.query(command).withOptions(options)
     const row = results[0].rows[0]
     for (const key in row) {
@@ -312,7 +315,7 @@ export class Client {
     return undefined!
   }
 
-  proxy<API extends object>(api: API): ClientProxy<API> {
+  withQueries<API extends object>(api: API): ClientProxy<API> {
     return new Proxy(this, {
       get(client, key) {
         if (key in api) {
@@ -376,8 +379,8 @@ export type ClientProxy<API extends object> = {
   readonly dsn: string | null
   readonly config: Readonly<ClientOptions>
   query: Client['query']
-  many: Client['many']
-  one: Client['one']
-  scalar: Client['scalar']
+  queryRows: Client['queryRows']
+  queryOneRow: Client['queryOneRow']
+  queryOneColumn: Client['queryOneColumn']
   close: Client['close']
 }
