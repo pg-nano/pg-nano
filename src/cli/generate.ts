@@ -208,8 +208,16 @@ export async function generate(
       const params =
         argNames || schema ? `, ${JSON.stringify(argNames || null)}` : ''
 
+      let constructor: string | undefined
       let TRow: string | undefined
+
       if (fn.proretset) {
+        const fnStmt = allObjects.find(
+          obj =>
+            obj.type === 'function' &&
+            obj.id.name === fn.proname &&
+            obj.id.schema === fn.nspname,
+        )
         const setofType = funcsWithSetof.find(
           setofType =>
             fn.proname === unquote(setofType.id.name) &&
@@ -230,6 +238,14 @@ export async function generate(
             })
             .join(', ')}}`
         }
+      } else {
+        const returnsTable = await client.queryOneColumn<boolean>(sql`
+          SELECT EXISTS (
+            SELECT 1
+            FROM pg_class
+            WHERE relkind = 'r' AND relname = ${sql.val(fn.proname)}
+          )
+        `)
       }
 
       const TParams = argNames ? `{${argTypes}}` : `[${argTypes}]`

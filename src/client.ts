@@ -265,7 +265,7 @@ export class Client {
   }
 
   /**
-   * Executes a query and returns an array of rows. This assumes only one
+   * Create a query that will return an array of rows. This assumes only one
    * command exists in the given query.
    *
    * You may define the row type using generics.
@@ -282,7 +282,19 @@ export class Client {
   }
 
   /**
-   * Executes a query and returns a single row. This assumes only one command
+   * Create a query that will return an array of values, each derived from the
+   * single column of each row in the query result.
+   */
+  queryColumns<T>(command: SQLTemplate, options?: QueryOptions): Query<T[]> {
+    const query = this.query(command)
+    return query.withOptions({
+      ...options,
+      resolve: ([result]) => result.rows.map(row => row[result.fields[0].name]),
+    }) as any
+  }
+
+  /**
+   * Create a query that will return a single row. This assumes only one command
    * exists in the given query. If you don't limit the results, the promise will
    * be rejected when more than one row is received.
    *
@@ -294,25 +306,30 @@ export class Client {
   ): Promise<TRow | undefined> {
     const [result] = await this.query<TRow>(command).withOptions(options)
     if (result.rows.length > 1) {
-      throw new Error('Expected 1 row, got ' + result.rows.length)
+      throw new Error('Expected at most 1 row, got ' + result.rows.length)
     }
     return result.rows[0]
   }
 
   /**
-   * Execute a single command that returns a single row with a single value.
+   * Create a query that will return a single value, derived from the single
+   * column of the single row of the result set.
+   *
+   * If you're not sure if the result set could be empty, you'd better include
+   * `undefined` in the result type.
    */
   async queryOneColumn<T>(
     command: SQLTemplate,
     options?: QueryOptions,
   ): Promise<T> {
-    const results = await this.query(command).withOptions(options)
-    const row = results[0].rows[0]
-    for (const key in row) {
-      return row[key] as T
+    const [result] = await this.query(command).withOptions(options)
+    if (result.rows.length > 1) {
+      throw new Error('Expected at most 1 row, got ' + result.rows.length)
     }
-    // Should be unreachable.
-    return undefined!
+    if (result.fields.length !== 1) {
+      throw new Error('Expected 1 field, got ' + result.fields.length)
+    }
+    return result.rows[0]?.[result.fields[0].name] as T
   }
 
   withQueries<API extends object>(api: API): ClientProxy<API> {

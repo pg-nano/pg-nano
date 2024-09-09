@@ -11,6 +11,8 @@ import type { SQLTemplate } from './template'
 
 interface ConnectionEvents {
   result: (result: Result) => void
+  error: (error: Error) => void
+  end: () => void
   notify: (msg: Libpq.NotifyMsg) => void
   close: () => void
 }
@@ -100,21 +102,19 @@ export enum ConnectionStatus {
   CLOSED = 3,
 }
 
-interface ConnectionState {
+interface IConnection extends ConnectionEmitter {
   pq: Libpq
   status: ConnectionStatus
   reader: (() => void) | null
   results: Result[]
   promise: Promise<any>
-  resolve: (response: Result[]) => void
-  reject: (error: Error) => void
 }
 
-function unprotect(conn: Connection): ConnectionState & ConnectionEmitter {
+function unprotect(conn: Connection): IConnection {
   return conn as any
 }
 
-function setStatus(conn: ConnectionState, newStatus: ConnectionStatus): void {
+function setStatus(conn: IConnection, newStatus: ConnectionStatus): void {
   if (conn.status !== newStatus) {
     conn.status = newStatus
     if (process.env.NODE_ENV !== 'production' && debug.enabled) {
@@ -123,13 +123,20 @@ function setStatus(conn: ConnectionState, newStatus: ConnectionStatus): void {
   }
 }
 
-function reset(conn: ConnectionState, newStatus: ConnectionStatus): void {
+function reset(conn: IConnection, newStatus: ConnectionStatus): void {
   stopReading(conn, newStatus)
   conn.reader = null
   conn.results = []
   conn.promise = new Promise((resolve, reject) => {
-    conn.resolve = resolve
-    conn.reject = reject
+    conn
+      .on('end', function onEnd() {
+        conn.off('end', onEnd)
+        resolve(conn.results)
+      })
+      .on('error', function onError(error) {
+        conn.off('error', onError)
+        reject(error)
+      })
   })
 }
 
@@ -149,7 +156,7 @@ export type QueryHook<TResult> = (
  * socket.
  */
 async function sendQuery<TResult = Result[]>(
-  conn: ConnectionState & ConnectionEmitter,
+  conn: IConnection,
   command: SQLTemplate | QueryHook<TResult>,
   singleRowMode?: boolean,
 ): Promise<TResult> {
@@ -223,7 +230,7 @@ async function sendQuery<TResult = Result[]>(
 }
 
 // called when libpq is readable
-function read(conn: ConnectionState & ConnectionEmitter): void {
+function read(conn: IConnection): void {
   const { pq } = conn
 
   // read waiting data from the socket
@@ -259,11 +266,11 @@ function read(conn: ConnectionState & ConnectionEmitter): void {
   }
 }
 
-function resolvePromise(conn: ConnectionState, error?: Error) {
+function resolvePromise(conn: IConnection, error?: Error) {
   if (error) {
-    conn.reject(error)
+    conn.emit('error', error)
   } else {
-    conn.resolve(conn.results)
+    conn.emit('end')
   }
 
   const promise = conn.promise
@@ -271,7 +278,7 @@ function resolvePromise(conn: ConnectionState, error?: Error) {
   return promise
 }
 
-function stopReading(conn: ConnectionState, newStatus: ConnectionStatus) {
+function stopReading(conn: IConnection, newStatus: ConnectionStatus) {
   if (conn.pq && conn.status === ConnectionStatus.QUERY_READING) {
     conn.pq.stopReader()
     conn.pq.removeListener('readable', conn.reader)
@@ -297,7 +304,7 @@ function waitForDrain(pq: Libpq) {
   })
 }
 
-function processResult(conn: ConnectionState & ConnectionEmitter) {
+function processResult(conn: IConnection) {
   const resultStatus = conn.pq.resultStatus()
   switch (resultStatus) {
     case 'PGRES_FATAL_ERROR': {

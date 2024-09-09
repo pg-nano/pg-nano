@@ -1,6 +1,7 @@
 import type { Result, SQLTemplate } from 'pg-native'
 import type { Client } from './mod'
-import { generateEvents, type UnwrapArray } from './util.js'
+import { streamResults } from './stream.js'
+import type { UnwrapArray } from './util.js'
 
 export interface QueryOptions {
   /**
@@ -39,21 +40,36 @@ export class Query<
   }
 
   // biome-ignore lint/suspicious/noThenProperty:
-  then<TResult1 = TPromiseResult, TResult2 = never>(
+  then<TResult = TPromiseResult, TCatchResult = never>(
     onfulfilled?:
-      | ((value: TPromiseResult) => TResult1 | PromiseLike<TResult1>)
+      | ((value: TPromiseResult) => TResult | PromiseLike<TResult>)
       | undefined
       | null,
     onrejected?:
-      | ((reason: any) => TResult2 | PromiseLike<TResult2>)
+      | ((reason: any) => TCatchResult | PromiseLike<TCatchResult>)
       | undefined
       | null,
-  ): PromiseLike<TResult1 | TResult2> {
+  ): Promise<TResult | TCatchResult> {
     let promise = this.send()
     if (this.options?.resolve) {
       promise = promise.then(this.options.resolve)
     }
     return promise.then(onfulfilled, onrejected)
+  }
+
+  catch<TCatchResult = TPromiseResult>(
+    onrejected?:
+      | ((reason: any) => TCatchResult | PromiseLike<TCatchResult>)
+      | undefined
+      | null,
+  ): Promise<TPromiseResult | TCatchResult> {
+    return this.then(undefined, onrejected)
+  }
+
+  finally(
+    onfinally?: (() => void) | undefined | null,
+  ): Promise<TPromiseResult> {
+    return Promise.resolve(this).finally(onfinally)
   }
 
   protected send(): Promise<any>
@@ -73,9 +89,10 @@ export class Query<
       signal,
       singleRowMode,
     )
-    return singleRowMode
-      ? generateEvents(connection, 'result', this.transform)
-      : promise
+    if (singleRowMode) {
+      return streamResults(connection, this.transform)
+    }
+    return promise
   }
 
   [Symbol.asyncIterator]() {

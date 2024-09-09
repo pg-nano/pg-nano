@@ -29,5 +29,6 @@
   "plpgsqlLanguageServer.password": "postgres",
   "plpgsqlLanguageServer.database": "postgres",
   "plpgsqlLanguageServer.definitionFiles": ["**/*.pgsql"],
-  "autoHide.autoHidePanel": false
+  "autoHide.autoHidePanel": false,
+  "typescript.preferences.importModuleSpecifierEnding": "js"
 }

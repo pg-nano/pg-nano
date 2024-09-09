@@ -1,19 +1,18 @@
 import { type Client, sql } from 'pg-nano'
 import type { SQLIdentifier } from './parseIdentifier'
-import type { SortedStatement } from './sortStatements'
+import type { PgCompositeTypeStmt } from './parseObjectStatements.js'
 
 /**
  * Compare a type to the existing type in the database.
  *
  * @returns `true` if the type has changed, `false` otherwise.
  */
-export async function hasTypeChanged(
+export async function hasCompositeTypeChanged(
   client: Client,
-  type: SortedStatement,
-  stmt: string,
+  type: PgCompositeTypeStmt,
 ) {
   const tmpId = type.id.withSchema('nano')
-  const tmpStmt = stmt.replace(type.id.toString(), tmpId.toString())
+  const tmpStmt = type.query.replace(type.id.toString(), tmpId.toString())
 
   // Add the current type to the database (but under the "nano" schema), so we
   // can compare it to the existing type.

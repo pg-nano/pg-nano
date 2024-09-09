@@ -1,0 +1,231 @@
+import {
+  $,
+  NodeTag,
+  parseQuery,
+  splitWithScannerSync,
+} from '@pg-nano/pg-parser'
+import util from 'node:util'
+import { log } from './log'
+import { SQLIdentifier } from './parseIdentifier'
+
+const inspect = (value: any) =>
+  util.inspect(value, { depth: null, colors: true })
+
+export async function parseObjectStatements(sql: string, file: string) {
+  const stmts = splitWithScannerSync(sql)
+  const objects: ParsedObjectStmt[] = []
+  const lineBreaks = getLineBreakLocations(sql)
+
+  for (let { location, length } of stmts) {
+    // Skip comments and empty lines.
+    let i = location
+    while (sql[i] === '\n' || sql.slice(i, i + 2) === '--') {
+      i = sql.indexOf('\n', i + 1) + 1
+    }
+    length -= i - location
+    location = i
+
+    const query = sql.slice(location, location + length)
+    const node = (await parseQuery(query)).stmts[0].stmt
+
+    // Get the line number.
+    const line =
+      lineBreaks.findIndex(lineBreak => location < lineBreak) + 1 ||
+      lineBreaks.length
+
+    if (NodeTag.isCreateFunctionStmt(node)) {
+      const fn = node.CreateFunctionStmt
+      const id = SQLIdentifier.fromQualifiedName(fn.funcname)
+
+      const params =
+        fn.parameters?.map(({ FunctionParameter: param }) => ({
+          name: param.name,
+          type: SQLIdentifier.fromQualifiedName(param.argType.names),
+        })) ?? []
+
+      const returnType = fn.returnType
+        ? SQLIdentifier.fromQualifiedName(fn.returnType.names)
+        : undefined
+
+      objects.push({
+        type: 'function',
+        id,
+        params,
+        returnType,
+        query,
+        line,
+        file,
+        dependencies: new Set(),
+        dependents: new Set(),
+      })
+    } else if (NodeTag.isCreateStmt(node)) {
+      const { relation, tableElts } = $(node)
+      if (!tableElts) {
+        continue
+      }
+
+      const id = new SQLIdentifier(relation.relname, relation.schemaname)
+      const columns = tableElts
+        .filter(col => NodeTag.isColumnDef(col))
+        .map(col => ({
+          name: $(col).colname!,
+          type: SQLIdentifier.fromQualifiedName($(col).typeName!.names!),
+        }))
+
+      objects.push({
+        type: 'table',
+        id,
+        columns,
+        query,
+        line,
+        file,
+        dependencies: new Set(),
+        dependents: new Set(),
+      })
+    } else if (NodeTag.isViewStmt(node)) {
+      const { view } = $(node)
+      const id = new SQLIdentifier(view.relname, view.schemaname)
+
+      objects.push({
+        type: 'view',
+        id,
+        query,
+        line,
+        file,
+        dependencies: new Set(),
+        dependents: new Set(),
+      })
+    } else if (NodeTag.isCompositeTypeStmt(node)) {
+      const { typevar, coldeflist } = $(node)
+
+      const id = new SQLIdentifier(typevar.relname, typevar.schemaname)
+      const columns = coldeflist.map(col => ({
+        name: $(col).colname!,
+        type: SQLIdentifier.fromQualifiedName($(col).typeName!.names!),
+      }))
+
+      objects.push({
+        type: 'type',
+        subtype: 'composite',
+        id,
+        columns,
+        query,
+        line,
+        file,
+        dependencies: new Set(),
+        dependents: new Set(),
+      })
+    } else if (NodeTag.isCreateEnumStmt(node)) {
+      const { typeName, vals } = $(node)
+
+      const id = SQLIdentifier.fromQualifiedName(typeName)
+      const labels = vals.map(val => $(val).sval)
+
+      objects.push({
+        type: 'type',
+        subtype: 'enum',
+        id,
+        labels,
+        query,
+        line,
+        file,
+        dependencies: new Set(),
+        dependents: new Set(),
+      })
+    } else {
+      // These are handled by pg-schema-diff.
+      if (
+        NodeTag.isIndexStmt(node) ||
+        NodeTag.isCreateTrigStmt(node) ||
+        NodeTag.isCreateExtensionStmt(node) ||
+        NodeTag.isCreateSeqStmt(node)
+      ) {
+        continue
+      }
+
+      const cleanedStmt = query
+        .replace(/(^|\n) *--[^\n]+/g, '')
+        .replace(/\s+/g, ' ')
+
+      log.warn('Unhandled statement:')
+      log.warn(
+        '  ' +
+          (cleanedStmt.length > 50
+            ? cleanedStmt.slice(0, 50) + '…'
+            : cleanedStmt),
+      )
+    }
+  }
+
+  return objects
+}
+
+export type ParsedObjectType<T = ParsedObjectStmt> = T extends ParsedObjectStmt
+  ? T['type']
+  : never
+
+export type ParsedObjectStmt =
+  | PgFunctionStmt
+  | PgTableStmt
+  | PgEnumStmt
+  | PgCompositeTypeStmt
+  | PgViewStmt
+
+export type PgObjectStmt = {
+  type: string
+  id: SQLIdentifier
+  query: string
+  line: number
+  file: string
+  dependencies: Set<ParsedObjectStmt>
+  dependents: Set<ParsedObjectStmt>
+}
+
+export interface PgFunctionStmt extends PgObjectStmt {
+  type: 'function'
+  params: {
+    name: string | undefined
+    type: SQLIdentifier
+  }[]
+  returnType: SQLIdentifier | undefined
+}
+
+export interface PgTableStmt extends PgObjectStmt {
+  type: 'table'
+  columns: {
+    name: string
+    type: SQLIdentifier
+  }[]
+}
+
+export interface PgTypeStmt extends PgObjectStmt {
+  type: 'type'
+  subtype: string
+}
+
+export interface PgEnumStmt extends PgTypeStmt {
+  subtype: 'enum'
+  labels: string[]
+}
+
+export interface PgCompositeTypeStmt extends PgTypeStmt {
+  subtype: 'composite'
+  columns: {
+    name: string
+    type: SQLIdentifier
+  }[]
+}
+
+export interface PgViewStmt extends PgObjectStmt {
+  type: 'view'
+}
+
+function getLineBreakLocations(sql: string) {
+  const locations: number[] = []
+  for (let i = 0; i < sql.length; i++) {
+    if (sql[i] === '\n') {
+      locations.push(i)
+    }
+  }
+  return locations
+}
