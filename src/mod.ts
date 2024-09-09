@@ -1,6 +1,6 @@
 export * from './client.js'
 export * from './query.js'
-export * from './routine.js'
+export * from './routines.js'
 export * from './types.js'
 
 export {

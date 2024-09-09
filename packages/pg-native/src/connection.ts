@@ -128,15 +128,15 @@ function reset(conn: IConnection, newStatus: ConnectionStatus): void {
   conn.reader = null
   conn.results = []
   conn.promise = new Promise((resolve, reject) => {
-    conn
-      .on('end', function onEnd() {
-        conn.off('end', onEnd)
-        resolve(conn.results)
-      })
-      .on('error', function onError(error) {
-        conn.off('error', onError)
-        reject(error)
-      })
+    function onEnd() {
+      conn.off('end', onEnd).off('error', onError)
+      resolve(conn.results)
+    }
+    function onError(error: any) {
+      conn.off('end', onEnd).off('error', onError)
+      reject(error)
+    }
+    conn.on('end', onEnd).on('error', onError)
   })
 }
 

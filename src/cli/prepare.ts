@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { sql } from 'pg-nano'
+import { PgResultError, sql } from 'pg-nano'
 import { group, map, memo } from 'radashi'
 import { hasCompositeTypeChanged } from './diff'
 import type { Env } from './env'
@@ -8,10 +8,12 @@ import { linkObjectStatements } from './linkObjectStatements'
 import { log } from './log'
 import type { SQLIdentifier } from './parseIdentifier'
 import {
+  type ParsedObjectStmt,
   type ParsedObjectType,
   parseObjectStatements,
 } from './parseObjectStatements'
 import { dedent } from './util/dedent'
+import { cwdRelative } from './util/path.js'
 
 export async function prepareForMigration(filePaths: string[], env: Env) {
   const client = await env.client
@@ -78,6 +80,11 @@ export async function prepareForMigration(filePaths: string[], env: Env) {
       schemaKey: 'schemaname',
       nameKey: 'viewname',
     },
+    extension: {
+      from: 'pg_extension',
+      schemaKey: 'extnamespace',
+      nameKey: 'extname',
+    },
   }
 
   const doesObjectExist = memo((type: ParsedObjectType, id: SQLIdentifier) => {
@@ -92,15 +99,14 @@ export async function prepareForMigration(filePaths: string[], env: Env) {
       SELECT EXISTS (
         SELECT 1
         FROM ${sql.id(from)}
-        WHERE ${sql.id(schemaKey)} = ${id.schemaVal}
+        WHERE ${sql.id(schemaKey)} = ${id.schemaVal}${schemaKey.endsWith('namespace') ? sql.unsafe('::regnamespace') : ''}
           AND ${sql.id(nameKey)} = ${id.nameVal}
       );
     `)
   })
 
-  const allObjects = linkObjectStatements(
-    parsedSchemaFiles.flatMap(schemaFile => schemaFile.objects),
-  )
+  const allObjects = parsedSchemaFiles.flatMap(schemaFile => schemaFile.objects)
+  const sortedObjects = linkObjectStatements(allObjects)
 
   // The "nano" schema is used to store temporary objects during diffing.
   await client.query(sql`
@@ -108,10 +114,46 @@ export async function prepareForMigration(filePaths: string[], env: Env) {
     CREATE SCHEMA nano;
   `)
 
+  const handleError = async (error: Error, object: ParsedObjectStmt) => {
+    let message = error.message.replace(/^ERROR:\s+/i, '').trimEnd()
+
+    // Remove "LINE XXX: " if present, and the same number of characters from any
+    // lines that come after.
+    const messageLines = message.split('\n')
+    for (let i = 0; i < messageLines.length; i++) {
+      if (messageLines[i].startsWith('LINE ')) {
+        const colonIndex = messageLines[i].indexOf(':') + 2
+        messageLines[i] =
+          ' '.repeat(colonIndex) + messageLines[i].slice(colonIndex)
+        message = messageLines.join('\n')
+        break
+      }
+    }
+
+    const id = object.id.toString()
+    if (!message.includes(id)) {
+      const exists = await doesObjectExist(object.type, object.id)
+      message = `Error ${exists ? 'updating' : 'creating'} ${object.type} (${id}): ${message}`
+    }
+
+    const line =
+      error instanceof PgResultError && error.statementPosition
+        ? object.line -
+          1 +
+          getLineFromPosition(
+            Number.parseInt(error.statementPosition),
+            object.query,
+          )
+        : object.line
+
+    log.error(message + '\n    at ' + cwdRelative(object.file) + ':' + line)
+    process.exit(1)
+  }
+
   // Since pg-schema-diff is still somewhat limited, we have to create our own
   // dependency graph, so we can ensure all objects (and their dependencies)
   // exist before pg-schema-diff works its magic.
-  for (const object of allObjects) {
+  for (const object of sortedObjects) {
     if (object.dependents.size > 0 && !(object.type in objectExistence)) {
       log.warn(
         'Missing %s {%s} required by %s other statement%s:',
@@ -131,24 +173,21 @@ export async function prepareForMigration(filePaths: string[], env: Env) {
         if (object.subtype === 'composite') {
           if (await hasCompositeTypeChanged(client, object)) {
             log('Updating composite type %s', object.id.toString())
-            await client
+            const results = await client
               .query(sql`
                 DROP TYPE ${object.id.toSQL()} CASCADE;
                 ${sql.unsafe(object.query)}
               `)
               .catch(error => {
-                log.error(
-                  'Error updating composite type {%s}: %s\n    at %s',
-                  object.id.toString(),
-                  error.message,
-                  object.file + ':' + object.line,
-                )
+                handleError(error, object)
               })
           }
         }
       }
     } else {
-      await client.query(sql.unsafe(object.query))
+      await client.query(sql.unsafe(object.query)).catch(error => {
+        handleError(error, object)
+      })
     }
   }
 
@@ -161,4 +200,14 @@ export async function prepareForMigration(filePaths: string[], env: Env) {
   fs.writeFileSync(prePlanFile, prePlanDDL)
 
   return allObjects
+}
+
+function getLineFromPosition(position: number, query: string) {
+  let line = 1
+  for (let i = 0; i < position; i++) {
+    if (query[i] === '\n') {
+      line++
+    }
+  }
+  return line
 }

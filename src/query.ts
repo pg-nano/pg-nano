@@ -54,6 +54,10 @@ export class Query<
     if (this.options?.resolve) {
       promise = promise.then(this.options.resolve)
     }
+    promise = promise.catch(function onError(error) {
+      Error.captureStackTrace(error, onError)
+      throw error
+    })
     return promise.then(onfulfilled, onrejected)
   }
 

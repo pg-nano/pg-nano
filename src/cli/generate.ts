@@ -2,16 +2,16 @@ import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { Client, sql, type SQLTemplate } from 'pg-nano'
-import { camel, pascal } from 'radashi'
+import { camel, mapify, pascal } from 'radashi'
 import type { Env } from './env'
 import {
   introspectNamespaces,
-  introspectResultSet,
   type PgCompositeType,
   type PgEnumType,
   type PgObject,
 } from './introspect'
 import { log } from './log'
+import { SQLIdentifier } from './parseIdentifier.js'
 import { parseMigrationPlan } from './parseMigrationPlan'
 import { prepareForMigration } from './prepare'
 import {
@@ -20,7 +20,6 @@ import {
   typeMappings,
 } from './typeConversion'
 import { dedent } from './util/dedent'
-import { unquote } from './util/unquote'
 
 export type GenerateOptions = {
   refreshPluginRole?: boolean
@@ -34,7 +33,11 @@ export async function generate(
 ) {
   const client = await env.client
 
-  await prepareForMigration(filePaths, env)
+  const allObjects = await prepareForMigration(filePaths, env)
+  const allFunctionsByName = mapify(
+    allObjects.filter(obj => obj.type === 'function'),
+    obj => obj.id.toQualifiedName(),
+  )
 
   log('Migrating database...')
   await migrate(env)
@@ -50,7 +53,7 @@ export async function generate(
 
   type PgUserType = {
     kind: 'enum' | 'composite'
-    arity: 'scalar' | 'array'
+    arity: 'unit' | 'array'
     meta: PgEnumType | PgCompositeType
     mapping: PgTypeMapping
   }
@@ -85,7 +88,7 @@ export async function generate(
       for (const type of types) {
         userTypes.set(type.oid, {
           kind,
-          arity: 'scalar',
+          arity: 'unit',
           meta: type,
           mapping: registerTypeMapping(type.oid, type.typname),
         })
@@ -208,62 +211,58 @@ export async function generate(
       const params =
         argNames || schema ? `, ${JSON.stringify(argNames || null)}` : ''
 
-      let constructor: string | undefined
-      let TRow: string | undefined
+      let resultType: string | undefined
+      let resultColumns: string[] | undefined
+      let resultCompositeType: PgCompositeType | undefined
 
-      if (fn.proretset) {
-        const fnStmt = allObjects.find(
-          obj =>
-            obj.type === 'function' &&
-            obj.id.name === fn.proname &&
-            obj.id.schema === fn.nspname,
-        )
-        const setofType = funcsWithSetof.find(
-          setofType =>
-            fn.proname === unquote(setofType.id.name) &&
-            fn.nspname === unquote(setofType.id.schema ?? 'public'),
-        )
-        if (setofType) {
-          TRow = addNamespacePrefix(
-            unquote(setofType.referencedId.name),
-            unquote(setofType.referencedId.schema ?? 'public'),
-            fn.nspname,
-          )
-        } else {
-          const columns = await introspectResultSet(client, fn, options.signal)
+      const fnStmt = allFunctionsByName.get(fn.nspname + '.' + fn.proname)!
 
-          TRow = `{${columns
-            .map(({ name, dataTypeID }) => {
-              return `${name}: ${renderTypeReference(dataTypeID, fn.nspname)}`
-            })
-            .join(', ')}}`
+      if (fnStmt.returnType instanceof SQLIdentifier) {
+        resultType = renderTypeReference(fn.prorettype, fn.nspname)
+
+        const userType = userTypes.get(fn.prorettype)
+        if (userType && 'fields' in userType.meta) {
+          resultCompositeType = userType.meta as PgCompositeType
         }
       } else {
-        const returnsTable = await client.queryOneColumn<boolean>(sql`
-          SELECT EXISTS (
-            SELECT 1
-            FROM pg_class
-            WHERE relkind = 'r' AND relname = ${sql.val(fn.proname)}
+        resultColumns = fnStmt.returnType.map(col => {
+          const mapping = extendedTypeMappings.find(
+            mapping =>
+              mapping.name === col.type.name &&
+              mapping.schema === col.type.schema!,
           )
-        `)
+          return `${col.name}: ${mapping ? renderTypeReference(mapping.oid, fn.nspname) : 'unknown'}`
+        })
       }
 
-      const TParams = argNames ? `{${argTypes}}` : `[${argTypes}]`
-      const TResult = TRow ?? renderTypeReference(fn.prorettype, fn.nspname)
+      const constructor = fn.proretset
+        ? resultCompositeType || resultColumns
+          ? 'queryRowsRoutine'
+          : 'queryColumnsRoutine'
+        : resultCompositeType || resultColumns
+          ? 'queryOneRowRoutine'
+          : 'queryOneColumnRoutine'
 
-      const wrap = fn.proretset ? 'fnReturningMany' : 'fnReturningAny'
-      imports.add(wrap)
+      imports.add(constructor)
 
-      const fnCode = dedent`
+      if (resultColumns) {
+        resultType = `{ ${resultColumns.join(', ')} }`
+      }
+
+      if (fn.proretset) {
+        resultType += '[]'
+      }
+
+      const fnScript = dedent`
         export declare namespace ${jsName} {
-          export type Params = ${TParams}
-          export type Result = ${TResult}
+          export type Params = ${argNames ? `{${argTypes}}` : `[${argTypes}]`}
+          export type Result = ${resultType}
         }
 
-        export const ${jsName} = ${wrap}<${jsName}.Params, ${jsName}.Result>(${JSON.stringify(fn.proname)}${params}${schema})\n\n
+        export const ${jsName} = ${constructor}<${jsName}.Params, ${jsName}.Result>(${JSON.stringify(fn.proname)}${params}${schema})\n\n
       `
 
-      renderedObjects.set(fn, fnCode)
+      renderedObjects.set(fn, fnScript)
     }
   }
 

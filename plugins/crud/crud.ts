@@ -45,18 +45,18 @@ function renderUtilityFunctions({ sql }: QueriesContext) {
     LANGUAGE plpgsql
     AS $$
     DECLARE
-      query text;
+      where_clause text;
       condition json;
     BEGIN
       IF conditions IS NOT NULL AND json_array_length(conditions) > 0 THEN
-        query := ' WHERE ';
+      where_clause := ' WHERE ';
         FOR condition IN SELECT * FROM json_array_elements(conditions)
         LOOP
-          query := query || condition->>'field' || ' ' || condition->>'operator' || ' ' || quote_literal(condition->>'value') || ' AND ';
+        where_clause := where_clause || condition->>'field' || ' ' || condition->>'operator' || ' ' || quote_literal(condition->>'value') || ' AND ';
         END LOOP;
-        query := left(query, -5);
+        where_clause := left(where_clause, -5);
       END IF;
-      RETURN query;
+      RETURN where_clause;
     END;
     $$;
   `
@@ -151,7 +151,7 @@ function renderTableQueries(table: PgTable, { sql }: QueriesContext) {
 
     -- Insert a row
     CREATE FUNCTION ${fn('insert')}(data ${tbl})
-    RETURNS ${tbl}
+    RETURNS SETOF ${tbl}
     LANGUAGE plpgsql
     AS $$
     BEGIN

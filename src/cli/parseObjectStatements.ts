@@ -1,5 +1,6 @@
 import {
   $,
+  FunctionParameterMode,
   NodeTag,
   parseQuery,
   splitWithScannerSync,
@@ -11,6 +12,8 @@ import { SQLIdentifier } from './parseIdentifier'
 const inspect = (value: any) =>
   util.inspect(value, { depth: null, colors: true })
 
+const whitespace = ' \n\t\r'
+
 export async function parseObjectStatements(sql: string, file: string) {
   const stmts = splitWithScannerSync(sql)
   const objects: ParsedObjectStmt[] = []
@@ -19,7 +22,7 @@ export async function parseObjectStatements(sql: string, file: string) {
   for (let { location, length } of stmts) {
     // Skip comments and empty lines.
     let i = location
-    while (sql[i] === '\n' || sql.slice(i, i + 2) === '--') {
+    while (whitespace.includes(sql[i]) || sql.slice(i, i + 2) === '--') {
       i = sql.indexOf('\n', i + 1) + 1
     }
     length -= i - location
@@ -37,21 +40,47 @@ export async function parseObjectStatements(sql: string, file: string) {
       const fn = node.CreateFunctionStmt
       const id = SQLIdentifier.fromQualifiedName(fn.funcname)
 
-      const params =
-        fn.parameters?.map(({ FunctionParameter: param }) => ({
-          name: param.name,
-          type: SQLIdentifier.fromQualifiedName(param.argType.names),
-        })) ?? []
+      const inParams: PgParamDef[] = []
+      const outParams: PgColumnDef[] = []
 
-      const returnType = fn.returnType
-        ? SQLIdentifier.fromQualifiedName(fn.returnType.names)
-        : undefined
+      if (fn.parameters) {
+        for (const { FunctionParameter: param } of fn.parameters) {
+          if (
+            param.mode !== FunctionParameterMode.FUNC_PARAM_OUT &&
+            param.mode !== FunctionParameterMode.FUNC_PARAM_TABLE
+          ) {
+            inParams.push({
+              name: param.name,
+              type: SQLIdentifier.fromQualifiedName(param.argType.names),
+              variadic:
+                param.mode === FunctionParameterMode.FUNC_PARAM_VARIADIC,
+            })
+          }
+          if (
+            param.mode === FunctionParameterMode.FUNC_PARAM_OUT ||
+            param.mode === FunctionParameterMode.FUNC_PARAM_INOUT ||
+            param.mode === FunctionParameterMode.FUNC_PARAM_TABLE
+          ) {
+            outParams.push({
+              name: param.name!,
+              type: SQLIdentifier.fromQualifiedName(param.argType.names),
+            })
+          }
+        }
+      }
+
+      const returnType = outParams.length
+        ? outParams
+        : fn.returnType
+          ? SQLIdentifier.fromQualifiedName(fn.returnType.names)
+          : undefined!
 
       objects.push({
         type: 'function',
         id,
-        params,
+        params: inParams,
         returnType,
+        returnSet: fn.returnType?.setof ?? false,
         query,
         line,
         file,
@@ -76,19 +105,6 @@ export async function parseObjectStatements(sql: string, file: string) {
         type: 'table',
         id,
         columns,
-        query,
-        line,
-        file,
-        dependencies: new Set(),
-        dependents: new Set(),
-      })
-    } else if (NodeTag.isViewStmt(node)) {
-      const { view } = $(node)
-      const id = new SQLIdentifier(view.relname, view.schemaname)
-
-      objects.push({
-        type: 'view',
-        id,
         query,
         line,
         file,
@@ -132,12 +148,37 @@ export async function parseObjectStatements(sql: string, file: string) {
         dependencies: new Set(),
         dependents: new Set(),
       })
+    } else if (NodeTag.isViewStmt(node)) {
+      const { view } = $(node)
+      const id = new SQLIdentifier(view.relname, view.schemaname)
+
+      objects.push({
+        type: 'view',
+        id,
+        query,
+        line,
+        file,
+        dependencies: new Set(),
+        dependents: new Set(),
+      })
+    } else if (NodeTag.isCreateExtensionStmt(node)) {
+      const { extname } = $(node)
+      const id = new SQLIdentifier(extname)
+
+      objects.push({
+        type: 'extension',
+        id,
+        query,
+        line,
+        file,
+        dependencies: new Set(),
+        dependents: new Set(),
+      })
     } else {
       // These are handled by pg-schema-diff.
       if (
         NodeTag.isIndexStmt(node) ||
         NodeTag.isCreateTrigStmt(node) ||
-        NodeTag.isCreateExtensionStmt(node) ||
         NodeTag.isCreateSeqStmt(node)
       ) {
         continue
@@ -170,6 +211,7 @@ export type ParsedObjectStmt =
   | PgEnumStmt
   | PgCompositeTypeStmt
   | PgViewStmt
+  | PgExtensionStmt
 
 export type PgObjectStmt = {
   type: string
@@ -181,21 +223,27 @@ export type PgObjectStmt = {
   dependents: Set<ParsedObjectStmt>
 }
 
+export type PgParamDef = {
+  name: string | undefined
+  type: SQLIdentifier
+  variadic: boolean
+}
+
+export type PgColumnDef = {
+  name: string
+  type: SQLIdentifier
+}
+
 export interface PgFunctionStmt extends PgObjectStmt {
   type: 'function'
-  params: {
-    name: string | undefined
-    type: SQLIdentifier
-  }[]
-  returnType: SQLIdentifier | undefined
+  params: PgParamDef[]
+  returnType: SQLIdentifier | PgColumnDef[]
+  returnSet: boolean
 }
 
 export interface PgTableStmt extends PgObjectStmt {
   type: 'table'
-  columns: {
-    name: string
-    type: SQLIdentifier
-  }[]
+  columns: PgColumnDef[]
 }
 
 export interface PgTypeStmt extends PgObjectStmt {
@@ -210,14 +258,15 @@ export interface PgEnumStmt extends PgTypeStmt {
 
 export interface PgCompositeTypeStmt extends PgTypeStmt {
   subtype: 'composite'
-  columns: {
-    name: string
-    type: SQLIdentifier
-  }[]
+  columns: PgColumnDef[]
 }
 
 export interface PgViewStmt extends PgObjectStmt {
   type: 'view'
+}
+
+export interface PgExtensionStmt extends PgObjectStmt {
+  type: 'extension'
 }
 
 function getLineBreakLocations(sql: string) {
