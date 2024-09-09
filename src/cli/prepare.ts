@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { PgResultError, sql } from 'pg-nano'
-import { group, map, memo } from 'radashi'
+import { group, map, memo, tryit } from 'radashi'
 import { hasCompositeTypeChanged } from './diff'
 import type { Env } from './env'
 import { linkObjectStatements } from './linkObjectStatements'
@@ -106,6 +106,9 @@ export async function prepareForMigration(filePaths: string[], env: Env) {
   })
 
   const allObjects = parsedSchemaFiles.flatMap(schemaFile => schemaFile.objects)
+
+  await generatePluginQueries(env, allObjects)
+
   const sortedObjects = linkObjectStatements(allObjects)
 
   // The "nano" schema is used to store temporary objects during diffing.
@@ -173,7 +176,7 @@ export async function prepareForMigration(filePaths: string[], env: Env) {
         if (object.subtype === 'composite') {
           if (await hasCompositeTypeChanged(client, object)) {
             log('Updating composite type %s', object.id.toString())
-            const results = await client
+            await client
               .query(sql`
                 DROP TYPE ${object.id.toSQL()} CASCADE;
                 ${sql.unsafe(object.query)}
@@ -200,6 +203,15 @@ export async function prepareForMigration(filePaths: string[], env: Env) {
   const prePlanFile = path.join(env.untrackedDir, 'pre-plan.sql')
   fs.writeFileSync(prePlanFile, prePlanDDL)
 
+  let outSchema = ''
+  for (const object of sortedObjects) {
+    outSchema += object.query + ';\n\n'
+  }
+
+  const outFile = path.join(env.schemaDir, 'schema.sql')
+  tryit(fs.unlinkSync)(outFile)
+  fs.writeFileSync(outFile, outSchema)
+
   return allObjects
 }
 
@@ -211,4 +223,77 @@ function getLineFromPosition(position: number, query: string) {
     }
   }
   return line
+}
+
+async function generatePluginQueries(env: Env, allObjects: ParsedObjectStmt[]) {
+  // Ensure that removed plugins don't leave behind any SQL files.
+  fs.rmSync(env.config.typescript.pluginSqlDir, {
+    recursive: true,
+    force: true,
+  })
+
+  if (!env.config.plugins.some(p => p.statements)) {
+    return false
+  }
+
+  log('Running plugins...')
+
+  const pluginDsn = new URL(env.config.dev.connectionString)
+  pluginDsn.username = 'nano_plugin'
+  pluginDsn.password = 'postgres'
+
+  const pluginSqlFiles: { file: string; content: string }[] = []
+
+  for (const plugin of env.config.plugins) {
+    if (plugin.statements) {
+      const template = await plugin.statements({
+        objects: allObjects,
+        sql,
+      })
+      if (template) {
+        const outFile = path.join(
+          env.config.typescript.pluginSqlDir,
+          plugin.name.replace(/\//g, '__') + '.pgsql',
+        )
+
+        let oldContent = ''
+        try {
+          oldContent = fs.readFileSync(outFile, 'utf8')
+        } catch (error: any) {
+          if (error.code !== 'ENOENT') {
+            throw error
+          }
+        }
+
+        const client = await env.client
+        const content = dedent(await client.stringify(template))
+        if (content !== oldContent) {
+          pluginSqlFiles.push({
+            file: outFile,
+            content,
+          })
+        }
+      }
+    }
+  }
+
+  const count = pluginSqlFiles.length
+  if (count > 0) {
+    log(`Writing ${count} plugin SQL file${count === 1 ? '' : 's'}`)
+
+    // Clear out any old plugin-generated SQL files.
+    fs.rmSync(env.config.typescript.pluginSqlDir, {
+      recursive: true,
+      force: true,
+    })
+
+    fs.mkdirSync(env.config.typescript.pluginSqlDir, { recursive: true })
+    for (const { file, content } of pluginSqlFiles) {
+      fs.writeFileSync(file, content)
+    }
+  } else {
+    log.success('Plugin-generated SQL is up to date')
+  }
+
+  return count > 0
 }

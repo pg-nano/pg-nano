@@ -53,7 +53,7 @@ export class Connection extends ConnectionEmitter {
 
   async connect(dsn: string) {
     this.pq = new Libpq()
-    await util.promisify(this.pq.connect.bind(this.pq))(dsn)
+    await util.promisify(this.pq.connect.bind(this.pq, dsn))()
     setStatus(unprotect(this), ConnectionStatus.IDLE)
   }
 
@@ -90,7 +90,7 @@ export class Connection extends ConnectionEmitter {
   close() {
     stopReading(unprotect(this), ConnectionStatus.CLOSED)
     this.pq.finish()
-    this.pq = null
+    this.pq = null!
     this.emit('close')
   }
 }
@@ -218,7 +218,7 @@ async function sendQuery<TResult = Result[]>(
     try {
       conn.results = (await sent()) as any
       return resolvePromise(conn)
-    } catch (error) {
+    } catch (error: any) {
       return resolvePromise(conn, error)
     }
   }
@@ -281,7 +281,7 @@ function resolvePromise(conn: IConnection, error?: Error) {
 function stopReading(conn: IConnection, newStatus: ConnectionStatus) {
   if (conn.pq && conn.status === ConnectionStatus.QUERY_READING) {
     conn.pq.stopReader()
-    conn.pq.removeListener('readable', conn.reader)
+    conn.pq.removeListener('readable', conn.reader!)
   }
   setStatus(conn, newStatus)
 }

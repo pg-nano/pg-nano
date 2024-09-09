@@ -35,7 +35,17 @@ This tagline encapsulates the key features and design philosophy of pg-nano:
 
 3. "centered on PL/pgSQL functions": pg-nano encourages the use of PostgreSQL's procedural language (PL/pgSQL) for complex database operations, allowing you to leverage the full power of PostgreSQL.
 
-4. "rapid schema development": pg-nano includes tools for quick and easy schema changes during development, streamlining the database development process.
+4. "rapid schema development": All changes to your SQL files are immediately reflected in your Postgres instance and your TypeScript code, enabling rapid development and iteration.
+
+### Caveats
+
+Here are some caveats with the pg-nano approach.
+
+1. Every object in your database **must** be declared with a `CREATE` statement in your SQL directory. For example, if you create a table through your database GUI client, it will be deleted by pg-schema-diff while `pg-nano dev` is running. This behavior is necessary to ensure that any `CREATE` statements you remove during development are not left over in your Postgres instance.
+
+2. Some Postgres features are not yet supported by pg-schema-diff (the tool used by pg-nano to automatically migrate your schema during development). In some cases (like with composite types), pg-nano handles the migration instead, but there are still some missing pieces.
+
+3. Writing raw SQL for *everything* can be tedious, especially if you're doing a lot of basic CRUD queries. Luckily, pg-nano has a plugin system for generating SQL based on your schema. Any plugin-generated SQL will also have TypeScript definitions generated for it. Even better, you can use the [@pg-nano/plugin-crud](https://github.com/pg-nano/pg-nano/tree/master/plugins/crud) package to generate basic CRUD queries for your tables, so you get the benefits of ORMs without the limitations. Of course, you can even write your own plugins if you want to.
 
 ## Installation
 

@@ -40,14 +40,12 @@ export default async function dev(cwd: string, options: Options = {}) {
     )
 
     generate(env, filePaths, {
-      refreshPluginRole: options.refreshPluginRole && !options.forceReload,
+      refreshPluginRole: options.refreshPluginRole && !options.reloadEnv,
       signal: controller.signal,
     }).catch(error => {
       log.error(error.stack)
     })
   })
-
-  const sqlFiles = new Set<string>()
 
   watcher.on('all', (event, path) => {
     if (event === 'addDir' || event === 'unlinkDir') {
@@ -58,20 +56,18 @@ export default async function dev(cwd: string, options: Options = {}) {
         watcher.close()
 
         log.magenta('Config changed, refreshing...')
-        dev(cwd, { ...options, forceReload: true })
+        dev(cwd, { ...options, reloadEnv: true })
       }
     } else {
+      if (path.startsWith(env.config.typescript.pluginSqlDir)) {
+        // Ignore changes to plugin-generated SQL files.
+        return
+      }
       const skipped = event === 'add' && statSync(path).size === 0
       log.magenta(
         event,
         skipped ? gray(strikethrough(path) + ' (empty)') : path,
       )
-      if (event === 'add') {
-        sqlFiles.add(path)
-      } else if (event === 'unlink') {
-        sqlFiles.delete(path)
-      } else if (event === 'change') {
-      }
       if (!skipped) {
         regenerate()
       }

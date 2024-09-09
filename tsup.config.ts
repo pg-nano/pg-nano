@@ -12,10 +12,11 @@ export default defineConfig([
   {
     ...commonOptions,
     entry: {
-      'pg-nano': 'src/mod.ts',
+      'pg-nano': 'src/core/mod.ts',
       'pg-nano/config': 'src/config/config.ts',
       'pg-nano/plugin': 'src/plugin/plugin.ts',
     },
+    experimentalDts: true,
     splitting: false,
     esbuildPlugins: [
       copy({

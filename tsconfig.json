@@ -3,8 +3,10 @@
   "compilerOptions": {
     "declaration": true,
     "emitDeclarationOnly": true,
+    "allowSyntheticDefaultImports": true,
     "outDir": "./dist/tmp",
     "strict": true,
+    "skipLibCheck": true,
     "module": "esnext",
     "moduleResolution": "node",
     "target": "esnext",

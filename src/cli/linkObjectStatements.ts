@@ -1,4 +1,5 @@
 import { ExecutionQueue } from './executionQueue.js'
+import { SQLIdentifier } from './parseIdentifier.js'
 import type { ParsedObjectStmt } from './parseObjectStatements'
 
 export function linkObjectStatements(objects: ParsedObjectStmt[]) {
@@ -27,10 +28,17 @@ export function linkObjectStatements(objects: ParsedObjectStmt[]) {
           stmt.dependencies.add(dep)
         }
       }
-      if (stmt.returnType) {
+      if (stmt.returnType instanceof SQLIdentifier) {
         const dep = objectsByName.get(stmt.returnType.toQualifiedName())
         if (dep) {
           stmt.dependencies.add(dep)
+        }
+      } else {
+        for (const columnDef of stmt.returnType) {
+          const dep = objectsByName.get(columnDef.type.toQualifiedName())
+          if (dep) {
+            stmt.dependencies.add(dep)
+          }
         }
       }
     } else if (

@@ -3,9 +3,8 @@
   "include": ["./"],
   "compilerOptions": {
     "outDir": "../../dist/tmp",
-    "allowSyntheticDefaultImports": true,
     "paths": {
-      "pg-nano": ["../mod.ts"]
+      "pg-nano": ["../core/mod.ts"]
     }
   }
 }

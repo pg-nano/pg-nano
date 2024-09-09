@@ -1,33 +1,11 @@
-import type { Plugin, QueriesContext } from '@pg-nano/plugin'
+import type { PgTableStmt, Plugin, StatementsContext } from '@pg-nano/plugin'
 
 export default function (): Plugin {
   return {
     name: '@pg-nano/plugin-crud',
-    async queries(context) {
-      const { client, sql } = context
-      const tables = await client.queryRows<PgTable>(sql`
-        SELECT
-          t.relname AS name,
-          array_agg(a.attname) FILTER (WHERE a.attnum = ANY(conkey)) AS primary_key_columns,
-          array_agg(DISTINCT a.attname) AS columns
-        FROM
-          pg_class t
-        JOIN
-          pg_namespace n ON t.relnamespace = n.oid
-        LEFT JOIN
-          pg_constraint c ON c.conrelid = t.oid AND c.contype = 'p'
-        LEFT JOIN
-          pg_attribute a ON a.attrelid = t.oid
-        WHERE
-          n.nspname = 'public'
-          AND t.relkind = 'r'
-          AND a.attnum > 0
-          AND NOT a.attisdropped
-        GROUP BY
-          t.relname
-        ORDER BY
-          t.relname;
-      `)
+    async statements(context) {
+      const { objects, sql } = context
+      const tables = objects.filter(obj => obj.type === 'table')
 
       return sql`
         ${renderUtilityFunctions(context)}
@@ -37,7 +15,7 @@ export default function (): Plugin {
   }
 }
 
-function renderUtilityFunctions({ sql }: QueriesContext) {
+function renderUtilityFunctions({ sql }: StatementsContext) {
   return sql`
     -- Build WHERE clause from conditions
     CREATE FUNCTION build_where_clause(conditions JSON)
@@ -68,7 +46,10 @@ type PgTable = {
   columns: string[]
 }
 
-function renderTableQueries(table: PgTable, { sql }: QueriesContext) {
+function renderTableQueries(
+  table: Readonly<PgTableStmt>,
+  { sql }: StatementsContext,
+) {
   if (!table.primary_key_columns.length) {
     // No primary key, skip
     return ''
@@ -155,7 +136,7 @@ function renderTableQueries(table: PgTable, { sql }: QueriesContext) {
     LANGUAGE plpgsql
     AS $$
     BEGIN
-      RETURN QUERY INSERT INTO ${tbl} SELECT * FROM data RETURNING *;
+      RETURN QUERY INSERT INTO ${tbl} SELECT * FROM json_populate_record(null::${tbl}, data::json) RETURNING *;
     END;
     $$;
 
@@ -164,7 +145,7 @@ function renderTableQueries(table: PgTable, { sql }: QueriesContext) {
     RETURNS ${tbl}
     LANGUAGE SQL
     AS $$
-      INSERT INTO ${tbl} SELECT * FROM data
+      INSERT INTO ${tbl} SELECT * FROM json_populate_record(null::${tbl}, data::json)
       ON CONFLICT (${pkColumns}) DO UPDATE
       SET ${sql.join(
         ',',
@@ -205,7 +186,7 @@ function renderTableQueries(table: PgTable, { sql }: QueriesContext) {
     LANGUAGE SQL
     AS $$
       DELETE FROM ${tbl} WHERE ${pkParamsMatch};
-      INSERT INTO ${tbl} SELECT * FROM data RETURNING *;
+      INSERT INTO ${tbl} SELECT * FROM json_populate_record(null::${tbl}, data::json) RETURNING *;
     $$;
 
     -- Delete a row by primary key

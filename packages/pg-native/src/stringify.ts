@@ -9,7 +9,7 @@ export function stringifyTemplate(
   template: SQLTemplate,
   pq: Libpq,
   indent?: string,
-) {
+): string {
   let sql = ''
   for (let i = 0; i < template.strings.length; i++) {
     sql += template.strings[i]
@@ -35,7 +35,7 @@ export function stringifyTemplateValue(
   arg: SQLTemplateValue,
   pq: Libpq,
   indent?: string,
-) {
+): string {
   if (!arg) {
     return ''
   }

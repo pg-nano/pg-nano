@@ -11,7 +11,7 @@ export type EnvOptions = {
   dsn?: string
   verbose?: boolean
   /** Skip cache and reload environment */
-  forceReload?: boolean
+  reloadEnv?: boolean
 }
 
 const cache = new Map<string, Promise<Env>>()
@@ -23,7 +23,7 @@ export function getEnv(cwd: string, options: EnvOptions = {}) {
 
   let env = cache.get(key)
   if (env) {
-    if (!options.forceReload) {
+    if (!options.reloadEnv) {
       return env
     }
     env.then(env => env.close())

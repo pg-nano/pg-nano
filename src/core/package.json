@@ -1,0 +1,6 @@
+{
+  "name": "@pg-nano/core",
+  "type": "module",
+  "private": true,
+  "main": "mod.ts"
+}

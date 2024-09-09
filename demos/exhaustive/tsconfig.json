@@ -3,7 +3,7 @@
   "include": ["**/*.ts"],
   "compilerOptions": {
     "paths": {
-      "pg-nano": ["../../src/mod.ts"],
+      "pg-nano": ["../../src/core/mod.ts"],
       "pg-nano/config": ["../../src/config/config.ts"],
       "@pg-nano/plugin-crud": ["../../plugins/crud/crud.ts"]
     }

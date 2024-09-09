@@ -1,0 +1,27 @@
+lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .:
+    dependencies:
+      irregular-plurals:
+        specifier: ^4.0.0
+        version: 4.0.0
+    devDependencies:
+      '@pg-nano/plugin':
+        specifier: workspace:^
+        version: link:../../src/plugin
+
+packages:
+
+  irregular-plurals@4.0.0:
+    resolution: {integrity: sha512-Q2He7RhuoPqp0LxgFTawRMcTrteruZwJgBrBYIy4cBMnBfLvogahd8oNbG3JcSCE1UH4E7o3rfKIC7COXuiPYA==}
+    engines: {node: '>=18.20'}
+
+snapshots:
+
+  irregular-plurals@4.0.0: {}

@@ -1,7 +1,8 @@
 import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
-import { Client, sql, type SQLTemplate } from 'pg-nano'
+import util from 'node:util'
+import { sql } from 'pg-nano'
 import { camel, mapify, pascal } from 'radashi'
 import type { Env } from './env'
 import {
@@ -22,7 +23,6 @@ import {
 import { dedent } from './util/dedent'
 
 export type GenerateOptions = {
-  refreshPluginRole?: boolean
   signal?: AbortSignal
 }
 
@@ -42,14 +42,12 @@ export async function generate(
   log('Migrating database...')
   await migrate(env)
 
-  if (await generatePluginQueries(env, options)) {
-    return
-  }
-
   log('Generating type definitions...')
 
   // Step 1: Collect type information from the database.
   const namespaces = await introspectNamespaces(client, options.signal)
+
+  console.log(util.inspect(namespaces, { depth: null, colors: true }))
 
   type PgUserType = {
     kind: 'enum' | 'composite'
@@ -407,114 +405,4 @@ function diffSchemas(env: Env, command: 'apply' | 'plan') {
 
 function indent(text: string, count = 2) {
   return text.replace(/^/gm, ' '.repeat(count))
-}
-
-async function generatePluginQueries(env: Env, options: GenerateOptions) {
-  if (!env.config.plugins.some(p => p.queries)) {
-    return false
-  }
-
-  log('Running plugins...')
-
-  const pluginDsn = new URL(env.config.dev.connectionString)
-  pluginDsn.username = 'nano_plugin'
-  pluginDsn.password = 'postgres'
-
-  let onExistingRole: SQLTemplate
-  if (options.refreshPluginRole) {
-    onExistingRole = sql`
-      REVOKE ALL ON DATABASE ${sql.id(pluginDsn.pathname.slice(1))} FROM nano_plugin;
-
-      REVOKE ALL ON SCHEMA public FROM nano_plugin;
-      REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM nano_plugin;
-
-      REVOKE ALL ON SCHEMA information_schema FROM nano_plugin;
-      REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA information_schema FROM nano_plugin;
-
-      REVOKE ALL ON SCHEMA pg_catalog FROM nano_plugin;
-      REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA pg_catalog FROM nano_plugin;
-
-      DROP ROLE IF EXISTS nano_plugin;
-    `
-  } else {
-    onExistingRole = sql`RETURN;`
-  }
-
-  const client = await env.client
-  await client.query(sql`
-    DO $$ 
-    BEGIN
-      IF EXISTS (SELECT FROM pg_roles WHERE rolname = 'nano_plugin') THEN
-        ${onExistingRole}
-      END IF;
-
-      CREATE ROLE nano_plugin WITH LOGIN PASSWORD ${sql.val(pluginDsn.password)} NOINHERIT;
-
-      GRANT CONNECT ON DATABASE ${sql.id(pluginDsn.pathname.slice(1))} TO nano_plugin;
-      GRANT SELECT ON ALL TABLES IN SCHEMA information_schema TO nano_plugin;
-      GRANT SELECT ON ALL TABLES IN SCHEMA pg_catalog TO nano_plugin;
-      GRANT SELECT ON ALL TABLES IN SCHEMA public TO nano_plugin;
-      GRANT USAGE ON SCHEMA information_schema TO nano_plugin;
-      GRANT USAGE ON SCHEMA pg_catalog TO nano_plugin;
-      GRANT USAGE ON SCHEMA public TO nano_plugin;
-    END
-    $$;
-  `)
-
-  const pluginClient = new Client()
-  await pluginClient.connect(pluginDsn.toString())
-
-  const pluginSqlFiles: { file: string; content: string }[] = []
-
-  for (const plugin of env.config.plugins) {
-    if (plugin.queries) {
-      const template = await plugin.queries({
-        client: pluginClient,
-        sql,
-      })
-      if (template) {
-        const outFile = path.join(
-          env.config.typescript.pluginSqlDir,
-          plugin.name.replace(/\//g, '__') + '.pgsql',
-        )
-
-        let oldContent = ''
-        try {
-          oldContent = fs.readFileSync(outFile, 'utf8')
-        } catch (error: any) {
-          if (error.code !== 'ENOENT') {
-            throw error
-          }
-        }
-
-        const content = dedent(await pluginClient.stringify(template))
-        if (content !== oldContent) {
-          pluginSqlFiles.push({
-            file: outFile,
-            content,
-          })
-        }
-      }
-    }
-  }
-
-  const count = pluginSqlFiles.length
-  if (count > 0) {
-    log(`Writing ${count} plugin SQL file${count === 1 ? '' : 's'}`)
-
-    // Clear out any old plugin-generated SQL files.
-    fs.rmSync(env.config.typescript.pluginSqlDir, {
-      recursive: true,
-      force: true,
-    })
-
-    fs.mkdirSync(env.config.typescript.pluginSqlDir, { recursive: true })
-    for (const { file, content } of pluginSqlFiles) {
-      fs.writeFileSync(file, content)
-    }
-  } else {
-    log.success('Plugin-generated SQL is up to date')
-  }
-
-  return count > 0
 }
