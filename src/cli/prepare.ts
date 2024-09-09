@@ -185,6 +185,7 @@ export async function prepareForMigration(filePaths: string[], env: Env) {
         }
       }
     } else {
+      log('Creating %s %s', object.type, object.id.toString())
       await client.query(sql.unsafe(object.query)).catch(error => {
         handleError(error, object)
       })

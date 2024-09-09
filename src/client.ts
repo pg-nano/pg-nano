@@ -265,10 +265,12 @@ export class Client {
   }
 
   /**
-   * Create a query that will return an array of rows. This assumes only one
-   * command exists in the given query.
+   * Create a query that will resolve with an array of rows (or stream one row
+   * at a time, when used as an async iterable).
    *
-   * You may define the row type using generics.
+   * - You may define the row type via this method's type parameter.
+   * - Your SQL template may contain multiple commands, but they run
+   *   sequentially. The result sets are concatenated.
    */
   queryRows<TRow extends Row>(
     command: SQLTemplate,
@@ -277,19 +279,32 @@ export class Client {
     const query = this.query<TRow, TRow>(command, result => result.rows)
     return query.withOptions({
       ...options,
-      resolve: ([result]) => result.rows,
+      resolve: results =>
+        results.flatMap(result => {
+          return result.rows
+        }),
     }) as any
   }
 
   /**
-   * Create a query that will return an array of values, each derived from the
-   * single column of each row in the query result.
+   * Create a query that will resolve with an array of values, where each value
+   * is derived from the only column of each row in the result set.
+   *
+   * - You may define the column type via this method's type parameter.
+   * - Your SQL template may contain multiple commands, but they run
+   *   sequentially. The result sets are concatenated.
    */
   queryColumns<T>(command: SQLTemplate, options?: QueryOptions): Query<T[]> {
     const query = this.query(command)
     return query.withOptions({
       ...options,
-      resolve: ([result]) => result.rows.map(row => row[result.fields[0].name]),
+      resolve: results =>
+        results.flatMap(result => {
+          if (result.fields.length !== 1) {
+            throw new Error('Expected 1 field, got ' + result.fields.length)
+          }
+          return result.rows.map(row => row[result.fields[0].name])
+        }),
     }) as any
   }
 

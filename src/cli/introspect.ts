@@ -186,29 +186,32 @@ export type PgCompositeType = {
 }
 
 export function introspectCompositeTypes(client: Client, signal?: AbortSignal) {
+  const attributesQuery = sql`
+    SELECT array_agg(
+      json_build_object(
+        'attname', a.attname,
+        'atttypid', a.atttypid::int,
+        'attnotnull', a.attnotnull
+      )
+      ORDER BY a.attnum
+    )
+    FROM pg_catalog.pg_attribute a
+    WHERE a.attrelid = t.typrelid
+      AND a.attnum > 0
+      AND NOT a.attisdropped
+  `
+
   const query = sql`
     SELECT
       t.oid,
       t.typname,
       n.nspname,
       t.typarray::oid,
-      array_agg(
-        json_build_object(
-          'attname', a.attname,
-          'atttypid', a.atttypid::int,
-          'attnotnull', a.attnotnull
-        )
-        ORDER BY a.attnum
-      ) AS fields
+      (${attributesQuery}) AS fields
     FROM pg_catalog.pg_type t
-    JOIN pg_catalog.pg_class c ON c.oid = t.typrelid
-    JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid
     JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace
     WHERE t.typrelid != 0
       AND n.nspname NOT IN ('pg_catalog', 'information_schema')
-      AND a.attnum > 0
-      AND NOT a.attisdropped
-    GROUP BY t.oid, t.typname
   `
 
   return client.queryRows<PgCompositeType>(query, { signal })

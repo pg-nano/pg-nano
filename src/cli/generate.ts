@@ -102,6 +102,16 @@ export async function generate(
     }
   }
 
+  // Step 3: Run the `generate` hook for each plugin.
+  for (const plugin of env.config.plugins) {
+    if (plugin.generate) {
+      await plugin.generate({
+        types: extendedTypeMappings,
+        namespaces,
+      })
+    }
+  }
+
   const moduleBasename = path.basename(env.config.typescript.outFile) + '.js'
   const builtinTypeRegex = /\b(Interval|Range|Circle|Point|JSON)\b/
   const renderedObjects = new Map<PgObject, string>()
@@ -173,15 +183,25 @@ export async function generate(
     return type
   }
 
-  // Step 3: Run the `generate` hook for each plugin.
-  for (const plugin of env.config.plugins) {
-    if (plugin.generate) {
-      await plugin.generate({
-        types: extendedTypeMappings,
-        namespaces,
-      })
-    }
-  }
+  const renderEnumType = (type: PgEnumType) =>
+    dedent`
+      export type ${pascal(type.typname)} = ${type.labels
+        .map(label => {
+          return JSON.stringify(label)
+        })
+        .join(' | ')}\n\n
+    `
+
+  const renderCompositeType = (type: PgCompositeType) =>
+    dedent`
+      export interface ${pascal(type.typname)} {
+        ${type.fields
+          .map(field => {
+            return `${field.attname}${field.attnotnull ? '' : '?'}: ${renderTypeReference(field.atttypid, type.nspname)}`
+          })
+          .join('\n')}
+      }\n\n
+    `
 
   // Step 4: Render type definitions for each function. This also builds up a
   // list of dependencies (e.g. imports and type definitions).
@@ -265,26 +285,6 @@ export async function generate(
       renderedObjects.set(fn, fnScript)
     }
   }
-
-  const renderEnumType = (type: PgEnumType) =>
-    dedent`
-      export type ${pascal(type.typname)} = ${type.labels
-        .map(label => {
-          return JSON.stringify(label)
-        })
-        .join(' | ')}\n\n
-    `
-
-  const renderCompositeType = (type: PgCompositeType) =>
-    dedent`
-      export interface ${pascal(type.typname)} {
-        ${type.fields
-          .map(field => {
-            return `${field.attname}${field.attnotnull ? '' : '?'}: ${renderTypeReference(field.atttypid, type.nspname)}`
-          })
-          .join('\n')}
-      }\n\n
-    `
 
   let code = dedent`
     import { ${[...imports].sort().join(', ')} } from 'pg-nano'
