@@ -1,4 +1,5 @@
 export * from './client.js'
+export * from './error.js'
 export * from './query.js'
 export * from './routines.js'
 export * from './types.js'
@@ -9,6 +10,7 @@ export {
   PgResultError,
   Range,
   buildResult,
+  isPgResultError,
   sql,
   type Field,
   type IntervalParts,

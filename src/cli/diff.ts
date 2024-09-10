@@ -43,7 +43,7 @@ export async function hasCompositeTypeChanged(
       AND t.typtype = 'c'
   `
 
-  const hasChanges = await client.queryOneColumn<boolean>(sql`
+  const hasChanges = await client.queryOneValue<boolean>(sql`
     WITH type1 AS (
       ${selectTypeById(type.id)}
     ),
@@ -92,7 +92,7 @@ export async function hasRoutineTypeChanged(
       AND p.pronamespace = ${id.schemaVal}::regnamespace
   `
 
-  const hasChanges = await client.queryOneColumn<boolean>(sql`
+  const hasChanges = await client.queryOneValue<boolean>(sql`
     WITH routine1 AS (
       ${selectRoutineById(fn.id)}
     ),

@@ -10,6 +10,7 @@ import {
   type SQLTemplate,
 } from 'pg-native'
 import { sleep } from 'radashi'
+import { ConnectionError, QueryError } from './error.js'
 import { Query, type QueryOptions } from './query'
 
 const debug = /** @__PURE__ */ createDebug('pg-nano')
@@ -93,7 +94,7 @@ export class Client {
     delay = Math.max(this.config.initialRetryDelay, 0),
   ): Promise<void> {
     if (!this.dsn) {
-      throw new Error('Postgres is not connected')
+      throw new ConnectionError('Postgres is not connected')
     }
     signal?.throwIfAborted()
     try {
@@ -202,7 +203,7 @@ export class Client {
    */
   async connect(dsn: string, signal?: AbortSignal) {
     if (this.dsn != null) {
-      throw new Error('Postgres is already connected')
+      throw new ConnectionError('Postgres is already connected')
     }
     this.setDSN(dsn)
     if (this.config.minConnections > 0) {
@@ -265,14 +266,14 @@ export class Client {
   }
 
   /**
-   * Create a query that will resolve with an array of rows (or stream one row
-   * at a time, when used as an async iterable).
+   * Create a query that resolves with an array of rows (or stream one row at a
+   * time, when used as an async iterable).
    *
    * - You may define the row type via this method's type parameter.
    * - Your SQL template may contain multiple commands, but they run
    *   sequentially. The result sets are concatenated.
    */
-  queryRows<TRow extends Row>(
+  queryAll<TRow extends Row>(
     command: SQLTemplate,
     options?: QueryOptions,
   ): Query<TRow[]> {
@@ -287,21 +288,23 @@ export class Client {
   }
 
   /**
-   * Create a query that will resolve with an array of values, where each value
-   * is derived from the only column of each row in the result set.
+   * Create a query that resolves with an array of values, where each value is
+   * derived from the only column of each row in the result set.
    *
    * - You may define the column type via this method's type parameter.
    * - Your SQL template may contain multiple commands, but they run
    *   sequentially. The result sets are concatenated.
    */
-  queryColumns<T>(command: SQLTemplate, options?: QueryOptions): Query<T[]> {
+  queryAllValues<T>(command: SQLTemplate, options?: QueryOptions): Query<T[]> {
     const query = this.query(command)
     return query.withOptions({
       ...options,
       resolve: results =>
         results.flatMap(result => {
           if (result.fields.length !== 1) {
-            throw new Error('Expected 1 field, got ' + result.fields.length)
+            throw new QueryError(
+              'Expected 1 field, got ' + result.fields.length,
+            )
           }
           return result.rows.map(row => row[result.fields[0].name])
         }),
@@ -309,40 +312,40 @@ export class Client {
   }
 
   /**
-   * Create a query that will return a single row. This assumes only one command
-   * exists in the given query. If you don't limit the results, the promise will
-   * be rejected when more than one row is received.
+   * Create a query that resolves with a single row. This assumes only one
+   * command exists in the given query. If you don't limit the results, the
+   * promise will be rejected when more than one row is received.
    *
    * You may define the row type using generics.
    */
-  async queryOneRow<TRow extends Row>(
+  async queryOne<TRow extends Row>(
     command: SQLTemplate,
     options?: QueryOptions,
   ): Promise<TRow | undefined> {
     const [result] = await this.query<TRow>(command).withOptions(options)
     if (result.rows.length > 1) {
-      throw new Error('Expected at most 1 row, got ' + result.rows.length)
+      throw new QueryError('Expected at most 1 row, got ' + result.rows.length)
     }
     return result.rows[0]
   }
 
   /**
-   * Create a query that will return a single value, derived from the single
+   * Create a query that resolves with a single value, derived from the single
    * column of the single row of the result set.
    *
    * If you're not sure if the result set could be empty, you'd better include
    * `undefined` in the result type.
    */
-  async queryOneColumn<T>(
+  async queryOneValue<T>(
     command: SQLTemplate,
     options?: QueryOptions,
   ): Promise<T> {
     const [result] = await this.query(command).withOptions(options)
     if (result.rows.length > 1) {
-      throw new Error('Expected at most 1 row, got ' + result.rows.length)
+      throw new QueryError('Expected at most 1 row, got ' + result.rows.length)
     }
     if (result.fields.length !== 1) {
-      throw new Error('Expected 1 field, got ' + result.fields.length)
+      throw new QueryError('Expected 1 field, got ' + result.fields.length)
     }
     return result.rows[0]?.[result.fields[0].name] as T
   }
@@ -396,7 +399,7 @@ export class Client {
     )
     this.pool = []
     if (this.backlog.length > 0) {
-      const error = new Error('Postgres client was closed')
+      const error = new ConnectionError('Postgres client was closed')
       this.backlog.forEach(fn => fn(error))
       this.backlog = []
     }

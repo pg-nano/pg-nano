@@ -82,7 +82,7 @@ export type PgFunction = {
   prokind: 'f' | 'p'
 }
 
-export function introspectFunctions(client: Client, signal?: AbortSignal) {
+export function introspectFunctions(pg: Client, signal?: AbortSignal) {
   /**
    * Find the procs that are:
    *   - not built-in
@@ -111,20 +111,20 @@ export function introspectFunctions(client: Client, signal?: AbortSignal) {
       AND p.prorettype != 2279 -- trigger
   `
 
-  return client.queryRows<PgFunction>(query, { signal })
+  return pg.queryAll<PgFunction>(query, { signal })
 }
 
 export async function introspectResultSet(
-  client: Client,
+  pg: Client,
   fn: PgFunction,
   signal?: AbortSignal,
 ) {
   const stmtName = 'pg_nano_' + fn.proname
 
   await sendCommand(
-    client,
-    pq =>
-      pq.sendPrepare(
+    pg,
+    libpq =>
+      libpq.sendPrepare(
         stmtName,
         `SELECT * FROM ${fn.nspname}.${fn.proname}(${fn.proargtypes.map((_, i) => `$${i + 1}`).join(', ')})`,
         fn.proargtypes.length,
@@ -133,16 +133,16 @@ export async function introspectResultSet(
   )
 
   const description = await sendCommand(
-    client,
-    pq => {
-      pq.describePrepared(stmtName)
-      return async () => buildResult(pq)
+    pg,
+    libpq => {
+      libpq.describePrepared(stmtName)
+      return async () => buildResult(libpq)
     },
     signal,
   )
 
   const query = sql`DEALLOCATE ${sql.id(stmtName)}`
-  await client.query(query).withOptions({ signal })
+  await pg.query(query).withOptions({ signal })
 
   return description.fields
 }
@@ -159,7 +159,7 @@ export function introspectArrayTypes(client: Client, signal?: AbortSignal) {
     WHERE typlen = -1 AND typelem != 0 AND typarray = 0
   `
 
-  return client.queryRows<PgArrayType>(query, { signal })
+  return client.queryAll<PgArrayType>(query, { signal })
 }
 
 export type PgEnumType = {
@@ -188,7 +188,7 @@ export function introspectEnumTypes(client: Client, signal?: AbortSignal) {
     WHERE t.typtype = 'e'
   `
 
-  return client.queryRows<PgEnumType>(query, { signal })
+  return client.queryAll<PgEnumType>(query, { signal })
 }
 
 export type PgCompositeType = {
@@ -233,7 +233,7 @@ export function introspectCompositeTypes(client: Client, signal?: AbortSignal) {
       AND n.nspname NOT IN ('pg_catalog', 'information_schema')
   `
 
-  return client.queryRows<PgCompositeType>(query, { signal })
+  return client.queryAll<PgCompositeType>(query, { signal })
 }
 
 export type PgTable = {
@@ -282,7 +282,7 @@ export function introspectTables(client: Client, signal?: AbortSignal) {
       AND n.nspname NOT IN ('pg_catalog', 'information_schema')
   `
 
-  return client.queryRows<PgTable>(query, { signal })
+  return client.queryAll<PgTable>(query, { signal })
 }
 
 async function sendCommand<TResult = Result[]>(

@@ -1,8 +1,23 @@
 {
   "name": "@pg-nano/plugin-crud",
+  "type": "module",
   "version": "0.1.0",
-  "main": "crud.js",
+  "exports": {
+    "./params": {
+      "types": "./dist/params.d.ts",
+      "default": "./dist/params.js"
+    },
+    ".": {
+      "types": "./dist/crud.d.ts",
+      "default": "./dist/crud.js"
+    }
+  },
   "devDependencies": {
+    "pg-nano": "workspace:@pg-nano/core@^",
     "@pg-nano/plugin": "workspace:^"
+  },
+  "scripts": {
+    "dev": "rimraf dist && tsup --watch --sourcemap",
+    "build": "rimraf dist && tsup"
   }
 }

@@ -100,7 +100,7 @@ export async function prepareForMigration(filePaths: string[], env: Env) {
 
     const { from, schemaKey, nameKey } = objectExistence[type]
 
-    return client.queryOneColumn<boolean>(sql`
+    return client.queryOneValue<boolean>(sql`
       SELECT EXISTS (
         SELECT 1
         FROM ${sql.id(from)}
@@ -255,7 +255,7 @@ function getLineFromPosition(position: number, query: string) {
 
 async function generatePluginQueries(env: Env, allObjects: ParsedObjectStmt[]) {
   // Ensure that removed plugins don't leave behind any SQL files.
-  fs.rmSync(env.config.typescript.pluginSqlDir, {
+  fs.rmSync(env.config.generate.pluginSqlDir, {
     recursive: true,
     force: true,
   })
@@ -271,7 +271,7 @@ async function generatePluginQueries(env: Env, allObjects: ParsedObjectStmt[]) {
     return
   }
 
-  fs.mkdirSync(env.config.typescript.pluginSqlDir, { recursive: true })
+  fs.mkdirSync(env.config.generate.pluginSqlDir, { recursive: true })
 
   for (const plugin of plugins) {
     log('Generating SQL statements with plugin', plugin.name)
@@ -283,7 +283,7 @@ async function generatePluginQueries(env: Env, allObjects: ParsedObjectStmt[]) {
 
     if (template) {
       const outFile = path.join(
-        env.config.typescript.pluginSqlDir,
+        env.config.generate.pluginSqlDir,
         plugin.name.replace(/\//g, '__') + '.pgsql',
       )
 

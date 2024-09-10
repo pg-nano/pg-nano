@@ -14,6 +14,7 @@ import {
 } from './introspect'
 import { log } from './log'
 import { parseMigrationPlan } from './parseMigrationPlan'
+import type { PgColumnDef } from './parseObjectStatements.js'
 import { prepareForMigration } from './prepare'
 import {
   typeConversion,
@@ -47,8 +48,8 @@ export async function generate(
   // Step 1: Collect type information from the database.
   const namespaces = await introspectNamespaces(client, options.signal)
 
-  const { inspect } = await import('node:util')
-  console.log(inspect(namespaces, { depth: null, colors: true }))
+  // const { inspect } = await import('node:util')
+  // console.log(inspect(namespaces, { depth: null, colors: true }))
 
   type PgUserType = {
     kind: 'enum' | 'composite' | 'table'
@@ -112,7 +113,7 @@ export async function generate(
     }
   }
 
-  const moduleBasename = path.basename(env.config.typescript.outFile) + '.js'
+  const moduleBasename = path.basename(env.config.generate.outFile) + '.js'
   const builtinTypeRegex = /\b(Interval|Range|Circle|Point|JSON)\b/
   const renderedObjects = new Map<PgObject, string>()
   const unsupportedTypes = new Set<number>()
@@ -267,8 +268,7 @@ export async function generate(
         argNames || schema ? `, ${JSON.stringify(argNames || null)}` : ''
 
       let resultType: string | undefined
-      let resultColumns: string[] | undefined
-      let resultCompositeType: PgCompositeType | undefined
+      let resultKind: 'row' | 'value' | undefined
 
       const fnStmt = allFunctionsByName.get(fn.nspname + '.' + fn.proname)!
 
@@ -278,33 +278,33 @@ export async function generate(
         resultType = renderTypeReference(fn.prorettype, fn.nspname, 'return')
 
         const userType = userTypes.get(fn.prorettype)
-        if (userType && 'fields' in userType.meta) {
-          resultCompositeType = userType.meta as PgCompositeType
+        if (userType?.kind === 'table' && userType.arity === 'unit') {
+          resultKind = 'row'
         }
       } else {
-        resultColumns = fnStmt.returnType.map(col => {
+        const renderColumn = (col: PgColumnDef) => {
           const mapping = extendedTypeMappings.find(
             mapping =>
               mapping.name === col.type.name &&
-              mapping.schema === col.type.schema!,
+              mapping.schema === (col.type.schema ?? fn.nspname),
           )
           return `${col.name}: ${mapping ? renderTypeReference(mapping.oid, fn.nspname, 'return') : 'unknown'}`
-        })
+        }
+
+        resultType = `{ ${fnStmt.returnType.map(renderColumn).join(', ')} }`
+        resultKind = 'row'
       }
 
-      const constructor = fn.proretset
-        ? resultCompositeType || resultColumns
-          ? 'queryRowsRoutine'
-          : 'queryColumnsRoutine'
-        : resultCompositeType || resultColumns
-          ? 'queryOneRowRoutine'
-          : 'queryOneColumnRoutine'
+      const constructor =
+        resultKind === 'row'
+          ? fn.proretset
+            ? 'routineQueryAll'
+            : 'routineQueryOne'
+          : fn.proretset
+            ? 'routineQueryAllValues'
+            : 'routineQueryOneValue'
 
       imports.add(constructor)
-
-      if (resultColumns) {
-        resultType = `{ ${resultColumns.join(', ')} }`
-      }
 
       const fnScript = dedent`
         export declare namespace ${jsName} {
@@ -347,11 +347,11 @@ export async function generate(
   }
 
   // Step 6: Write the generated type definitions to a file.
-  fs.writeFileSync(env.config.typescript.outFile, code.replace(/\s+$/, '\n'))
+  fs.writeFileSync(env.config.generate.outFile, code.replace(/\s+$/, '\n'))
 
   // Step 7: Warn about any unsupported types.
   for (const typeOid of unsupportedTypes) {
-    const typeName = await client.queryOneColumn<string>(sql`
+    const typeName = await client.queryOneValue<string>(sql`
       SELECT typname FROM pg_type WHERE oid = ${sql.val(typeOid)}
     `)
 
@@ -363,7 +363,7 @@ export async function generate(
 }
 
 async function migrate(env: Env) {
-  const applyProc = diffSchemas(env, 'apply')
+  const applyProc = pgSchemaDiff(env, 'apply')
 
   let applyStderr = ''
   applyProc.stderr?.on('data', data => {
@@ -404,26 +404,26 @@ async function migrate(env: Env) {
   }
 }
 
-function diffSchemas(env: Env, command: 'apply' | 'plan') {
+function pgSchemaDiff(env: Env, command: 'apply' | 'plan') {
   const applyArgs: string[] = []
   if (command === 'apply') {
     applyArgs.push(
       '--skip-confirm-prompt',
       '--allow-hazards',
       env.config.migration.allowHazards.join(','),
-      '--pre-plan-file',
-      path.join(env.untrackedDir, 'pre-plan.sql'),
+      // '--pre-plan-file',
+      // path.join(env.untrackedDir, 'pre-plan.sql'),
       '--disable-plan-validation',
     )
   }
 
-  const pgSchemaDiff = path.join(
+  const binaryPath = path.join(
     new URL(import.meta.resolve('@pg-nano/pg-schema-diff/package.json'))
       .pathname,
     '../pg-schema-diff',
   )
 
-  return spawn(pgSchemaDiff, [
+  return spawn(binaryPath, [
     command,
     '--dsn',
     env.config.dev.connectionString,

@@ -57,9 +57,6 @@ importers:
       esbuild-plugin-license:
         specifier: ^1.2.3
         version: 1.2.3(esbuild@0.23.1)
-      is-localhost-ip:
-        specifier: ^2.0.0
-        version: 2.0.0
       mri:
         specifier: ^1.2.0
         version: 1.2.0
@@ -975,10 +972,6 @@ packages:
   is-glob@4.0.3:
     resolution: {integrity: sha512-xelSayHH36ZgE7ZWhli7pW34hNbNl8Ojv5KVmkJD4hBdD3th8Tfk9vYasLM+mXWOZhFkgZfxhLSnrwRr4elSSg==}
     engines: {node: '>=0.10.0'}
-
-  is-localhost-ip@2.0.0:
-    resolution: {integrity: sha512-vlgs2cSgMOfnKU8c1ewgKPyum9rVrjjLLW2HBdL5i0iAJjOs8NY55ZBd/hqUTaYR0EO9CKZd3hVSC2HlIbygTQ==}
-    engines: {node: '>=12'}
 
   is-number@7.0.0:
     resolution: {integrity: sha512-41Cifkg6e8TylSpdtTpeLVMqvSBEVzTttHvERD741+pnZ8ANv0004MRL43QKPDlK9cGvNp6NZWZUBlbGXYxxng==}
@@ -2328,8 +2321,6 @@ snapshots:
   is-glob@4.0.3:
     dependencies:
       is-extglob: 2.1.1
-
-  is-localhost-ip@2.0.0: {}
 
   is-number@7.0.0: {}
 

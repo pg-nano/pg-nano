@@ -1,4 +1,3 @@
-import { watch } from 'chokidar'
 import { gray, strikethrough } from 'kleur/colors'
 import { statSync } from 'node:fs'
 import path from 'node:path'
@@ -10,20 +9,12 @@ import { log } from '../log'
 type Options = EnvOptions & {}
 
 export default async function dev(cwd: string, options: Options = {}) {
-  const env = await getEnv(cwd, options)
-
-  const watcher = watch(env.config.schema.include, {
-    cwd: env.root,
-    ignored: [
-      ...env.config.schema.exclude,
-      env.config.typescript.pluginSqlDir,
-      '**/.pg-nano/**',
-    ],
+  const env = await getEnv(cwd, {
+    ...options,
+    watch: true,
   })
 
-  if (env.configFilePath) {
-    watcher.add(env.configFilePath)
-  }
+  const watcher = env.watcher!
 
   let controller = new AbortController()
 
@@ -48,11 +39,12 @@ export default async function dev(cwd: string, options: Options = {}) {
     })
   })
 
-  watcher.on('all', (event, path) => {
+  watcher.on('all', (event, file) => {
     if (event === 'addDir' || event === 'unlinkDir') {
       return
     }
-    if (path === env.configFilePath) {
+    const filePath = path.join(watcher.options.cwd!, file)
+    if (env.configDependencies.includes(filePath)) {
       if (event === 'change') {
         watcher.close()
 
@@ -60,10 +52,10 @@ export default async function dev(cwd: string, options: Options = {}) {
         dev(cwd, { ...options, reloadEnv: true })
       }
     } else {
-      const skipped = event === 'add' && statSync(path).size === 0
+      const skipped = event === 'add' && statSync(file).size === 0
       log.magenta(
         event,
-        skipped ? gray(strikethrough(path) + ' (empty)') : path,
+        skipped ? gray(strikethrough(file) + ' (empty)') : file,
       )
       if (!skipped) {
         regenerate()

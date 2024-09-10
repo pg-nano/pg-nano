@@ -32,7 +32,7 @@ export interface UserConfig {
   migration?: {
     allowHazards?: MigrationHazardType[]
   }
-  typescript?: {
+  generate?: {
     /**
      * The file to write the generated TypeScript definitions to. This includes
      * the UDF wrapper functions.

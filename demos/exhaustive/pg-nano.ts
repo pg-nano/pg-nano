@@ -8,7 +8,7 @@ export default defineConfig({
   schema: {
     include: ['**/*.pgsql'],
   },
-  typescript: {
+  generate: {
     outFile: 'sql/routines.ts',
   },
   plugins: [crud()],

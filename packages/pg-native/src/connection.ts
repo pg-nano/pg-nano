@@ -88,10 +88,12 @@ export class Connection extends ConnectionEmitter {
    * Close the database connection.
    */
   close() {
-    stopReading(unprotect(this), ConnectionStatus.CLOSED)
-    this.pq.finish()
-    this.pq = null!
-    this.emit('close')
+    if (this.pq) {
+      stopReading(unprotect(this), ConnectionStatus.CLOSED)
+      this.pq.finish()
+      this.pq = null!
+      this.emit('close')
+    }
   }
 }
 

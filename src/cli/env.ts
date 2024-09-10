@@ -1,7 +1,7 @@
 /// <reference types="@pg-nano/plugin" />
 import type { UserConfig } from '@pg-nano/config'
 import { bundleRequire } from 'bundle-require'
-import isLocalhostIP from 'is-localhost-ip'
+import { watch } from 'chokidar'
 import path from 'node:path'
 import { Client, sql } from 'pg-nano'
 import { allMigrationHazardTypes } from '../config/hazards'
@@ -11,6 +11,7 @@ import { log } from './log'
 export type EnvOptions = {
   dsn?: string
   verbose?: boolean
+  watch?: boolean
   /** Skip cache and reload environment */
   reloadEnv?: boolean
 }
@@ -42,12 +43,15 @@ async function loadEnv(cwd: string, options: EnvOptions) {
   const schemaDir = path.join(untrackedDir, 'schema')
 
   let userConfig: UserConfig | undefined
+  let userConfigDependencies: string[] = []
+
   if (configFilePath) {
     log('Loading config file', configFilePath)
     const result = await bundleRequire({
       filepath: configFilePath,
     })
     userConfig = result.mod.default
+    userConfigDependencies = result.dependencies.map(dep => path.resolve(dep))
   }
 
   const config = {
@@ -70,15 +74,15 @@ async function loadEnv(cwd: string, options: EnvOptions) {
       ...userConfig?.migration,
       allowHazards: userConfig?.migration?.allowHazards ?? [],
     },
-    typescript: {
-      ...userConfig?.typescript,
+    generate: {
+      ...userConfig?.generate,
       outFile: path.resolve(
         root,
-        userConfig?.typescript?.outFile ?? 'sql/routines.ts',
+        userConfig?.generate?.outFile ?? 'sql/routines.ts',
       ),
       pluginSqlDir: path.resolve(
         root,
-        userConfig?.typescript?.pluginSqlDir ?? 'sql/nano_plugins',
+        userConfig?.generate?.pluginSqlDir ?? 'sql/nano_plugins',
       ),
     },
   }
@@ -87,7 +91,7 @@ async function loadEnv(cwd: string, options: EnvOptions) {
   config.migration.allowHazards.push('HAS_UNTRACKABLE_DEPENDENCIES' as any)
 
   // Enable unsafe mode for local development.
-  if (await isLocalhostIP(config.dev.connectionString)) {
+  if (config.dev.connectionString.includes('localhost')) {
     config.migration.allowHazards.push(...allMigrationHazardTypes)
   } else {
     throw new Error('Non-local databases are not currently supported')
@@ -98,9 +102,20 @@ async function loadEnv(cwd: string, options: EnvOptions) {
   return {
     root,
     configFilePath: configFilePath && path.relative(root, configFilePath),
+    configDependencies: userConfigDependencies,
     config,
     untrackedDir,
     schemaDir,
+    watcher: options.watch
+      ? watch([...config.schema.include, ...userConfigDependencies], {
+          cwd: root,
+          ignored: [
+            ...config.schema.exclude,
+            config.generate.pluginSqlDir,
+            '**/.pg-nano/**',
+          ],
+        })
+      : undefined,
     get client() {
       return (client ??= (async () => {
         log('Connecting to database', fuzzPassword(config.dev.connectionString))

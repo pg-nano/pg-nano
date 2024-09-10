@@ -26,7 +26,6 @@
     "debug": "^4.3.6",
     "esbuild-plugin-copy": "^2.1.1",
     "esbuild-plugin-license": "^1.2.3",
-    "is-localhost-ip": "^2.0.0",
     "mri": "^1.2.0",
     "pg-nano": "link:",
     "pg-native": "workspace:^",
@@ -44,7 +43,8 @@
   "scripts": {
     "prepare": "pnpm -s build",
     "build": "rimraf dist && tsup",
-    "dev": "rimraf dist && DEV=1 tsup --watch --sourcemap",
+    "dev": "tinyrun --names pg-nano,plugins 'pnpm -s dev:core' 'pnpm -s --filter=@pg-nano/plugin-* dev'",
+    "dev:core": "rimraf dist && DEV=1 tsup --watch --sourcemap",
     "format": "biome check --fix --unsafe src generators package.json",
     "lint": "tinyrun --names pg-nano,pg-native,biome 'tsc -p .' 'tsc -p src/pg-native' 'biome lint src generators'"
   },

@@ -6,14 +6,53 @@ AS $$
 DECLARE
   sql text;
   condition json;
+  field text;
+  op text;
+  val json;
 BEGIN
   IF conditions IS NOT NULL AND json_array_length(conditions) > 0 THEN
-  sql := ' WHERE ';
+    sql := ' WHERE ';
     FOR condition IN SELECT * FROM json_array_elements(conditions)
     LOOP
-    sql := sql || condition->>'field' || ' ' || condition->>'operator' || ' ' || quote_literal(condition->>'value') || ' AND ';
+      field := condition->>'field';
+      op := condition->>'operator';
+      val := condition->'value';
+
+      -- Verify the operator is valid
+      IF op NOT IN ('=', '<>', '>', '<', '>=', '<=', 'LIKE', 'ILIKE', 'IN', 'NOT IN', 'IS NULL', 'IS NOT NULL') THEN
+RAISE EXCEPTION 'Invalid operator: %', op;
+      END IF;
+
+      -- Handle special cases for NULL and IN operators
+      IF op IN ('IS NULL', 'IS NOT NULL') THEN
+sql := sql || quote_ident(field)
+           || ' '
+           || op
+           || ' AND ';
+      ELSIF op IN ('IN', 'NOT IN') THEN
+sql := sql || quote_ident(field)
+           || CASE WHEN op = 'IN' THEN ' = ANY' ELSE ' <> ALL' END
+           || '(ARRAY['
+           || array_to_string(ARRAY(
+                SELECT CASE 
+                  WHEN json_typeof(v) = 'string' THEN quote_literal(v::text)
+                  ELSE v::text
+                END
+                FROM json_array_elements(val) AS v
+              ), ',')
+           || ']::pg_typeof('
+           || quote_ident(field)
+           || ')[]) AND ';
+      ELSE
+sql := sql || quote_ident(field)
+           || ' '
+           || op
+           || ' '
+           || CASE WHEN json_typeof(val) = 'string' THEN quote_literal(val::text) ELSE val::text END
+           || ' AND ';
+      END IF;
     END LOOP;
-    sql := left(sql, -5);
+    sql := left(sql, -5); -- Remove trailing ' AND '
   END IF;
   RETURN sql;
 END;
