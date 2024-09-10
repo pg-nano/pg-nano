@@ -1,13 +1,14 @@
 import {
   $,
+  ConstrType,
   FunctionParameterMode,
   NodeTag,
   parseQuery,
   splitWithScannerSync,
 } from '@pg-nano/pg-parser'
 import util from 'node:util'
+import { SQLIdentifier } from './identifier'
 import { log } from './log'
-import { SQLIdentifier } from './parseIdentifier'
 
 const inspect = (value: any) =>
   util.inspect(value, { depth: null, colors: true })
@@ -73,7 +74,7 @@ export async function parseObjectStatements(sql: string, file: string) {
         ? outParams
         : fn.returnType
           ? SQLIdentifier.fromQualifiedName(fn.returnType.names)
-          : undefined!
+          : undefined
 
       objects.push({
         type: 'function',
@@ -81,6 +82,7 @@ export async function parseObjectStatements(sql: string, file: string) {
         params: inParams,
         returnType,
         returnSet: fn.returnType?.setof ?? false,
+        isProcedure: fn.is_procedure ?? false,
         query,
         line,
         file,
@@ -94,17 +96,39 @@ export async function parseObjectStatements(sql: string, file: string) {
       }
 
       const id = new SQLIdentifier(relation.relname, relation.schemaname)
-      const columns = tableElts
-        .filter(col => NodeTag.isColumnDef(col))
-        .map(col => ({
-          name: $(col).colname!,
-          type: SQLIdentifier.fromQualifiedName($(col).typeName!.names!),
-        }))
+      const columns: PgColumnDef[] = []
+      const primaryKeyColumns: string[] = []
+
+      for (const elt of tableElts) {
+        if (NodeTag.isColumnDef(elt)) {
+          const { colname, typeName, constraints } = $(elt)
+          columns.push({
+            name: colname!,
+            type: SQLIdentifier.fromQualifiedName(typeName!.names!),
+          })
+          if (constraints) {
+            for (const constraint of constraints) {
+              const { contype } = $(constraint)
+              if (contype === ConstrType.CONSTR_PRIMARY) {
+                primaryKeyColumns.push(colname!)
+              }
+            }
+          }
+        } else if (NodeTag.isConstraint(elt)) {
+          const { contype } = $(elt)
+          if (contype === ConstrType.CONSTR_PRIMARY) {
+            for (const key of $(elt).keys!) {
+              primaryKeyColumns.push($(key).sval)
+            }
+          }
+        }
+      }
 
       objects.push({
         type: 'table',
         id,
         columns,
+        primaryKeyColumns,
         query,
         line,
         file,
@@ -237,13 +261,15 @@ export type PgColumnDef = {
 export interface PgFunctionStmt extends PgObjectStmt {
   type: 'function'
   params: PgParamDef[]
-  returnType: SQLIdentifier | PgColumnDef[]
+  returnType: SQLIdentifier | PgColumnDef[] | undefined
   returnSet: boolean
+  isProcedure: boolean
 }
 
 export interface PgTableStmt extends PgObjectStmt {
   type: 'table'
   columns: PgColumnDef[]
+  primaryKeyColumns: string[]
 }
 
 export interface PgTypeStmt extends PgObjectStmt {

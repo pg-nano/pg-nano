@@ -7,7 +7,7 @@ function sqlRoutineCall(schema: string, name: string, values: any[]) {
   return sql`${sql.id(schema)}.${sql.id(name)}(${values.map(sql.val)})`
 }
 
-export type PgRoutine<TArgs extends object, TResult> = TArgs extends any[]
+export type Routine<TArgs extends object, TResult> = TArgs extends any[]
   ? (client: Client, ...args: TArgs) => TResult
   : (client: Client, args: TArgs) => TResult
 
@@ -19,7 +19,7 @@ export function queryRowsRoutine<TArgs extends object, TRow extends Row>(
   name: string,
   params?: string[] | null,
   schema = 'public',
-): PgRoutine<TArgs, Query<TRow[]>> {
+): Routine<TArgs, Query<TRow[]>> {
   const routine = params
     ? (client: Client, args: TArgs) =>
         client.queryRows(
@@ -41,7 +41,7 @@ export function queryColumnsRoutine<TArgs extends object, TResult>(
   name: string,
   params?: string[] | null,
   schema = 'public',
-): PgRoutine<TArgs, Query<TResult[]>> {
+): Routine<TArgs, Query<TResult[]>> {
   const routine = params
     ? (client: Client, args: TArgs) =>
         client.queryColumns(
@@ -63,7 +63,7 @@ export function queryOneRowRoutine<TArgs extends object, TRow extends Row>(
   name: string,
   params?: string[] | null,
   schema = 'public',
-): PgRoutine<TArgs, Promise<TRow | null>> {
+): Routine<TArgs, Promise<TRow | null>> {
   const routine = params
     ? (client: Client, args: TArgs) =>
         client.queryOneRow(
@@ -85,7 +85,7 @@ export function queryOneColumnRoutine<TArgs extends object, TResult>(
   name: string,
   params?: string[] | null,
   schema = 'public',
-): PgRoutine<TArgs, Promise<TResult | null>> {
+): Routine<TArgs, Promise<TResult | null>> {
   const routine = params
     ? (client: Client, args: TArgs) =>
         client.queryOneColumn(

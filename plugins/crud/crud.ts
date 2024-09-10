@@ -1,6 +1,12 @@
 import type { PgTableStmt, Plugin, StatementsContext } from '@pg-nano/plugin'
+import { objectify } from 'radashi'
+import irregularPlurals from './irregular-plurals'
 
-export default function (): Plugin {
+type Options = {
+  pluralize?: (noun: string) => string
+}
+
+export default function (options: Options = {}): Plugin {
   return {
     name: '@pg-nano/plugin-crud',
     async statements(context) {
@@ -9,8 +15,14 @@ export default function (): Plugin {
 
       return sql`
         ${renderUtilityFunctions(context)}
-        ${tables.map(table => renderTableQueries(table, context))}
+        ${tables.map(table => renderTableQueries(table, context, options))}
       `
+    },
+    generate({ namespaces }) {
+      // Skip build_where_clause in the TypeScript definitions.
+      namespaces.public.functions = namespaces.public.functions.filter(fn => {
+        return fn.proname !== 'build_where_clause'
+      })
     },
   }
 }
@@ -23,48 +35,42 @@ function renderUtilityFunctions({ sql }: StatementsContext) {
     LANGUAGE plpgsql
     AS $$
     DECLARE
-      where_clause text;
+      sql text;
       condition json;
     BEGIN
       IF conditions IS NOT NULL AND json_array_length(conditions) > 0 THEN
-      where_clause := ' WHERE ';
+      sql := ' WHERE ';
         FOR condition IN SELECT * FROM json_array_elements(conditions)
         LOOP
-        where_clause := where_clause || condition->>'field' || ' ' || condition->>'operator' || ' ' || quote_literal(condition->>'value') || ' AND ';
+        sql := sql || condition->>'field' || ' ' || condition->>'operator' || ' ' || quote_literal(condition->>'value') || ' AND ';
         END LOOP;
-        where_clause := left(where_clause, -5);
+        sql := left(sql, -5);
       END IF;
-      RETURN where_clause;
+      RETURN sql;
     END;
     $$;
   `
 }
 
-type PgTable = {
-  name: string
-  primary_key_columns: string[]
-  columns: string[]
-}
-
 function renderTableQueries(
   table: Readonly<PgTableStmt>,
   { sql }: StatementsContext,
+  options: Options,
 ) {
-  if (!table.primary_key_columns.length) {
+  if (!table.primaryKeyColumns.length) {
     // No primary key, skip
     return ''
   }
 
-  const fn = (prefix: string) => sql.id(`${prefix}_${table.name}`)
-  const tbl = sql.id(table.name)
+  const tableId = table.id.toSQL()
 
   // Typed parameter list for a primary key (possibly composite)
   const pkParams = sql.join(
     ',',
-    table.primary_key_columns.map(pk => [
+    table.primaryKeyColumns.map(pk => [
       sql.id(`p_${pk}`),
       sql.unsafe(' '),
-      sql.id(table.name, pk),
+      sql.id(table.id.name, pk),
       sql.unsafe('%TYPE'),
     ]),
   )
@@ -72,7 +78,7 @@ function renderTableQueries(
   // For matching a row by the primary key parameters.
   const pkParamsMatch = sql.join(
     sql.unsafe(' AND '),
-    table.primary_key_columns.map(pk =>
+    table.primaryKeyColumns.map(pk =>
       sql.join(sql.unsafe(' = '), [sql.id(pk), sql.id(`p_${pk}`)]),
     ),
   )
@@ -80,121 +86,183 @@ function renderTableQueries(
   // List of primary key columns (e.g. for SELECT statements)
   const pkColumns = sql.join(
     ',',
-    table.primary_key_columns.map(pk => sql.id(pk)),
+    table.primaryKeyColumns.map(pk => sql.id(pk)),
+  )
+
+  const pluralize =
+    options.pluralize ??
+    ((noun: string) => {
+      return irregularPlurals[noun] ?? `${noun}s`
+    })
+
+  const fn = objectify(
+    [
+      ['get', false],
+      ['list', true],
+      ['find', false],
+      ['count', true],
+      ['insert', false],
+      ['upsert', false],
+      ['update', false],
+      ['replace', false],
+      ['delete', false],
+    ] as const,
+    ([verb]) => verb,
+    ([verb, plural]) => {
+      const schema = table.id.schema ?? 'public'
+      const name = `${verb}_${plural ? pluralize(table.id.name) : table.id.name}`
+      return sql.id(schema, name)
+    },
   )
 
   return sql`
     -- Get a row by primary key
-    CREATE FUNCTION ${fn('get')}(${pkParams})
-    RETURNS ${tbl}
-    LANGUAGE SQL
-    AS $$
-      SELECT * FROM ${tbl} WHERE ${pkParamsMatch} LIMIT 1;
-    $$;
-
-    -- List rows matching conditions
-    CREATE FUNCTION ${fn('list')}(conditions JSON)
-    RETURNS SETOF ${tbl}
+    CREATE FUNCTION ${fn.get}(${pkParams})
+    RETURNS ${tableId}
     LANGUAGE plpgsql
     AS $$
     DECLARE
-      query text;
+      result ${tableId};
     BEGIN
-      query := 'SELECT * FROM ${tbl}' || build_where_clause(conditions);
-      RETURN QUERY EXECUTE query;
+      SELECT * FROM ${tableId}
+        WHERE ${pkParamsMatch}
+        LIMIT 1
+        INTO result;
+      RETURN result;
+    END;
+    $$;
+
+    -- List rows matching conditions
+    CREATE FUNCTION ${fn.list}(conditions JSON)
+    RETURNS SETOF ${tableId}
+    LANGUAGE plpgsql
+    AS $$
+    DECLARE
+      sql text;
+    BEGIN
+      sql := 'SELECT * FROM ${tableId}' || build_where_clause(conditions);
+      RETURN QUERY EXECUTE sql;
     END;
     $$;
 
     -- Find a row by conditions
-    CREATE FUNCTION ${fn('find')}(conditions JSON)
-    RETURNS SETOF ${tbl}
+    CREATE FUNCTION ${fn.find}(conditions JSON)
+    RETURNS ${tableId}
     LANGUAGE plpgsql
     AS $$
+    DECLARE
+      result ${tableId};
     BEGIN
-      RETURN QUERY SELECT * FROM ${fn('list')}(conditions) LIMIT 1;
+      SELECT * FROM ${fn.list}(conditions)
+        LIMIT 1
+        INTO result;
+      RETURN result;
     END;
     $$;
 
     -- Count rows matching conditions
-    CREATE FUNCTION ${fn('count')}(conditions JSON)
+    CREATE FUNCTION ${fn.count}(conditions JSON)
     RETURNS bigint
     LANGUAGE plpgsql
     AS $$
     DECLARE
-      query text;
+      sql text;
       result bigint;
     BEGIN
-      query := 'SELECT COUNT(*) FROM ${tbl}' || build_where_clause(conditions);
-      EXECUTE query INTO result;
+      sql := 'SELECT COUNT(*) FROM ${tableId}' || build_where_clause(conditions);
+      EXECUTE sql INTO result;
       RETURN result;
     END;
     $$;
 
     -- Insert a row
-    CREATE FUNCTION ${fn('insert')}(data ${tbl})
-    RETURNS SETOF ${tbl}
+    CREATE FUNCTION ${fn.insert}(rec ${tableId})
+    RETURNS SETOF ${tableId}
     LANGUAGE plpgsql
     AS $$
     BEGIN
-      RETURN QUERY INSERT INTO ${tbl} SELECT * FROM json_populate_record(null::${tbl}, data::json) RETURNING *;
+      RETURN QUERY
+        INSERT INTO ${tableId} VALUES (rec.*)
+        RETURNING *;
     END;
     $$;
 
     -- Upsert a row by primary key
-    CREATE FUNCTION ${fn('upsert')}(data ${tbl})
-    RETURNS ${tbl}
-    LANGUAGE SQL
-    AS $$
-      INSERT INTO ${tbl} SELECT * FROM json_populate_record(null::${tbl}, data::json)
-      ON CONFLICT (${pkColumns}) DO UPDATE
-      SET ${sql.join(
-        ',',
-        table.columns.map(c => [
-          sql.id(c),
-          sql.unsafe(' = EXCLUDED.'),
-          sql.id(c),
-        ]),
-      )}
-      RETURNING *;
-    $$;
-
-    -- Update a row by primary key
-    CREATE FUNCTION ${fn('update')}(${pkParams}, data JSON)
-    RETURNS ${tbl}
+    CREATE FUNCTION ${fn.upsert}(rec ${tableId})
+    RETURNS ${tableId}
     LANGUAGE plpgsql
     AS $$
     DECLARE
-      update_query text := 'UPDATE ${tbl} SET ';
+      result ${tableId};
+    BEGIN
+      INSERT INTO ${tableId} VALUES (rec.*)
+      ON CONFLICT (${pkColumns}) DO UPDATE
+      SET ${sql.join(
+        ',',
+        table.columns.map(col => [
+          sql.id(col.name),
+          sql.unsafe(' = EXCLUDED.'),
+          sql.id(col.name),
+        ]),
+      )}
+      RETURNING * INTO result;
+      RETURN result;
+    END;
+    $$;
+
+    -- Update a row by primary key
+    CREATE FUNCTION ${fn.update}(${pkParams}, data JSON)
+    RETURNS ${tableId}
+    LANGUAGE plpgsql
+    AS $$
+    DECLARE
+      sql text := 'UPDATE ${tableId} SET ';
       key text;
       value json;
+      result ${tableId};
     BEGIN
-      FOR key, value IN SELECT * FROM json_each(data)
-      LOOP
-        update_query := update_query || quote_ident(key) || ' = ' || quote_nullable(value::text) || ', ';
+      FOR key, value IN SELECT * FROM json_each(data) LOOP
+        sql := sql || quote_ident(key) || ' = ' || quote_nullable(value::text) || ', ';
       END LOOP;
-      
-      update_query := left(update_query, -2); -- Remove trailing comma and space
-      update_query := update_query || ' WHERE ${pkParamsMatch} RETURNING *';
-      
-      RETURN QUERY EXECUTE update_query;
+
+      sql := left(sql, -2); -- Remove trailing comma and space
+      sql := sql || ' WHERE ${pkParamsMatch} RETURNING *';
+
+      EXECUTE sql INTO result;
+      RETURN result;
     END;
     $$;
 
     -- Replace a row by primary key
-    CREATE FUNCTION ${fn('replace')}(${pkParams}, data ${tbl})
-    RETURNS ${tbl}
-    LANGUAGE SQL
+    CREATE FUNCTION ${fn.replace}(${pkParams}, rec ${tableId})
+    RETURNS ${tableId}
+    LANGUAGE plpgsql
     AS $$
-      DELETE FROM ${tbl} WHERE ${pkParamsMatch};
-      INSERT INTO ${tbl} SELECT * FROM json_populate_record(null::${tbl}, data::json) RETURNING *;
+    DECLARE
+      result ${tableId};
+    BEGIN
+      DELETE FROM ${tableId} WHERE ${pkParamsMatch};
+      INSERT INTO ${tableId} VALUES (rec.*) RETURNING * INTO result;
+      RETURN result;
+    END;
     $$;
 
     -- Delete a row by primary key
-    CREATE FUNCTION ${fn('delete')}(${pkParams})
+    CREATE FUNCTION ${fn.delete}(${pkParams})
     RETURNS boolean
-    LANGUAGE SQL
+    LANGUAGE plpgsql
     AS $$
-      DELETE FROM ${tbl} WHERE ${pkParamsMatch} RETURNING *;
+    DECLARE
+      rows_affected integer;
+    BEGIN
+      WITH deleted AS (
+        DELETE FROM ${tableId}
+        WHERE ${pkParamsMatch}
+        RETURNING *
+      )
+      SELECT COUNT(*) INTO rows_affected FROM deleted;
+      RETURN rows_affected > 0;
+    END;
     $$;
   `
 }

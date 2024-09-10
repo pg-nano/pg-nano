@@ -39,4 +39,5 @@ export interface GenerateContext {
 }
 
 export type * from '@pg-nano/pg-parser'
+export { SQLIdentifier } from '../cli/identifier.js'
 export type * from '../cli/parseObjectStatements.js'

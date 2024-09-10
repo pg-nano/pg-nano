@@ -1,24 +1,24 @@
 import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
-import util from 'node:util'
 import { sql } from 'pg-nano'
 import { camel, mapify, pascal } from 'radashi'
 import type { Env } from './env'
+import { SQLIdentifier } from './identifier.js'
 import {
   introspectNamespaces,
   type PgCompositeType,
   type PgEnumType,
   type PgObject,
+  type PgTable,
 } from './introspect'
 import { log } from './log'
-import { SQLIdentifier } from './parseIdentifier.js'
 import { parseMigrationPlan } from './parseMigrationPlan'
 import { prepareForMigration } from './prepare'
 import {
-  type PgTypeMapping,
   typeConversion,
   typeMappings,
+  type PgTypeMapping,
 } from './typeConversion'
 import { dedent } from './util/dedent'
 
@@ -47,12 +47,13 @@ export async function generate(
   // Step 1: Collect type information from the database.
   const namespaces = await introspectNamespaces(client, options.signal)
 
-  console.log(util.inspect(namespaces, { depth: null, colors: true }))
+  const { inspect } = await import('node:util')
+  console.log(inspect(namespaces, { depth: null, colors: true }))
 
   type PgUserType = {
-    kind: 'enum' | 'composite'
+    kind: 'enum' | 'composite' | 'table'
     arity: 'unit' | 'array'
-    meta: PgEnumType | PgCompositeType
+    meta: PgEnumType | PgCompositeType | PgTable
     mapping: PgTypeMapping
   }
 
@@ -82,6 +83,7 @@ export async function generate(
     for (const [kind, types] of [
       ['enum', nsp.enumTypes],
       ['composite', nsp.compositeTypes],
+      ['table', nsp.tables],
     ] as const) {
       for (const type of types) {
         userTypes.set(type.oid, {
@@ -137,11 +139,58 @@ export async function generate(
     return pascal(typname)
   }
 
+  const renderEnumType = (type: PgEnumType) =>
+    dedent`
+      export type ${pascal(type.typname)} = ${type.labels
+        .map(label => {
+          return JSON.stringify(label)
+        })
+        .join(' | ')}\n\n
+    `
+
+  const renderCompositeType = (type: PgCompositeType) =>
+    dedent`
+      export type ${pascal(type.typname)} = {
+        ${type.fields
+          .map(field => {
+            return `${field.attname}${field.attnotnull ? '' : '?'}: ${renderTypeReference(field.atttypid, type.nspname, 'type')}`
+          })
+          .join('\n')}
+      }\n\n
+    `
+
+  const renderTableType = (type: PgTable) =>
+    dedent`
+      export type ${pascal(type.typname)} = {
+        ${type.columns
+          .map(column => {
+            return `${column.attname}${column.attnotnull ? '' : '?'}: ${renderTypeReference(column.atttypid, type.nspname, 'return')}`
+          })
+          .join('\n')}
+      }
+      export declare namespace ${pascal(type.typname)} {
+        type InsertParams = {
+          ${type.columns
+            .filter(column => column.attidentity !== 'a')
+            .map(column => {
+              return `${column.attname}${column.attnotnull && !column.atthasdef ? '' : '?'}: ${renderTypeReference(column.atttypid, type.nspname, 'param')}`
+            })
+            .join('\n')}
+        }
+      }\n\n
+    `
+
+  type TypeReferenceKind = 'return' | 'param' | 'type'
+
   /**
    * Render a reference to a type, given a type OID and the current namespace
    * context.
    */
-  const renderTypeReference = (typeOid: number, context: string) => {
+  const renderTypeReference = (
+    typeOid: number,
+    context: string,
+    kind: TypeReferenceKind,
+  ) => {
     let type = extendedTypeConversion[typeOid]
     if (type) {
       const userType = userTypes.get(typeOid)
@@ -150,14 +199,19 @@ export async function generate(
         if (!renderedObjects.has(object)) {
           if (userType.kind === 'enum') {
             renderedObjects.set(object, renderEnumType(object as PgEnumType))
-          } else if (userType.kind === 'composite') {
+          } else {
             // First set an empty string to avoid infinite recursion if there
             // happens to be a circular reference.
             renderedObjects.set(object, '')
-            renderedObjects.set(
-              object,
-              renderCompositeType(object as PgCompositeType),
-            )
+
+            if (userType.kind === 'composite') {
+              renderedObjects.set(
+                object,
+                renderCompositeType(object as PgCompositeType),
+              )
+            } else if (userType.kind === 'table') {
+              renderedObjects.set(object, renderTableType(object as PgTable))
+            }
           }
         }
         if (object.nspname !== context) {
@@ -167,6 +221,9 @@ export async function generate(
           }
         } else {
           type = userType.mapping.jsType
+        }
+        if (userType.kind === 'table' && kind === 'param') {
+          type = type.replace(/(?=\[)|$/, '.InsertParams')
         }
       } else {
         const match = type.match(builtinTypeRegex)
@@ -180,26 +237,6 @@ export async function generate(
     }
     return type
   }
-
-  const renderEnumType = (type: PgEnumType) =>
-    dedent`
-      export type ${pascal(type.typname)} = ${type.labels
-        .map(label => {
-          return JSON.stringify(label)
-        })
-        .join(' | ')}\n\n
-    `
-
-  const renderCompositeType = (type: PgCompositeType) =>
-    dedent`
-      export interface ${pascal(type.typname)} {
-        ${type.fields
-          .map(field => {
-            return `${field.attname}${field.attnotnull ? '' : '?'}: ${renderTypeReference(field.atttypid, type.nspname)}`
-          })
-          .join('\n')}
-      }\n\n
-    `
 
   // Step 4: Render type definitions for each function. This also builds up a
   // list of dependencies (e.g. imports and type definitions).
@@ -217,9 +254,9 @@ export async function generate(
             const optionalToken =
               index >= argTypes.length - fn.pronargdefaults ? '?' : ''
 
-            return `${jsName}${optionalToken}: ${renderTypeReference(typeOid, fn.nspname)}`
+            return `${jsName}${optionalToken}: ${renderTypeReference(typeOid, fn.nspname, 'param')}`
           }
-          return renderTypeReference(typeOid, fn.nspname)
+          return renderTypeReference(typeOid, fn.nspname, 'param')
         })
         .join(', ')
 
@@ -235,8 +272,10 @@ export async function generate(
 
       const fnStmt = allFunctionsByName.get(fn.nspname + '.' + fn.proname)!
 
-      if (fnStmt.returnType instanceof SQLIdentifier) {
-        resultType = renderTypeReference(fn.prorettype, fn.nspname)
+      if (!fnStmt.returnType) {
+        resultType = 'void'
+      } else if (fnStmt.returnType instanceof SQLIdentifier) {
+        resultType = renderTypeReference(fn.prorettype, fn.nspname, 'return')
 
         const userType = userTypes.get(fn.prorettype)
         if (userType && 'fields' in userType.meta) {
@@ -249,7 +288,7 @@ export async function generate(
               mapping.name === col.type.name &&
               mapping.schema === col.type.schema!,
           )
-          return `${col.name}: ${mapping ? renderTypeReference(mapping.oid, fn.nspname) : 'unknown'}`
+          return `${col.name}: ${mapping ? renderTypeReference(mapping.oid, fn.nspname, 'return') : 'unknown'}`
         })
       }
 
@@ -267,17 +306,13 @@ export async function generate(
         resultType = `{ ${resultColumns.join(', ')} }`
       }
 
-      if (fn.proretset) {
-        resultType += '[]'
-      }
-
       const fnScript = dedent`
         export declare namespace ${jsName} {
-          export type Params = ${argNames ? `{${argTypes}}` : `[${argTypes}]`}
-          export type Result = ${resultType}
+          type Params = ${argNames ? `{ ${argTypes} }` : `[${argTypes}]`}
+          type Result = ${resultType}
         }
 
-        export const ${jsName} = ${constructor}<${jsName}.Params, ${jsName}.Result>(${JSON.stringify(fn.proname)}${params}${schema})\n\n
+        export const ${jsName} = /* @__PURE__ */ ${constructor}<${jsName}.Params, ${jsName}.Result>(${JSON.stringify(fn.proname)}${params}${schema})\n\n
       `
 
       renderedObjects.set(fn, fnScript)
@@ -285,27 +320,22 @@ export async function generate(
   }
 
   let code = dedent`
-    import { ${[...imports].sort().join(', ')} } from 'pg-nano'
+    import { ${[...imports].sort().join(', ')} } from 'pg-nano'\n\n
   `
 
   // Step 5: Concatenate type definitions for each namespace.
   for (const nsp of Object.values(namespaces)) {
     let nspCode = ''
 
-    for (const type of nsp.enumTypes) {
+    for (const type of [
+      ...nsp.enumTypes,
+      ...nsp.compositeTypes,
+      ...nsp.tables,
+      ...nsp.functions,
+    ]) {
       if (renderedObjects.has(type)) {
         nspCode += renderedObjects.get(type)!
       }
-    }
-
-    for (const type of nsp.compositeTypes) {
-      if (renderedObjects.has(type)) {
-        nspCode += renderedObjects.get(type)!
-      }
-    }
-
-    for (const fn of nsp.functions) {
-      nspCode += renderedObjects.get(fn)!
     }
 
     // Don't wrap type definitions for the public namespace, to improve
@@ -313,7 +343,7 @@ export async function generate(
     code +=
       nsp.name === 'public'
         ? nspCode
-        : `export namespace ${pascal(nsp.name)} {\n${indent(nspCode)}\n}`
+        : `export namespace ${pascal(nsp.name)} {\n${indent(nspCode)}\n}\n\n`
   }
 
   // Step 6: Write the generated type definitions to a file.

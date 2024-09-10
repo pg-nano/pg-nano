@@ -6,13 +6,14 @@ import {
   type Result,
 } from 'pg-nano'
 
-export type PgObject = PgFunction | PgEnumType | PgCompositeType
+export type PgObject = PgFunction | PgTable | PgEnumType | PgCompositeType
 
 export type PgNamespace = {
   name: string
   functions: PgFunction[]
   compositeTypes: PgCompositeType[]
   enumTypes: PgEnumType[]
+  tables: PgTable[]
   /**
    * The names of every object in this namespace.
    */
@@ -23,10 +24,11 @@ export async function introspectNamespaces(
   client: Client,
   signal?: AbortSignal,
 ) {
-  const [functions, compositeTypes, enumTypes] = await Promise.all([
+  const [functions, compositeTypes, enumTypes, tables] = await Promise.all([
     introspectFunctions(client, signal),
     introspectCompositeTypes(client, signal),
     introspectEnumTypes(client, signal),
+    introspectTables(client, signal),
   ])
 
   const namespaces: Record<string, PgNamespace> = {}
@@ -36,6 +38,7 @@ export async function introspectNamespaces(
       functions: [],
       compositeTypes: [],
       enumTypes: [],
+      tables: [],
       names: [],
     })
 
@@ -57,6 +60,12 @@ export async function introspectNamespaces(
     nsp.names.push(t.typname)
   }
 
+  for (const t of tables) {
+    const nsp = getNamespace(t.nspname)
+    nsp.tables.push(t)
+    nsp.names.push(t.typname)
+  }
+
   return namespaces
 }
 
@@ -70,6 +79,7 @@ export type PgFunction = {
   prorettype: number
   proretset: boolean
   provariadic: boolean
+  prokind: 'f' | 'p'
 }
 
 export function introspectFunctions(client: Client, signal?: AbortSignal) {
@@ -80,14 +90,22 @@ export function introspectFunctions(client: Client, signal?: AbortSignal) {
    *   - not related to a trigger
    */
   const query = sql`
-    SELECT n.nspname, p.proname, p.proargnames, 
-           p.proargtypes::int[] AS proargtypes, 
-           p.pronargdefaults, p.prorettype, p.proretset, p.provariadic
+    SELECT
+      n.nspname,
+      p.proname,
+      p.proargnames,
+      p.proargtypes::int[] AS proargtypes,
+      p.pronargdefaults,
+      p.prorettype,
+      p.proretset,
+      p.provariadic,
+      p.prokind
     FROM pg_catalog.pg_proc p
-    JOIN pg_catalog.pg_namespace n ON (n.oid = p.pronamespace)
+    JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
     LEFT JOIN pg_catalog.pg_depend d ON d.objid = p.oid AND d.deptype = 'e'
     LEFT JOIN pg_catalog.pg_extension e ON e.oid = d.refobjid
-    WHERE p.prokind = 'f' 
+    WHERE
+      (p.prokind = 'f' OR p.prokind = 'p')
       AND n.nspname NOT IN ('pg_catalog', 'information_schema')
       AND e.oid IS NULL
       AND p.prorettype != 2279 -- trigger
@@ -178,15 +196,15 @@ export type PgCompositeType = {
   typname: string
   nspname: string
   typarray: number
-  fields: Array<{
+  fields: {
     attname: string
     atttypid: number
     attnotnull: boolean
-  }>
+  }[]
 }
 
 export function introspectCompositeTypes(client: Client, signal?: AbortSignal) {
-  const attributesQuery = sql`
+  const fieldsQuery = sql`
     SELECT array_agg(
       json_build_object(
         'attname', a.attname,
@@ -207,14 +225,64 @@ export function introspectCompositeTypes(client: Client, signal?: AbortSignal) {
       t.typname,
       n.nspname,
       t.typarray::oid,
-      (${attributesQuery}) AS fields
-    FROM pg_catalog.pg_type t
+      (${fieldsQuery}) AS fields
+    FROM pg_catalog.pg_class c
+    JOIN pg_catalog.pg_type t ON t.oid = c.reltype
     JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace
-    WHERE t.typrelid != 0
+    WHERE c.relkind = 'c'
       AND n.nspname NOT IN ('pg_catalog', 'information_schema')
   `
 
   return client.queryRows<PgCompositeType>(query, { signal })
+}
+
+export type PgTable = {
+  oid: number
+  typname: string
+  nspname: string
+  typarray: number
+  columns: {
+    attname: string
+    atttypid: number
+    attnotnull: boolean
+    atthasdef: boolean
+    attidentity: 'a' | 'd' | ''
+  }[]
+}
+
+export function introspectTables(client: Client, signal?: AbortSignal) {
+  const columnsQuery = sql`
+    SELECT array_agg(
+      json_build_object(
+        'attname', a.attname,
+        'atttypid', a.atttypid::int,
+        'attnotnull', a.attnotnull,
+        'atthasdef', a.atthasdef,
+        'attidentity', a.attidentity
+      )
+      ORDER BY a.attnum
+    )
+    FROM pg_catalog.pg_attribute a
+    WHERE a.attrelid = t.typrelid
+      AND a.attnum > 0
+      AND NOT a.attisdropped
+  `
+
+  const query = sql`
+    SELECT
+      t.oid,
+      t.typname,
+      n.nspname,
+      t.typarray::oid,
+      (${columnsQuery}) AS columns
+    FROM pg_catalog.pg_class c
+    JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+    JOIN pg_catalog.pg_type t ON t.oid = c.reltype
+    WHERE c.relkind = 'r'
+      AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+  `
+
+  return client.queryRows<PgTable>(query, { signal })
 }
 
 async function sendCommand<TResult = Result[]>(

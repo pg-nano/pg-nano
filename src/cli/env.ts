@@ -1,6 +1,7 @@
 /// <reference types="@pg-nano/plugin" />
 import type { UserConfig } from '@pg-nano/config'
 import { bundleRequire } from 'bundle-require'
+import isLocalhostIP from 'is-localhost-ip'
 import path from 'node:path'
 import { Client, sql } from 'pg-nano'
 import { allMigrationHazardTypes } from '../config/hazards'
@@ -73,7 +74,7 @@ async function loadEnv(cwd: string, options: EnvOptions) {
       ...userConfig?.typescript,
       outFile: path.resolve(
         root,
-        userConfig?.typescript?.outFile ?? 'sql/api.ts',
+        userConfig?.typescript?.outFile ?? 'sql/routines.ts',
       ),
       pluginSqlDir: path.resolve(
         root,
@@ -86,7 +87,7 @@ async function loadEnv(cwd: string, options: EnvOptions) {
   config.migration.allowHazards.push('HAS_UNTRACKABLE_DEPENDENCIES' as any)
 
   // Enable unsafe mode for local development.
-  if (config.dev.connectionString.includes('localhost')) {
+  if (await isLocalhostIP(config.dev.connectionString)) {
     config.migration.allowHazards.push(...allMigrationHazardTypes)
   } else {
     throw new Error('Non-local databases are not currently supported')

@@ -1,12 +1,13 @@
+import type { Plugin } from '@pg-nano/plugin'
 import fs from 'node:fs'
 import path from 'node:path'
 import { PgResultError, sql } from 'pg-nano'
-import { group, map, memo, tryit } from 'radashi'
-import { hasCompositeTypeChanged } from './diff'
+import { group, map, memo } from 'radashi'
+import { hasCompositeTypeChanged, hasRoutineTypeChanged } from './diff'
 import type { Env } from './env'
+import type { SQLIdentifier } from './identifier'
 import { linkObjectStatements } from './linkObjectStatements'
 import { log } from './log'
-import type { SQLIdentifier } from './parseIdentifier'
 import {
   type ParsedObjectStmt,
   type ParsedObjectType,
@@ -89,7 +90,11 @@ export async function prepareForMigration(filePaths: string[], env: Env) {
 
   const doesObjectExist = memo((type: ParsedObjectType, id: SQLIdentifier) => {
     if (!(type in objectExistence)) {
-      log.warn('Could not check if object exists: %s (%s)', id.toString(), type)
+      log.warn(
+        'Could not check if object exists: %s (%s)',
+        id.toQualifiedName(),
+        type,
+      )
       return false
     }
 
@@ -133,7 +138,7 @@ export async function prepareForMigration(filePaths: string[], env: Env) {
       }
     }
 
-    const id = object.id.toString()
+    const id = object.id.toQualifiedName()
     if (!message.includes(id)) {
       const exists = await doesObjectExist(object.type, object.id)
       message = `Error ${exists ? 'updating' : 'creating'} ${object.type} (${id}): ${message}`
@@ -149,7 +154,16 @@ export async function prepareForMigration(filePaths: string[], env: Env) {
           )
         : object.line
 
-    log.error(message + '\n    at ' + cwdRelative(object.file) + ':' + line)
+    const stack =
+      '\n    at ' +
+      cwdRelative(object.file) +
+      ':' +
+      line +
+      (error.stack
+        ?.replace(error.name + ': ' + error.message, '')
+        .replace(/^\s*(?=\n)/, '') ?? '')
+
+    log.error(message + stack)
     process.exit(1)
   }
 
@@ -161,12 +175,12 @@ export async function prepareForMigration(filePaths: string[], env: Env) {
       log.warn(
         'Missing %s {%s} required by %s other statement%s:',
         object.type,
-        object.id.toString(),
+        object.id.toQualifiedName(),
         object.dependents.size,
         object.dependents.size === 1 ? 's' : '',
       )
       for (const dependent of object.dependents) {
-        log.warn('  * %s {%s}', dependent.type, dependent.id.toString())
+        log.warn('  * %s {%s}', dependent.type, dependent.id.toQualifiedName())
       }
       continue
     }
@@ -175,7 +189,7 @@ export async function prepareForMigration(filePaths: string[], env: Env) {
       if (object.type === 'type') {
         if (object.subtype === 'composite') {
           if (await hasCompositeTypeChanged(client, object)) {
-            log('Updating composite type %s', object.id.toString())
+            log.magenta('Composite type changed:', object.id.toQualifiedName())
             await client
               .query(sql`
                 DROP TYPE ${object.id.toSQL()} CASCADE;
@@ -186,9 +200,24 @@ export async function prepareForMigration(filePaths: string[], env: Env) {
               })
           }
         }
+      } else if (object.type === 'function') {
+        if (await hasRoutineTypeChanged(client, object)) {
+          log.magenta(
+            'Function signature changed:',
+            object.id.toQualifiedName(),
+          )
+          await client
+            .query(sql`
+              DROP ROUTINE ${object.id.toSQL()} CASCADE;
+              ${sql.unsafe(object.query)}
+            `)
+            .catch(error => {
+              handleError(error, object)
+            })
+        }
       }
     } else {
-      log('Creating %s %s', object.type, object.id.toString())
+      log('Creating %s %s', object.type, object.id.toQualifiedName())
       await client.query(sql.unsafe(object.query)).catch(error => {
         handleError(error, object)
       })
@@ -209,7 +238,6 @@ export async function prepareForMigration(filePaths: string[], env: Env) {
   }
 
   const outFile = path.join(env.schemaDir, 'schema.sql')
-  tryit(fs.unlinkSync)(outFile)
   fs.writeFileSync(outFile, outSchema)
 
   return allObjects
@@ -232,68 +260,58 @@ async function generatePluginQueries(env: Env, allObjects: ParsedObjectStmt[]) {
     force: true,
   })
 
-  if (!env.config.plugins.some(p => p.statements)) {
-    return false
+  // biome-ignore lint/complexity/noBannedTypes:
+  type StatementsPlugin = Plugin & { statements: Function }
+
+  const plugins = env.config.plugins.filter(
+    (p): p is StatementsPlugin => p.statements != null,
+  )
+
+  if (plugins.length === 0) {
+    return
   }
 
-  log('Running plugins...')
+  fs.mkdirSync(env.config.typescript.pluginSqlDir, { recursive: true })
 
-  const pluginDsn = new URL(env.config.dev.connectionString)
-  pluginDsn.username = 'nano_plugin'
-  pluginDsn.password = 'postgres'
+  for (const plugin of plugins) {
+    log('Generating SQL statements with plugin', plugin.name)
 
-  const pluginSqlFiles: { file: string; content: string }[] = []
+    const template = await plugin.statements({
+      objects: allObjects,
+      sql,
+    })
 
-  for (const plugin of env.config.plugins) {
-    if (plugin.statements) {
-      const template = await plugin.statements({
-        objects: allObjects,
-        sql,
-      })
-      if (template) {
-        const outFile = path.join(
-          env.config.typescript.pluginSqlDir,
-          plugin.name.replace(/\//g, '__') + '.pgsql',
-        )
+    if (template) {
+      const outFile = path.join(
+        env.config.typescript.pluginSqlDir,
+        plugin.name.replace(/\//g, '__') + '.pgsql',
+      )
 
-        let oldContent = ''
-        try {
-          oldContent = fs.readFileSync(outFile, 'utf8')
-        } catch (error: any) {
-          if (error.code !== 'ENOENT') {
-            throw error
-          }
+      const client = await env.client
+      const content = dedent(
+        await client.stringify(template, { reindent: true }),
+      )
+
+      // Write to disk so the developer can see the generated SQL, and possibly
+      // commit it to source control (if desired). Note that this won't trigger
+      // the file watcher, since the pluginSqlDir is ignored.
+      fs.writeFileSync(outFile, content)
+
+      // Immediately parse the generated statements so they can be used by
+      // plugins that run after this one.
+      const objects = await parseObjectStatements(content, outFile)
+      for (const object of objects) {
+        if (allObjects.some(other => other.id.equals(object.id))) {
+          log.warn(
+            '[%s] Tried to create %s %s, but it already exists. Skipping.',
+            plugin.name,
+            object.type,
+            object.id.toQualifiedName(),
+          )
+          continue
         }
-
-        const client = await env.client
-        const content = dedent(await client.stringify(template))
-        if (content !== oldContent) {
-          pluginSqlFiles.push({
-            file: outFile,
-            content,
-          })
-        }
+        allObjects.push(object)
       }
     }
   }
-
-  const count = pluginSqlFiles.length
-  if (count > 0) {
-    log(`Writing ${count} plugin SQL file${count === 1 ? '' : 's'}`)
-
-    // Clear out any old plugin-generated SQL files.
-    fs.rmSync(env.config.typescript.pluginSqlDir, {
-      recursive: true,
-      force: true,
-    })
-
-    fs.mkdirSync(env.config.typescript.pluginSqlDir, { recursive: true })
-    for (const { file, content } of pluginSqlFiles) {
-      fs.writeFileSync(file, content)
-    }
-  } else {
-    log.success('Plugin-generated SQL is up to date')
-  }
-
-  return count > 0
 }

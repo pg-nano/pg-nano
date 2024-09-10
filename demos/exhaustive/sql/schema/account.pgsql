@@ -3,6 +3,7 @@ CREATE TABLE account (
   username varchar(50) UNIQUE NOT NULL,
   email varchar(100) UNIQUE NOT NULL,
   password_hash varchar(255) NOT NULL,
+  posts_count integer DEFAULT 0,
   first_name varchar(50),
   last_name varchar(50),
   date_of_birth date,

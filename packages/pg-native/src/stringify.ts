@@ -1,49 +1,56 @@
 import type Libpq from '@pg-nano/libpq'
 import { isArray, isString } from 'radashi'
-import { dedent } from '../../../src/cli/util/dedent.js'
-import { debug } from './debug'
 import { SQLTemplate, type SQLTemplateValue } from './template'
 import { escapeValue } from './value.js'
 
 export function stringifyTemplate(
   template: SQLTemplate,
   pq: Libpq,
-  indent?: string,
+  options?: { reindent?: boolean },
+  parentIndent?: string,
 ): string {
   let sql = ''
+
   for (let i = 0; i < template.strings.length; i++) {
     sql += template.strings[i]
 
     if (i < template.values.length) {
-      const indent = debug.enabled
-        ? template.strings[i].match(/\n( +)$/)
-        : undefined
+      sql += stringifyTemplateValue(
+        template.values[i],
+        pq,
+        options,
+        options?.reindent && /\n +$/.test(template.strings[i])
+          ? template.indent
+          : undefined,
+      )
+    }
+  }
 
-      sql += stringifyTemplateValue(template.values[i], pq, indent?.[1])
-    }
+  if (options?.reindent) {
+    sql = sql
+      .replace(new RegExp('^' + template.indent, 'gm'), parentIndent ?? '')
+      .replace(/^( *\n)+/, '')
   }
-  if (debug.enabled) {
-    sql = dedent(sql)
-    if (indent) {
-      sql = sql.replace(/\n/g, '\n' + indent)
-    }
-  }
+
   return sql
 }
 
 export function stringifyTemplateValue(
   arg: SQLTemplateValue,
   pq: Libpq,
+  options?: { reindent?: boolean },
   indent?: string,
 ): string {
   if (!arg) {
     return ''
   }
   if (isArray(arg)) {
-    return arg.map(value => stringifyTemplateValue(value, pq, indent)).join('')
+    return arg
+      .map(value => stringifyTemplateValue(value, pq, options, indent))
+      .join('')
   }
   if (arg instanceof SQLTemplate) {
-    return stringifyTemplate(arg, pq, indent)
+    return stringifyTemplate(arg, pq, options, indent)
   }
   switch (arg.type) {
     case 'id':

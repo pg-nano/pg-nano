@@ -34,10 +34,13 @@ export type SQLTemplateValue =
   | ''
 
 export class SQLTemplate {
+  readonly indent: string
   constructor(
     readonly strings: readonly string[],
     readonly values: SQLTemplateValue[],
-  ) {}
+  ) {
+    this.indent = detectIndent(strings[0]) ?? ''
+  }
 }
 
 type SQLTokenType = 'id' | 'val' | 'join'
@@ -60,3 +63,8 @@ export type SQLToken = SQLTokenType extends infer Type
     ? { type: Type } & SQLTokenValue[Type]
     : never
   : never
+
+// Find the indentation of the first non-empty line.
+function detectIndent(text: string) {
+  return text.match(/(?:^|\n)([ \t]+)(?:\S|$)/)?.[1]
+}

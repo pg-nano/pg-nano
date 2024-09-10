@@ -9,7 +9,7 @@ export default defineConfig({
     include: ['**/*.pgsql'],
   },
   typescript: {
-    outFile: 'sql/api.ts',
+    outFile: 'sql/routines.ts',
   },
   plugins: [crud()],
 })

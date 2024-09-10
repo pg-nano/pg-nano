@@ -7,16 +7,18 @@ import { type EnvOptions, getEnv } from '../env'
 import { generate } from '../generate'
 import { log } from '../log'
 
-type Options = EnvOptions & {
-  refreshPluginRole?: boolean
-}
+type Options = EnvOptions & {}
 
 export default async function dev(cwd: string, options: Options = {}) {
   const env = await getEnv(cwd, options)
 
   const watcher = watch(env.config.schema.include, {
     cwd: env.root,
-    ignored: [...env.config.schema.exclude, '**/.pg-nano/**'],
+    ignored: [
+      ...env.config.schema.exclude,
+      env.config.typescript.pluginSqlDir,
+      '**/.pg-nano/**',
+    ],
   })
 
   if (env.configFilePath) {
@@ -40,7 +42,6 @@ export default async function dev(cwd: string, options: Options = {}) {
     )
 
     generate(env, filePaths, {
-      refreshPluginRole: options.refreshPluginRole && !options.reloadEnv,
       signal: controller.signal,
     }).catch(error => {
       log.error(error.stack)
@@ -59,10 +60,6 @@ export default async function dev(cwd: string, options: Options = {}) {
         dev(cwd, { ...options, reloadEnv: true })
       }
     } else {
-      if (path.startsWith(env.config.typescript.pluginSqlDir)) {
-        // Ignore changes to plugin-generated SQL files.
-        return
-      }
       const skipped = event === 'add' && statSync(path).size === 0
       log.magenta(
         event,

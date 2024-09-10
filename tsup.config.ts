@@ -6,6 +6,7 @@ const commonOptions = {
   format: ['esm'],
   external: ['pg-native', 'pg-nano', 'debug'],
   minifySyntax: !process.env.DEV,
+  dts: !process.env.DEV,
 } satisfies Options
 
 export default defineConfig([
@@ -14,9 +15,7 @@ export default defineConfig([
     entry: {
       'pg-nano': 'src/core/mod.ts',
       'pg-nano/config': 'src/config/config.ts',
-      'pg-nano/plugin': 'src/plugin/plugin.ts',
     },
-    experimentalDts: true,
     splitting: false,
     esbuildPlugins: [
       copy({
@@ -29,16 +28,27 @@ export default defineConfig([
   },
   {
     ...commonOptions,
-    entry: {
-      cli: 'src/cli/main.ts',
-    },
-    outDir: 'dist/pg-nano',
+    entry: { plugin: 'src/plugin/plugin.ts' },
+    outDir: 'dist/node_modules/@pg-nano/plugin',
+    esbuildPlugins: [
+      copy({
+        assets: {
+          from: 'src/plugin/package.json',
+          to: '.',
+        },
+      }),
+    ],
   },
   {
     ...commonOptions,
-    entry: {
-      'node_modules/pg-native/index': 'packages/pg-native/src/index.ts',
-    },
+    entry: { main: 'src/cli/main.ts' },
+    outDir: 'dist/pg-nano/cli',
+    dts: false,
+  },
+  {
+    ...commonOptions,
+    entry: { index: 'packages/pg-native/src/index.ts' },
+    outDir: 'dist/node_modules/pg-native',
     esbuildPlugins: getProductionEsbuildPlugins(),
   },
 ])
@@ -53,7 +63,7 @@ function getProductionEsbuildPlugins() {
       assets: [
         {
           from: 'packages/pg-native/LICENSE',
-          to: 'node_modules/pg-native',
+          to: '.',
         },
       ],
     }),

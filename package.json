@@ -2,15 +2,15 @@
   "name": "pg-nano",
   "version": "0.0.0",
   "type": "module",
-  "bin": "dist/pg-nano/cli.js",
+  "bin": "dist/pg-nano/cli/main.js",
   "exports": {
     "./config": {
       "types": "./dist/pg-nano/config.d.ts",
       "default": "./dist/pg-nano/config.js"
     },
     "./plugin": {
-      "types": "./dist/pg-nano/plugin.d.ts",
-      "default": "./dist/pg-nano/plugin.js"
+      "types": "./dist/node-modules/@pg-nano/plugin/plugin.d.ts",
+      "default": "./dist/node-modules/@pg-nano/plugin/plugin.js"
     },
     ".": {
       "types": "./dist/pg-nano.d.ts",
@@ -19,7 +19,6 @@
   },
   "devDependencies": {
     "@biomejs/biome": "1.8.3",
-    "@microsoft/api-extractor": "^7.47.7",
     "@radashi-org/biome-config": "^1.0.2",
     "@types/debug": "^4.1.12",
     "@types/node": "^22.5.1",
@@ -29,6 +28,7 @@
     "esbuild-plugin-license": "^1.2.3",
     "is-localhost-ip": "^2.0.0",
     "mri": "^1.2.0",
+    "pg-nano": "link:",
     "pg-native": "workspace:^",
     "pg-types": "workspace:^",
     "postgres-interval": "workspace:^",
@@ -43,14 +43,12 @@
   },
   "scripts": {
     "prepare": "pnpm -s build",
-    "build": "rimraf dist && tsup --dts",
+    "build": "rimraf dist && tsup",
     "dev": "rimraf dist && DEV=1 tsup --watch --sourcemap",
     "format": "biome check --fix --unsafe src generators package.json",
     "lint": "tinyrun --names pg-nano,pg-native,biome 'tsc -p .' 'tsc -p src/pg-native' 'biome lint src generators'"
   },
-  "files": [
-    "dist"
-  ],
+  "files": ["dist"],
   "dependencies": {
     "@pg-nano/libpq": "workspace:^",
     "@pg-nano/pg-parser": "workspace:^",

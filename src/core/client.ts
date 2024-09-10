@@ -347,12 +347,32 @@ export class Client {
     return result.rows[0]?.[result.fields[0].name] as T
   }
 
-  withQueries<API extends object>(api: API): ClientProxy<API> {
+  /**
+   * Create a proxy object that allows you to call the given routines as methods
+   * on the client instance. The original methods and properties of the client
+   * are preserved, but routines of the same name take precedence over them.
+   *
+   * The easiest way to use `withRoutines` is by importing your
+   * `sql/routines.ts` file as a namespace and passing it to this method.
+   *
+   * @example
+   * ```ts
+   * import * as routines from './sql/routines.js'
+   * const client = new Client().withRoutines(routines)
+   * await client.myRoutine(1, 2, 3)
+   * ```
+   */
+  withRoutines<TRoutines extends object>(
+    routines: TRoutines,
+  ): ClientProxy<TRoutines> {
     return new Proxy(this, {
       get(client, key) {
-        if (key in api) {
+        if (key in routines) {
           // biome-ignore lint/complexity/noBannedTypes:
-          return (api[key as keyof API] as Function).bind(null, client)
+          return (routines[key as keyof TRoutines] as Function).bind(
+            null,
+            client,
+          )
         }
         return client[key as keyof Client]
       },
@@ -387,12 +407,12 @@ export class Client {
    * Returns a stringified version of the template. It's async because it uses
    * libpq's escaping functions.
    */
-  async stringify(template: SQLTemplate) {
+  async stringify(template: SQLTemplate, options: { reindent?: boolean } = {}) {
     // Since we're not sending anything to the server, it's perfectly fine to
     // use a non-idle connection.
     const connection = await (this.pool[0] || this.getConnection())
     // biome-ignore lint/complexity/useLiteralKeys: Protected access
-    return stringifyTemplate(template, connection['pq'])
+    return stringifyTemplate(template, connection['pq'], options)
   }
 
   private setDSN(dsn: string | null) {
@@ -400,19 +420,14 @@ export class Client {
   }
 }
 
-export type ClientProxy<API extends object> = {
-  [K in keyof API]: API[K] extends (
+export type ClientProxy<TRoutines extends object> = Omit<
+  Client,
+  keyof TRoutines
+> & {
+  [K in keyof TRoutines]: TRoutines[K] extends (
     client: Client,
     ...args: infer TArgs
   ) => infer TResult
     ? (...args: TArgs) => TResult
     : never
-} & {
-  readonly dsn: string | null
-  readonly config: Readonly<ClientOptions>
-  query: Client['query']
-  queryRows: Client['queryRows']
-  queryOneRow: Client['queryOneRow']
-  queryOneColumn: Client['queryOneColumn']
-  close: Client['close']
 }

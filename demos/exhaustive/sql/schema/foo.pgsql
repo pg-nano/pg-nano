@@ -14,7 +14,7 @@ CREATE TYPE address_type AS (
   zip_code varchar(20));
 
 CREATE TABLE foo (
-  id serial PRIMARY KEY,
+  id int GENERATED ALWAYS AS IDENTITY,
   name varchar(100) NOT NULL,
   description text,
   created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
