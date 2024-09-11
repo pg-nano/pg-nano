@@ -36,39 +36,6 @@ export interface StatementsContext {
 export interface GenerateContext {
   types: readonly PgTypeMapping[]
   namespaces: Record<string, PgNamespace>
-  /**
-   * Iterate over all types used in the generated code and replace them with the
-   * result of the given iterator.
-   *
-   * By returning a string from your iterator, you can replace the type with a
-   * custom type alias, which you must define using the
-   * `GenerateContext#prepend` method.
-   */
-  replaceTypes: (
-    iterator: (type: PgTypeMapping) => string | PgTypeMapping,
-  ) => void
-  /**
-   * Prepend code to the generated TypeScript file, right after the imports.
-   */
-  prepend: (code: string) => void
-  /**
-   * Import a namespace (using `import * as` syntax).
-   */
-  addNamespaceImport: (from: string, as: string) => void
-  /**
-   * Import types from another package (using `import type` syntax).
-   *
-   * Any name in the `names` array may define a local alias with the
-   * `"imported:alias"` name format.
-   */
-  addTypeImports: (from: string, names: string[]) => void
-  /**
-   * Import values from another package (using `import` syntax).
-   *
-   * Any name in the `names` array may define a local alias with the
-   * `"imported:alias"` name format.
-   */
-  addImports: (from: string, names: string[]) => void
 }
 
 export interface TypeAlias {
