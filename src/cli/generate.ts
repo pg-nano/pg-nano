@@ -15,7 +15,7 @@ import {
 import { log } from './log'
 import { parseMigrationPlan } from './parseMigrationPlan'
 import type { PgColumnDef } from './parseObjectStatements.js'
-import { prepareForMigration } from './prepare'
+import { prepareDatabase } from './prepare'
 import {
   typeConversion,
   typeMappings,
@@ -34,7 +34,8 @@ export async function generate(
 ) {
   const client = await env.client
 
-  const allObjects = await prepareForMigration(filePaths, env)
+  const allObjects = await prepareDatabase(filePaths, env)
+
   const allFunctionsByName = mapify(
     allObjects.filter(obj => obj.type === 'function'),
     obj => obj.id.toQualifiedName(),

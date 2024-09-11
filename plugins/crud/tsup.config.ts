@@ -1,7 +1,7 @@
 import { defineConfig } from 'tsup'
 
 export default defineConfig({
-  entry: ['src/crud.ts', 'src/where.ts'],
+  entry: ['src/plugin.ts'],
   format: ['esm'],
   dts: true,
 })

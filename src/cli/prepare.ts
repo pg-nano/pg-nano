@@ -16,7 +16,7 @@ import {
 import { dedent } from './util/dedent'
 import { cwdRelative } from './util/path.js'
 
-export async function prepareForMigration(filePaths: string[], env: Env) {
+export async function prepareDatabase(filePaths: string[], env: Env) {
   const client = await env.client
 
   fs.rmSync(env.schemaDir, { recursive: true, force: true })
@@ -112,7 +112,9 @@ export async function prepareForMigration(filePaths: string[], env: Env) {
 
   const allObjects = parsedSchemaFiles.flatMap(schemaFile => schemaFile.objects)
 
-  await generatePluginQueries(env, allObjects)
+  // Plugins may add to the object list, so run them before linking the object
+  // dependencies together.
+  await preparePluginStatements(env, allObjects)
 
   const sortedObjects = linkObjectStatements(allObjects)
 
@@ -122,11 +124,11 @@ export async function prepareForMigration(filePaths: string[], env: Env) {
     CREATE SCHEMA nano;
   `)
 
-  const handleError = async (error: Error, object: ParsedObjectStmt) => {
+  const formatObjectError = async (error: Error, object: ParsedObjectStmt) => {
     let message = error.message.replace(/^ERROR:\s+/i, '').trimEnd()
 
-    // Remove "LINE XXX: " if present, and the same number of characters from any
-    // lines that come after.
+    // Remove "LINE XXX: " if present, and the same number of characters from
+    // any lines that come after.
     const messageLines = message.split('\n')
     for (let i = 0; i < messageLines.length; i++) {
       if (messageLines[i].startsWith('LINE ')) {
@@ -163,8 +165,9 @@ export async function prepareForMigration(filePaths: string[], env: Env) {
         ?.replace(error.name + ': ' + error.message, '')
         .replace(/^\s*(?=\n)/, '') ?? '')
 
-    log.error(message + stack)
-    process.exit(1)
+    error.message = message
+    error.stack = message + stack
+    throw error
   }
 
   // Since pg-schema-diff is still somewhat limited, we have to create our own
@@ -196,7 +199,7 @@ export async function prepareForMigration(filePaths: string[], env: Env) {
                 ${sql.unsafe(object.query)}
               `)
               .catch(error => {
-                handleError(error, object)
+                formatObjectError(error, object)
               })
           }
         }
@@ -212,14 +215,14 @@ export async function prepareForMigration(filePaths: string[], env: Env) {
               ${sql.unsafe(object.query)}
             `)
             .catch(error => {
-              handleError(error, object)
+              formatObjectError(error, object)
             })
         }
       }
     } else {
       log('Creating %s %s', object.type, object.id.toQualifiedName())
       await client.query(sql.unsafe(object.query)).catch(error => {
-        handleError(error, object)
+        formatObjectError(error, object)
       })
     }
   }
@@ -253,7 +256,10 @@ function getLineFromPosition(position: number, query: string) {
   return line
 }
 
-async function generatePluginQueries(env: Env, allObjects: ParsedObjectStmt[]) {
+async function preparePluginStatements(
+  env: Env,
+  allObjects: ParsedObjectStmt[],
+) {
   // Ensure that removed plugins don't leave behind any SQL files.
   fs.rmSync(env.config.generate.pluginSqlDir, {
     recursive: true,

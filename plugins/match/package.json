@@ -1,5 +1,5 @@
 {
-  "name": "@pg-nano/plugin-crud",
+  "name": "@pg-nano/plugin-match",
   "type": "module",
   "version": "0.1.0",
   "exports": {

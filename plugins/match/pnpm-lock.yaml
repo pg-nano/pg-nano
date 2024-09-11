@@ -1,0 +1,16 @@
+lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .:
+    devDependencies:
+      '@pg-nano/plugin':
+        specifier: workspace:^
+        version: link:../../src/plugin
+      pg-nano:
+        specifier: workspace:@pg-nano/core@^
+        version: link:../../src/core

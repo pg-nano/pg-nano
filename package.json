@@ -43,7 +43,7 @@
   "scripts": {
     "prepare": "pnpm -s build",
     "build": "rimraf dist && tsup",
-    "dev": "tinyrun --names pg-nano,plugins 'pnpm -s dev:core' 'pnpm -s --filter=@pg-nano/plugin-* dev'",
+    "dev": "tinyrun --names pg-nano,plugins 'pnpm -s dev:core' 'pnpm --stream --filter=@pg-nano/plugin-* dev'",
     "dev:core": "rimraf dist && DEV=1 tsup --watch --sourcemap",
     "format": "biome check --fix --unsafe src generators package.json",
     "lint": "tinyrun --names pg-nano,pg-native,biome 'tsc -p .' 'tsc -p src/pg-native' 'biome lint src generators'"
