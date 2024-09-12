@@ -15,7 +15,7 @@ import { isString } from 'radashi'
 let logTimestampsEnabled = false
 
 const createLog =
-  (color: Colorize, prefix = '•') =>
+  (color: Colorize, prefix = '•', method: 'log' | 'trace' = 'log') =>
   (message: string, ...args: any[]) => {
     message = color(prefix + ' ' + message)
     if (logTimestampsEnabled) {
@@ -27,6 +27,9 @@ const createLog =
       message = gray(`[${timestamp}]`) + ' ' + message
     }
     console.log(message, ...relativizePathArgs(args))
+    if (method === 'trace') {
+      console.log(color(new Error().stack!.replace(/^.*?\n/, '')))
+    }
   }
 
 type Logger = ReturnType<typeof createLog>
@@ -48,7 +51,7 @@ log.enableTimestamps = (enabled: boolean) => {
   logTimestampsEnabled = enabled
 }
 
-log.error = createLog(red, '⚠️')
+log.error = createLog(red, '⚠️', 'trace')
 log.warn = createLog(yellow, '⚠️')
 log.success = createLog(green, '✔️')
 log.command = createLog(bold, '»')

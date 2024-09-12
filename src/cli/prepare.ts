@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { PgResultError, sql } from 'pg-nano'
 import { map, memo, sift } from 'radashi'
+import { debug } from './debug.js'
 import { hasCompositeTypeChanged, hasRoutineTypeChanged } from './diff'
 import type { Env } from './env'
 import type { SQLIdentifier } from './identifier'
@@ -18,8 +19,11 @@ import { cwdRelative } from './util/path.js'
 export async function prepareDatabase(sqlFiles: string[], env: Env) {
   const pg = await env.client
 
+  debug('parsing SQL files')
+
   const parsedFiles = await map(sqlFiles, async file => {
     const content = fs.readFileSync(file, 'utf8')
+    debug('parsing SQL file:', file)
     const objects = await parseObjectStatements(content, file)
     return { file, objects }
   })
@@ -76,6 +80,8 @@ export async function prepareDatabase(sqlFiles: string[], env: Env) {
       return false
     }
 
+    debug('checking if object exists:', id.toQualifiedName())
+
     const { from, schemaKey, nameKey } = objectExistence[type]
 
     return pg.queryValue<boolean>(sql`
@@ -93,6 +99,8 @@ export async function prepareDatabase(sqlFiles: string[], env: Env) {
   // Plugins may add to the object list, so run them before linking the object
   // dependencies together.
   await preparePluginStatements(env, allObjects)
+
+  debug('plugin statements prepared')
 
   const sortedObjects = linkObjectStatements(allObjects)
 

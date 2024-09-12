@@ -62,9 +62,15 @@ export class Connection extends ConnectionEmitter {
    */
   query<TResult = Result[]>(
     command: SQLTemplate | QueryHook<TResult>,
+    resultParser?: (result: Result) => void,
     singleRowMode?: boolean,
   ): Promise<TResult> {
-    const promise = sendQuery(unprotect(this), command, singleRowMode)
+    const promise = sendQuery(
+      unprotect(this),
+      command,
+      resultParser,
+      singleRowMode,
+    )
     if (Number.isFinite(this.idleTimeout)) {
       clearTimeout(this.idleTimeoutId)
       promise.finally(() => {
@@ -160,6 +166,7 @@ export type QueryHook<TResult> = (
 async function sendQuery<TResult = Result[]>(
   conn: IConnection,
   command: SQLTemplate | QueryHook<TResult>,
+  resultParser?: (result: Result) => void,
   singleRowMode?: boolean,
 ): Promise<TResult> {
   stopReading(conn, ConnectionStatus.QUERY_WRITING)
@@ -226,13 +233,16 @@ async function sendQuery<TResult = Result[]>(
   }
 
   setStatus(conn, ConnectionStatus.QUERY_READING)
-  conn.pq.on('readable', (conn.reader = () => read(conn)))
+  conn.pq.on('readable', (conn.reader = () => read(conn, resultParser)))
   conn.pq.startReader()
   return conn.promise
 }
 
 // called when libpq is readable
-function read(conn: IConnection): void {
+function read(
+  conn: IConnection,
+  resultParser?: (result: Result) => void,
+): void {
   const { pq } = conn
 
   // read waiting data from the socket
@@ -250,7 +260,7 @@ function read(conn: IConnection): void {
 
   // load our result object
   while (pq.getResult()) {
-    processResult(conn)
+    processResult(conn, resultParser)
 
     // if reading multiple results, sometimes the following results might cause
     // a blocking read. in this scenario yield back off the reader until libpq is readable
@@ -306,29 +316,36 @@ function waitForDrain(pq: Libpq) {
   })
 }
 
-function processResult(conn: IConnection) {
+function processResult(
+  conn: IConnection,
+  resultParser?: (result: Result) => void,
+) {
   const resultStatus = conn.pq.resultStatus()
+
   switch (resultStatus) {
     case 'PGRES_FATAL_ERROR': {
       const error = new PgResultError(conn.pq.resultErrorMessage())
       Object.assign(error, conn.pq.resultErrorFields())
       resolvePromise(conn, error)
-      break
+      return
     }
 
-    case 'PGRES_SINGLE_TUPLE':
-      conn.emit('result', buildResult(conn.pq))
-      break
+    case 'PGRES_SINGLE_TUPLE': {
+      const result = buildResult(conn.pq)
+      resultParser?.(result)
+      conn.emit('result', result)
+      return
+    }
 
     case 'PGRES_TUPLES_OK':
     case 'PGRES_COMMAND_OK':
     case 'PGRES_EMPTY_QUERY': {
-      conn.results.push(buildResult(conn.pq))
-      break
+      const result = buildResult(conn.pq)
+      resultParser?.(result)
+      conn.results.push(result)
+      return
     }
-
-    default:
-      console.warn(`[pg-native] Unrecognized result status: ${resultStatus}`)
-      break
   }
+
+  console.warn(`[pg-native] Unrecognized result status: ${resultStatus}`)
 }

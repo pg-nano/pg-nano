@@ -9,7 +9,12 @@ export interface QueryOptions {
    * Cancel the query early when this signal is aborted.
    */
   signal?: AbortSignal
-  parse?: (result: Result) => void
+  /**
+   * Hook into each result after it's been parsed but before it's returned.
+   * Useful for handling custom field types.
+   * @internal
+   */
+  resultParser?: (result: Result) => void
   /**
    * Transform the resolved value of the promise.
    * @internal
@@ -93,6 +98,7 @@ export class Query<
       connection,
       this.sql,
       signal,
+      this.options?.resultParser,
       singleRowMode,
     )
     if (singleRowMode) {

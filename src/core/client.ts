@@ -236,6 +236,7 @@ export class Client {
     connection: Connection | Promise<Connection>,
     commands: SQLTemplate | QueryHook<TResult>,
     signal?: AbortSignal,
+    resultParser?: (result: Result) => void,
     singleRowMode?: boolean,
   ): Promise<TResult> {
     signal?.throwIfAborted()
@@ -249,7 +250,11 @@ export class Client {
     try {
       signal?.throwIfAborted()
 
-      const queryPromise = connection.query(commands, singleRowMode)
+      const queryPromise = connection.query(
+        commands,
+        resultParser,
+        singleRowMode,
+      )
 
       if (signal) {
         const cancel = () => connection.cancel()

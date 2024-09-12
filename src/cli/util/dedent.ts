@@ -55,7 +55,7 @@ export function dedent(
 
           // Detect the indentation before this embedded string.
           const indent =
-            value.includes('\n') && input.match(/[ \t]*(?=[^\n]*$)/)?.[0]
+            value.includes('\n') && input.match(/\n([ \t]*)(?=[^\n]*$)/)?.[1]
 
           // Ensure the multi-line, embedded string can be correctly
           // dedented.

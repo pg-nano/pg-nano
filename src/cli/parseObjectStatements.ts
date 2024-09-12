@@ -9,10 +9,11 @@ import {
 } from '@pg-nano/pg-parser'
 import util from 'node:util'
 import type { Field } from 'pg-nano'
-import { select } from 'radashi'
+import { select, tryit } from 'radashi'
 import { debug } from './debug.js'
 import { SQLIdentifier, toUniqueIdList } from './identifier'
 import { log } from './log'
+import { cwdRelative } from './util/path.js'
 
 const inspect = (value: any) =>
   util.inspect(value, { depth: null, colors: true })
@@ -23,6 +24,7 @@ const whitespace = ' \n\t\r'
 
 export async function parseObjectStatements(content: string, file: string) {
   const stmts = splitWithScannerSync(content)
+
   const objects: ParsedObjectStmt[] = []
   const lineBreaks = getLineBreakLocations(content)
 
@@ -38,13 +40,24 @@ export async function parseObjectStatements(content: string, file: string) {
     length -= i - location
     location = i
 
-    const query = content.slice(location, location + length)
-    const node = (await parseQuery(query)).stmts[0].stmt
-
     // Get the line number.
     const line =
       lineBreaks.findIndex(lineBreak => location < lineBreak) + 1 ||
       lineBreaks.length
+
+    debug('parsing statement on line', line)
+
+    const query = content.slice(location, location + length)
+    const [parseError, parseResult] = await tryit(parseQuery)(query)
+
+    if (parseError) {
+      if (isParseError(parseError)) {
+        appendCodeFrame(parseError, query, line, file)
+      }
+      throw parseError
+    }
+
+    const node = parseResult.stmts[0].stmt
 
     const stmt: Omit<PgObjectStmt, 'id' | 'kind'> = {
       query,
@@ -360,4 +373,47 @@ function getLineBreakLocations(content: string) {
     }
   }
   return locations
+}
+
+type ParseError = Error & { cursorPosition: number }
+
+function isParseError(error: Error): error is ParseError {
+  return 'cursorPosition' in error
+}
+
+function appendCodeFrame(
+  error: ParseError,
+  query: string,
+  stmtStartLine: number,
+  stmtFile: string,
+) {
+  const queryLines = (query + ';').split('\n')
+
+  const errorPosition = error.cursorPosition
+  const errorLine = query.slice(0, errorPosition).split('\n').length - 1
+  const errorColumn = errorPosition - query.lastIndexOf('\n', errorPosition - 1)
+
+  const startLine = Math.max(0, errorLine - 2)
+  const endLine = Math.min(queryLines.length - 1, errorLine + 3)
+  const width = String(stmtStartLine + endLine).length
+
+  let output = ''
+
+  for (let line = startLine; line <= endLine; line++) {
+    output += `${line === errorLine ? '> ' : '  '}${String(stmtStartLine + line).padStart(width)} | ${queryLines[line]}\n`
+
+    if (line === errorLine) {
+      output += ' '.repeat(3 + width) + `| ${' '.repeat(errorColumn - 1)}^\n`
+    }
+  }
+
+  error.message +=
+    '\n\n' +
+    output +
+    '\n    at ' +
+    cwdRelative(stmtFile) +
+    ':' +
+    (stmtStartLine + errorLine) +
+    ':' +
+    errorColumn
 }

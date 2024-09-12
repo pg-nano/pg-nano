@@ -1,19 +1,16 @@
-import { type Row, sql, type SQLToken } from 'pg-native'
+import { sql, type Row, type SQLToken } from 'pg-native'
 import { isArray } from 'radashi'
 import type { Client } from './client.js'
-import { arrifyParams, type ParamDef } from './params.js'
-import type { Query } from './query.js'
-
-function sqlRoutineCall(id: SQLToken, values: any[], limit?: number) {
-  return sql`
-    SELECT * FROM ${id}(${values.map(sql.val)})
-    ${limit ? sql`LIMIT ${sql.unsafe(String(limit))}` : ''}
-  `
-}
+import { parseCompositeFields } from './data/composite.js'
+import type { Fields } from './data/fields.js'
+import { prepareParams, type Params } from './data/params.js'
+import type { Query, QueryOptions } from './query.js'
 
 export type Routine<TArgs extends object, TResult> = TArgs extends any[]
   ? (client: Client, ...args: TArgs) => TResult
-  : (client: Client, args: TArgs) => TResult
+  : object extends TArgs
+    ? (client: Client, args?: TArgs) => TResult
+    : (client: Client, args: TArgs) => TResult
 
 /**
  * Create a dedicated query function for a Postgres routine that returns a
@@ -21,16 +18,10 @@ export type Routine<TArgs extends object, TResult> = TArgs extends any[]
  */
 export function bindQueryRowList<TArgs extends object, TRow extends Row>(
   name: string | string[],
-  paramDefs?: ParamDef[] | null,
+  inParams?: Params | null,
+  outParams?: { [name: string]: Fields } | null,
 ): Routine<TArgs, Query<TRow[]>> {
-  const id = isArray(name) ? sql.id(...name) : sql.id(name)
-  const routine = paramDefs
-    ? (client: Client, params: Record<string, unknown>) =>
-        client.queryRowList(sqlRoutineCall(id, arrifyParams(params, paramDefs)))
-    : (client: Client, ...args: any[]) =>
-        client.queryRowList(sqlRoutineCall(id, args))
-
-  return routine as any
+  return bindRoutine('queryRowList', name, inParams, outParams) as any
 }
 
 /**
@@ -39,18 +30,10 @@ export function bindQueryRowList<TArgs extends object, TRow extends Row>(
  */
 export function bindQueryValueList<TArgs extends object, TResult>(
   name: string | string[],
-  paramDefs?: ParamDef[] | null,
+  inParams?: Params | null,
+  outParams?: { [name: string]: Fields } | null,
 ): Routine<TArgs, Query<TResult[]>> {
-  const id = isArray(name) ? sql.id(...name) : sql.id(name)
-  const routine = paramDefs
-    ? (client: Client, params: Record<string, unknown>) =>
-        client.queryValueList(
-          sqlRoutineCall(id, arrifyParams(params, paramDefs)),
-        )
-    : (client: Client, ...args: any[]) =>
-        client.queryValueList(sqlRoutineCall(id, args))
-
-  return routine as any
+  return bindRoutine('queryValueList', name, inParams, outParams) as any
 }
 
 /**
@@ -59,17 +42,10 @@ export function bindQueryValueList<TArgs extends object, TResult>(
  */
 export function bindQueryRow<TArgs extends object, TRow extends Row>(
   name: string | string[],
-  paramDefs?: ParamDef[] | null,
-  returnDefs?: ParamDef[] | null,
+  inParams?: Params | null,
+  outParams?: { [name: string]: Fields } | null,
 ): Routine<TArgs, Promise<TRow | null>> {
-  const id = isArray(name) ? sql.id(...name) : sql.id(name)
-  const routine = paramDefs
-    ? (client: Client, params: Record<string, unknown>) =>
-        client.queryRow(sqlRoutineCall(id, arrifyParams(params, paramDefs), 1))
-    : (client: Client, ...args: any[]) =>
-        client.queryRow(sqlRoutineCall(id, args, 1))
-
-  return routine as any
+  return bindRoutine('queryRow', name, inParams, outParams) as any
 }
 
 /**
@@ -78,16 +54,37 @@ export function bindQueryRow<TArgs extends object, TRow extends Row>(
  */
 export function bindQueryValue<TArgs extends object, TResult>(
   name: string | string[],
-  paramDefs?: ParamDef[] | null,
+  inParams?: Params | null,
+  outParams?: { [name: string]: Fields } | null,
 ): Routine<TArgs, Promise<TResult | null>> {
-  const id = isArray(name) ? sql.id(...name) : sql.id(name)
-  const routine = paramDefs
-    ? (client: Client, params: Record<string, unknown>) =>
-        client.queryValue(
-          sqlRoutineCall(id, arrifyParams(params, paramDefs), 1),
-        )
-    : (client: Client, ...args: any[]) =>
-        client.queryValue(sqlRoutineCall(id, args, 1))
+  return bindRoutine('queryValue', name, inParams, outParams) as any
+}
 
-  return routine as any
+function bindRoutine(
+  method: 'queryRow' | 'queryRowList' | 'queryValue' | 'queryValueList',
+  name: string | string[],
+  inParams?: Params | null,
+  outParams?: { [name: string]: Fields } | null,
+): Routine<any, any> {
+  const id = isArray(name) ? sql.id(...name) : sql.id(name)
+  const limit = method.endsWith('List') ? 0 : 1
+  const options: QueryOptions | undefined = outParams
+    ? { resultParser: result => parseCompositeFields(result, outParams) }
+    : undefined
+
+  return inParams
+    ? (client: Client, namedValues?: Record<string, unknown>) =>
+        client[method as 'queryRow'](
+          sqlRoutineCall(id, prepareParams(namedValues, inParams), limit),
+          options,
+        )
+    : (client: Client, ...values: any[]) =>
+        client[method as 'queryRow'](sqlRoutineCall(id, values, limit), options)
+}
+
+function sqlRoutineCall(id: SQLToken, values: any[], limit: number) {
+  return sql`
+    SELECT * FROM ${id}(${values.map(sql.val)})
+    ${limit ? sql`LIMIT ${sql.unsafe(String(limit))}` : ''}
+  `
 }

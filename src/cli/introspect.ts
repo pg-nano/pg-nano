@@ -165,6 +165,23 @@ export async function introspectResultSet(
   return description.fields
 }
 
+export type PgBaseType = {
+  oid: number
+  typname: string
+  typarray: number
+}
+
+export function introspectBaseTypes(client: Client, signal?: AbortSignal) {
+  const query = sql`
+    SELECT oid, typname, typarray
+    FROM pg_catalog.pg_type
+    WHERE (typtype = 'b' OR typtype = 'r')
+      AND typarray <> 0
+  `
+
+  return client.queryRowList<PgBaseType>(query, { signal })
+}
+
 export type PgArrayType = {
   oid: number
   typelem: number
@@ -209,16 +226,18 @@ export function introspectEnumTypes(client: Client, signal?: AbortSignal) {
   return client.queryRowList<PgEnumType>(query, { signal })
 }
 
+export type PgAttribute = {
+  attname: string
+  atttypid: number
+  attnotnull: boolean
+}
+
 export type PgCompositeType = {
   oid: number
   typname: string
   nspname: string
   typarray: number
-  attributes: {
-    attname: string
-    atttypid: number
-    attnotnull: boolean
-  }[]
+  attributes: PgAttribute[]
 }
 
 export function introspectCompositeTypes(client: Client, signal?: AbortSignal) {
@@ -254,18 +273,17 @@ export function introspectCompositeTypes(client: Client, signal?: AbortSignal) {
   return client.queryRowList<PgCompositeType>(query, { signal })
 }
 
+export type PgTableAttribute = PgAttribute & {
+  atthasdef: boolean
+  attidentity: 'a' | 'd' | ''
+}
+
 export type PgTable = {
   oid: number
   typname: string
   nspname: string
   typarray: number
-  attributes: {
-    attname: string
-    atttypid: number
-    attnotnull: boolean
-    atthasdef: boolean
-    attidentity: 'a' | 'd' | ''
-  }[]
+  attributes: PgTableAttribute[]
 }
 
 export function introspectTables(client: Client, signal?: AbortSignal) {

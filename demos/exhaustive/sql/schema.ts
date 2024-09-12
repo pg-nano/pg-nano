@@ -1,55 +1,7 @@
-import {
-  bindQueryRow,
-  bindQueryRowList,
-  bindQueryValue,
-  type JSON,
-  type Point,
-  type Range,
-} from 'pg-nano'
+import { bindQueryRow, bindQueryRowList, bindQueryValue, type JSON, type Point, type Range } from 'pg-nano'
+import * as t from './types.js'
 
-export const AddressType = ['street', 'city', 'state', 'zip_code']
-
-export const Foo = [
-  'id',
-  'name',
-  'description',
-  'created_at',
-  'updated_at',
-  'is_active',
-  'score',
-  'tags',
-  'matrix',
-  'metadata',
-  'binary_data',
-  'coordinates',
-  'ip_address',
-  'mac_address',
-  'price_range',
-  'schedule',
-  'priority',
-  'uuid',
-  'search_vector',
-  'status',
-  { address: AddressType },
-  'product_attributes',
-]
-
-export const Account = [
-  'id',
-  'username',
-  'email',
-  'password_hash',
-  'posts_count',
-  'first_name',
-  'last_name',
-  'date_of_birth',
-  'created_at',
-  'updated_at',
-  'last_login',
-  'is_deleted',
-]
-
-export type StatusType = 'pending' | 'active' | 'inactive' | 'archived'
+export type StatusType = "pending" | "active" | "inactive" | "archived"
 
 export type AddressType = {
   street?: string
@@ -113,7 +65,6 @@ export type Account = {
   username: string
   email: string
   password_hash: string
-  posts_count: number
   first_name?: string
   last_name?: string
   date_of_birth?: string
@@ -121,6 +72,7 @@ export type Account = {
   updated_at: Date
   last_login?: Date
   is_deleted?: boolean
+  posts_count: number
 }
 export declare namespace Account {
   type InsertParams = {
@@ -128,7 +80,6 @@ export declare namespace Account {
     username: string
     email: string
     password_hash: string
-    posts_count?: number
     first_name?: string
     last_name?: string
     date_of_birth?: string
@@ -136,151 +87,97 @@ export declare namespace Account {
     updated_at?: Date
     last_login?: Date
     is_deleted?: boolean
+    posts_count?: number
   }
 }
 
-export declare namespace upsertFoo {
-  type Params = { rec: Foo.InsertParams }
+export declare namespace replaceFoo {
+  type Params = { id: number, rec: Foo.InsertParams }
   type Result = Foo
 }
 
-export const upsertFoo = /* @__PURE__ */ bindQueryRow<
-  upsertFoo.Params,
-  upsertFoo.Result
->('upsert_foo', [{ rec: Foo }])
+export const replaceFoo = /* @__PURE__ */ bindQueryRow<replaceFoo.Params, replaceFoo.Result>("replace_foo", { id: t.int4, rec: t.foo }, { address: t.address_type })
+
+export declare namespace updateFoo {
+  type Params = { id: number, data: JSON }
+  type Result = Foo
+}
+
+export const updateFoo = /* @__PURE__ */ bindQueryRow<updateFoo.Params, updateFoo.Result>("update_foo", { id: t.int4, data: t.json }, { address: t.address_type })
+
+export declare namespace createPost {
+  type Params = { title: string, content: string, authorId: number }
+  type Result = void
+}
+
+export const createPost = /* @__PURE__ */ bindQueryValue<createPost.Params, createPost.Result>("create_post", { title: t.text, content: t.text, "authorId": t.int4 })
+
+export declare namespace createAccount {
+  type Params = { username: string, email: string, password: string, salt: string, firstName?: string, lastName?: string, dateOfBirth?: string }
+  type Result = number
+}
+
+export const createAccount = /* @__PURE__ */ bindQueryValue<createAccount.Params, createAccount.Result>("create_account", { username: t.varchar, email: t.varchar, password: t.varchar, salt: t.varchar, "firstName": t.varchar, "lastName": t.varchar, "dateOfBirth": t.date })
 
 export declare namespace deleteFoo {
   type Params = { id: number }
   type Result = boolean
 }
 
-export const deleteFoo = /* @__PURE__ */ bindQueryValue<
-  deleteFoo.Params,
-  deleteFoo.Result
->('delete_foo', ['id'])
+export const deleteFoo = /* @__PURE__ */ bindQueryValue<deleteFoo.Params, deleteFoo.Result>("delete_foo", { id: t.int4 })
+
+export declare namespace replaceAccount {
+  type Params = { id: number, rec: Account.InsertParams }
+  type Result = Account
+}
+
+export const replaceAccount = /* @__PURE__ */ bindQueryRow<replaceAccount.Params, replaceAccount.Result>("replace_account", { id: t.int4, rec: t.account })
 
 export declare namespace deleteAccount {
   type Params = [number]
   type Result = boolean
 }
 
-export const deleteAccount = /* @__PURE__ */ bindQueryValue<
-  deleteAccount.Params,
-  deleteAccount.Result
->('delete_account')
-
-export declare namespace createAccount {
-  type Params = {
-    username: string
-    email: string
-    password: string
-    salt: string
-    firstName?: string
-    lastName?: string
-    dateOfBirth?: string
-  }
-  type Result = number
-}
-
-export const createAccount = /* @__PURE__ */ bindQueryValue<
-  createAccount.Params,
-  createAccount.Result
->('create_account', [
-  'username',
-  'email',
-  'password',
-  'salt',
-  'firstName',
-  'lastName',
-  'dateOfBirth',
-])
-
-export declare namespace getAccount {
-  type Params = { id: number }
-  type Result = Account
-}
-
-export const getAccount = /* @__PURE__ */ bindQueryRow<
-  getAccount.Params,
-  getAccount.Result
->('get_account', ['id'])
-
-export declare namespace replaceFoo {
-  type Params = { id: number; rec: Foo.InsertParams }
-  type Result = Foo
-}
-
-export const replaceFoo = /* @__PURE__ */ bindQueryRow<
-  replaceFoo.Params,
-  replaceFoo.Result
->('replace_foo', ['id', { rec: Foo }])
-
-export declare namespace upsertAccount {
-  type Params = { rec: Account.InsertParams }
-  type Result = Account
-}
-
-export const upsertAccount = /* @__PURE__ */ bindQueryRow<
-  upsertAccount.Params,
-  upsertAccount.Result
->('upsert_account', [{ rec: Account }])
+export const deleteAccount = /* @__PURE__ */ bindQueryValue<deleteAccount.Params, deleteAccount.Result>("delete_account", [t.int4])
 
 export declare namespace getFoo {
   type Params = { id: number }
   type Result = Foo
 }
 
-export const getFoo = /* @__PURE__ */ bindQueryRowList<
-  getFoo.Params,
-  getFoo.Result
->('get_foo', ['id'])
+export const getFoo = /* @__PURE__ */ bindQueryRowList<getFoo.Params, getFoo.Result>("get_foo", { id: t.int4 }, { address: t.address_type })
 
-export declare namespace updateFoo {
-  type Params = { id: number; data: JSON }
-  type Result = Foo
+export declare namespace upsertAccount {
+  type Params = { rec: Account.InsertParams }
+  type Result = Account
 }
 
-export const updateFoo = /* @__PURE__ */ bindQueryRow<
-  updateFoo.Params,
-  updateFoo.Result
->('update_foo', ['id', 'data'])
+export const upsertAccount = /* @__PURE__ */ bindQueryRow<upsertAccount.Params, upsertAccount.Result>("upsert_account", { rec: t.account })
+
+export declare namespace getAccount {
+  type Params = { id: number }
+  type Result = Account
+}
+
+export const getAccount = /* @__PURE__ */ bindQueryRow<getAccount.Params, getAccount.Result>("get_account", { id: t.int4 })
 
 export declare namespace createFoo {
   type Params = { rec: Foo.InsertParams }
   type Result = Foo
 }
 
-export const createFoo = /* @__PURE__ */ bindQueryRowList<
-  createFoo.Params,
-  createFoo.Result
->('create_foo', [{ rec: Foo }])
-
-export declare namespace createPost {
-  type Params = { title: string; content: string; authorId: number }
-  type Result = void
-}
-
-export const createPost = /* @__PURE__ */ bindQueryValue<
-  createPost.Params,
-  createPost.Result
->('create_post', ['title', 'content', 'authorId'])
-
-export declare namespace replaceAccount {
-  type Params = { id: number; rec: Account.InsertParams }
-  type Result = Account
-}
-
-export const replaceAccount = /* @__PURE__ */ bindQueryRow<
-  replaceAccount.Params,
-  replaceAccount.Result
->('replace_account', ['id', { rec: Account }])
+export const createFoo = /* @__PURE__ */ bindQueryRowList<createFoo.Params, createFoo.Result>("create_foo", { rec: t.foo }, { address: t.address_type })
 
 export declare namespace updateAccount {
-  type Params = { id: number; data: JSON }
+  type Params = { id: number, data: JSON }
   type Result = Account
 }
 
-export const updateAccount = /* @__PURE__ */ bindQueryRow<
-  updateAccount.Params,
-  updateAccount.Result
->('update_account', ['id', 'data'])
+export const updateAccount = /* @__PURE__ */ bindQueryRow<updateAccount.Params, updateAccount.Result>("update_account", { id: t.int4, data: t.json })
+
+export declare namespace upsertFoo {
+  type Params = { rec: Foo.InsertParams }
+  type Result = Foo
+}
+
+export const upsertFoo = /* @__PURE__ */ bindQueryRow<upsertFoo.Params, upsertFoo.Result>("upsert_foo", { rec: t.foo }, { address: t.address_type })

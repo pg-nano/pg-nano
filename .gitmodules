@@ -31,3 +31,6 @@
 [submodule "packages/pg-parser"]
 	path = packages/pg-parser
 	url = https://github.com/pg-nano/pg-parser
+[submodule "packages/postgres-composite"]
+	path = packages/postgres-composite
+	url = https://github.com/pg-nano/postgres-composite.git

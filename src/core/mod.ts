@@ -1,8 +1,7 @@
 export * from './client.js'
+export * from './data/types.js'
 export * from './error.js'
 export * from './query.js'
-export * from './routines.js'
-export * from './types.js'
 
 export {
   Interval,
@@ -21,3 +20,7 @@ export {
   type SQLTemplateValue,
   type SQLToken,
 } from 'pg-native'
+
+/** @internal */
+export { defineField } from './data/fields.js'
+export * from './routines.js'
