@@ -2,6 +2,7 @@ import * as t from './types.js'
 
 // Base types
 export const bool = 16
+export const bpchar = 1042
 export const bytea = 17
 export const date = 1082
 export const float8_array = 1022
@@ -27,6 +28,18 @@ export const varchar = 1043
 export const status_type = 3338343
 
 // Composite types
+export const course = {
+  id: t.int4,
+  course_name: t.varchar
+} as const
+
+export const course_enrollment = {
+  student_id: t.int4,
+  course_id: t.int4,
+  enrollment_date: t.date,
+  grade: t.bpchar
+} as const
+
 export const address_type = {
   street: t.varchar,
   city: t.varchar,
@@ -56,20 +69,6 @@ export const foo = {
   search_vector: t.tsvector,
   status: 3338343 /* status_type */,
   address: t.address_type,
-  product_attributes: t.hstore
-} as const
-
-export const account = {
-  id: t.int4,
-  username: t.varchar,
-  email: t.varchar,
-  password_hash: t.varchar,
-  first_name: t.varchar,
-  last_name: t.varchar,
-  date_of_birth: t.date,
-  created_at: t.timestamptz,
-  updated_at: t.timestamptz,
-  last_login: t.timestamptz,
-  is_deleted: t.bool,
-  posts_count: t.int4
+  product_attributes: t.hstore,
+  color_preference: t.varchar
 } as const

@@ -13,7 +13,8 @@
     "**/pg-native/index.d.ts": true
   },
   "files.associations": {
-    "*.pgsql": "sql"
+    "*.pgsql": "sql",
+    ".sqlfluff": "toml"
   },
   "rewrap.wrappingColumn": 80,
   "clangd.arguments": [
@@ -24,7 +25,7 @@
   "pgFormatter.noExtraLine": true,
   "pgFormatter.keepNewline": true,
   "[sql]": {
-    "editor.defaultFormatter": "bradymholt.pgformatter"
+    "editor.defaultFormatter": "dorzey.vscode-sqlfluff"
   },
   "sqlLanguageServer.connections": [
     {

@@ -1,5 +1,5 @@
 import type Libpq from '@pg-nano/libpq'
-import * as types from 'pg-types'
+import { getTypeParser } from './pg-types/text.js'
 
 export class Result<TRow extends Row = Row> {
   constructor(
@@ -86,7 +86,7 @@ function consumeValue(
   if (rawValue === '' && pq.getisnull(tupleNo, fieldNo)) {
     return null
   }
-  const parseValue = types.getTypeParser(fields[fieldNo].dataTypeID)
+  const parseValue = getTypeParser(fields[fieldNo].dataTypeID)
   return parseValue(rawValue)
 }
 

@@ -2,5 +2,12 @@
   "name": "pg-native",
   "private": true,
   "type": "module",
-  "main": "index.js"
+  "main": "index.js",
+  "dependencies": {
+    "postgres-array": "workspace:^",
+    "postgres-bytea": "workspace:^",
+    "postgres-date": "workspace:^",
+    "postgres-interval": "workspace:^",
+    "postgres-range": "workspace:^"
+  }
 }

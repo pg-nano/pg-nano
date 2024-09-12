@@ -310,9 +310,9 @@ export async function generate(
     for (const fn of nsp.functions) {
       const jsName = camel(fn.proname)
 
-      const argNames = fn.proargnames?.map(name =>
-        camel(name.replace(/^p_/, '')),
-      )
+      const argNames = fn.proargnames
+        ?.slice(0, fn.proargtypes.length)
+        .map(name => camel(name.replace(/^p_/, '')))
 
       const argTypes = fn.proargtypes
         .map((typeOid, index) => {

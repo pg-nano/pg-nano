@@ -1,5 +1,4 @@
-import type { Result } from 'pg-native'
-import { getTypeParser } from 'pg-types'
+import { getTypeParser, type Result } from 'pg-native'
 import { parse as parseValues } from 'postgres-composite'
 import { isArray, isObject } from 'radashi'
 import type { Fields } from './fields.js'

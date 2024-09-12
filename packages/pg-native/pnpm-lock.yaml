@@ -6,4 +6,20 @@ settings:
 
 importers:
 
-  .: {}
+  .:
+    dependencies:
+      postgres-array:
+        specifier: workspace:^
+        version: link:../postgres-array
+      postgres-bytea:
+        specifier: workspace:^
+        version: link:../postgres-bytea
+      postgres-date:
+        specifier: workspace:^
+        version: link:../postgres-date
+      postgres-interval:
+        specifier: workspace:^
+        version: link:../postgres-interval
+      postgres-range:
+        specifier: workspace:^
+        version: link:../postgres-range
