@@ -60,6 +60,7 @@ export function bindQueryValueList<TArgs extends object, TResult>(
 export function bindQueryRow<TArgs extends object, TRow extends Row>(
   name: string | string[],
   paramDefs?: ParamDef[] | null,
+  returnDefs?: ParamDef[] | null,
 ): Routine<TArgs, Promise<TRow | null>> {
   const id = isArray(name) ? sql.id(...name) : sql.id(name)
   const routine = paramDefs

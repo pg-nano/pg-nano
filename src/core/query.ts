@@ -9,6 +9,7 @@ export interface QueryOptions {
    * Cancel the query early when this signal is aborted.
    */
   signal?: AbortSignal
+  parse?: (result: Result) => void
   /**
    * Transform the resolved value of the promise.
    * @internal
