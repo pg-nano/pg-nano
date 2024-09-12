@@ -1,7 +1,7 @@
 import type { Result, SQLTemplate } from 'pg-native'
 import type { Client } from './mod'
+import type { UnwrapArray } from './params.js'
 import { streamResults } from './stream.js'
-import type { UnwrapArray } from './util.js'
 
 export interface QueryOptions {
   /**

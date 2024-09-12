@@ -15,26 +15,27 @@ export class ExecutionQueue<TLinkedObject extends LinkedObject<any>>
     this.queue = new Set(objects)
   }
 
+  get size() {
+    return this.queue.size
+  }
+
   add(object: TLinkedObject) {
     this.queue.add(object)
   }
 
-  [Symbol.iterator]() {
-    const { queue } = this
-    return (function* () {
-      const visited = new Set<TLinkedObject>()
-      function* visit(object: TLinkedObject) {
+  *[Symbol.iterator]() {
+    const visited = new Set<TLinkedObject>()
+    function* visit(object: TLinkedObject): Generator<TLinkedObject> {
+      if (!visited.has(object)) {
+        visited.add(object)
         for (const dep of object.dependencies) {
-          visit(dep)
+          yield* visit(dep)
         }
-        if (!visited.has(object)) {
-          visited.add(object)
-          yield object
-        }
+        yield object
       }
-      for (const object of queue) {
-        yield* visit(object)
-      }
-    })()
+    }
+    for (const object of this.queue) {
+      yield* visit(object)
+    }
   }
 }

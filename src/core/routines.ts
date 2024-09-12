@@ -1,10 +1,14 @@
-import { type Row, sql } from 'pg-native'
+import { type Row, sql, type SQLToken } from 'pg-native'
+import { isArray } from 'radashi'
 import type { Client } from './client.js'
+import { arrifyParams } from './params.js'
 import type { Query } from './query.js'
-import { arrifyParams } from './util.js'
 
-function sqlRoutineCall(schema: string, name: string, values: any[]) {
-  return sql`${sql.id(schema)}.${sql.id(name)}(${values.map(sql.val)})`
+function sqlRoutineCall(id: SQLToken, values: any[], limit?: number) {
+  return sql`
+    SELECT * FROM ${id}(${values.map(sql.val)})
+    ${limit ? sql`LIMIT ${sql.unsafe(String(limit))}` : ''}
+  `
 }
 
 export type Routine<TArgs extends object, TResult> = TArgs extends any[]
@@ -16,19 +20,15 @@ export type Routine<TArgs extends object, TResult> = TArgs extends any[]
  * result set of any number of rows. The result set may be empty.
  */
 export function routineQueryAll<TArgs extends object, TRow extends Row>(
-  name: string,
-  params?: string[] | null,
-  schema = 'public',
+  name: string | string[],
+  params?: (string | string[])[] | null,
 ): Routine<TArgs, Query<TRow[]>> {
+  const id = isArray(name) ? sql.id(...name) : sql.id(name)
   const routine = params
     ? (client: Client, args: TArgs) =>
-        client.queryAll(
-          sql`SELECT * FROM ${sqlRoutineCall(schema, name, arrifyParams(args, params))}`,
-        )
+        client.queryAll(sqlRoutineCall(id, arrifyParams(args, params)))
     : (client: Client, ...args: any[]) =>
-        client.queryAll(
-          sql`SELECT * FROM ${sqlRoutineCall(schema, name, args)}`,
-        )
+        client.queryAll(sqlRoutineCall(id, args))
 
   return routine as any
 }
@@ -38,19 +38,15 @@ export function routineQueryAll<TArgs extends object, TRow extends Row>(
  * result set where each row has a single column. The result set may be empty.
  */
 export function routineQueryAllValues<TArgs extends object, TResult>(
-  name: string,
-  params?: string[] | null,
-  schema = 'public',
+  name: string | string[],
+  params?: (string | string[])[] | null,
 ): Routine<TArgs, Query<TResult[]>> {
+  const id = isArray(name) ? sql.id(...name) : sql.id(name)
   const routine = params
     ? (client: Client, args: TArgs) =>
-        client.queryAllValues(
-          sql`SELECT * FROM ${sqlRoutineCall(schema, name, arrifyParams(args, params))}`,
-        )
+        client.queryAllValues(sqlRoutineCall(id, arrifyParams(args, params)))
     : (client: Client, ...args: any[]) =>
-        client.queryAllValues(
-          sql`SELECT * FROM ${sqlRoutineCall(schema, name, args)}`,
-        )
+        client.queryAllValues(sqlRoutineCall(id, args))
 
   return routine as any
 }
@@ -60,19 +56,15 @@ export function routineQueryAllValues<TArgs extends object, TResult>(
  * single row or nothing.
  */
 export function routineQueryOne<TArgs extends object, TRow extends Row>(
-  name: string,
-  params?: string[] | null,
-  schema = 'public',
+  name: string | string[],
+  params?: (string | string[])[] | null,
 ): Routine<TArgs, Promise<TRow | null>> {
+  const id = isArray(name) ? sql.id(...name) : sql.id(name)
   const routine = params
     ? (client: Client, args: TArgs) =>
-        client.queryOne(
-          sql`SELECT * FROM ${sqlRoutineCall(schema, name, arrifyParams(args, params))} LIMIT 1`,
-        )
+        client.queryOne(sqlRoutineCall(id, arrifyParams(args, params), 1))
     : (client: Client, ...args: any[]) =>
-        client.queryOne(
-          sql`SELECT * FROM ${sqlRoutineCall(schema, name, args)} LIMIT 1`,
-        )
+        client.queryOne(sqlRoutineCall(id, args, 1))
 
   return routine as any
 }
@@ -82,19 +74,15 @@ export function routineQueryOne<TArgs extends object, TRow extends Row>(
  * single value (i.e. one row with one column) or nothing.
  */
 export function routineQueryOneValue<TArgs extends object, TResult>(
-  name: string,
-  params?: string[] | null,
-  schema = 'public',
+  name: string | string[],
+  params?: (string | string[])[] | null,
 ): Routine<TArgs, Promise<TResult | null>> {
+  const id = isArray(name) ? sql.id(...name) : sql.id(name)
   const routine = params
     ? (client: Client, args: TArgs) =>
-        client.queryOneValue(
-          sql`SELECT * FROM ${sqlRoutineCall(schema, name, arrifyParams(args, params))} LIMIT 1`,
-        )
+        client.queryOneValue(sqlRoutineCall(id, arrifyParams(args, params), 1))
     : (client: Client, ...args: any[]) =>
-        client.queryOneValue(
-          sql`SELECT * FROM ${sqlRoutineCall(schema, name, args)} LIMIT 1`,
-        )
+        client.queryOneValue(sqlRoutineCall(id, args, 1))
 
   return routine as any
 }

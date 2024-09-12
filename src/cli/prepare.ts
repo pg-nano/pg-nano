@@ -2,7 +2,7 @@ import type { Plugin } from '@pg-nano/plugin'
 import fs from 'node:fs'
 import path from 'node:path'
 import { PgResultError, sql } from 'pg-nano'
-import { group, map, memo } from 'radashi'
+import { map, memo, sift } from 'radashi'
 import { hasCompositeTypeChanged, hasRoutineTypeChanged } from './diff'
 import type { Env } from './env'
 import type { SQLIdentifier } from './identifier'
@@ -13,34 +13,12 @@ import {
   type ParsedObjectType,
   parseObjectStatements,
 } from './parseObjectStatements'
-import { dedent } from './util/dedent'
 import { cwdRelative } from './util/path.js'
 
-export async function prepareDatabase(filePaths: string[], env: Env) {
-  const client = await env.client
+export async function prepareDatabase(sqlFiles: string[], env: Env) {
+  const pg = await env.client
 
-  fs.rmSync(env.schemaDir, { recursive: true, force: true })
-  fs.mkdirSync(env.schemaDir, { recursive: true })
-
-  const { pre: prePlanFiles, rest: schemaFiles = [] } = group(
-    filePaths,
-    file => {
-      const name = path.basename(file)
-      return name[0] === '!' ? 'pre' : 'rest'
-    },
-  )
-
-  let prePlanDDL = dedent`
-    SET check_function_bodies = off;\n\n
-  `
-
-  if (prePlanFiles) {
-    prePlanDDL +=
-      prePlanFiles.map(file => fs.readFileSync(file, 'utf8')).join('\n\n') +
-      '\n\n'
-  }
-
-  const parsedSchemaFiles = await map(schemaFiles, async file => {
+  const parsedFiles = await map(sqlFiles, async file => {
     const content = fs.readFileSync(file, 'utf8')
     const objects = await parseObjectStatements(content, file)
     return { file, objects }
@@ -100,7 +78,7 @@ export async function prepareDatabase(filePaths: string[], env: Env) {
 
     const { from, schemaKey, nameKey } = objectExistence[type]
 
-    return client.queryOneValue<boolean>(sql`
+    return pg.queryOneValue<boolean>(sql`
       SELECT EXISTS (
         SELECT 1
         FROM ${sql.id(from)}
@@ -110,7 +88,7 @@ export async function prepareDatabase(filePaths: string[], env: Env) {
     `)
   })
 
-  const allObjects = parsedSchemaFiles.flatMap(schemaFile => schemaFile.objects)
+  const allObjects = parsedFiles.flatMap(parsedFile => parsedFile.objects)
 
   // Plugins may add to the object list, so run them before linking the object
   // dependencies together.
@@ -119,7 +97,7 @@ export async function prepareDatabase(filePaths: string[], env: Env) {
   const sortedObjects = linkObjectStatements(allObjects)
 
   // The "nano" schema is used to store temporary objects during diffing.
-  await client.query(sql`
+  await pg.query(sql`
     DROP SCHEMA IF EXISTS nano CASCADE;
     CREATE SCHEMA nano;
   `)
@@ -142,8 +120,8 @@ export async function prepareDatabase(filePaths: string[], env: Env) {
 
     const id = object.id.toQualifiedName()
     if (!message.includes(id)) {
-      const exists = await doesObjectExist(object.type, object.id)
-      message = `Error ${exists ? 'updating' : 'creating'} ${object.type} (${id}): ${message}`
+      const exists = await doesObjectExist(object.kind, object.id)
+      message = `Error ${exists ? 'updating' : 'creating'} ${object.kind} (${id}): ${message}`
     }
 
     const line =
@@ -174,26 +152,26 @@ export async function prepareDatabase(filePaths: string[], env: Env) {
   // dependency graph, so we can ensure all objects (and their dependencies)
   // exist before pg-schema-diff works its magic.
   for (const object of sortedObjects) {
-    if (object.dependents.size > 0 && !(object.type in objectExistence)) {
+    if (object.dependents.size > 0 && !(object.kind in objectExistence)) {
       log.warn(
         'Missing %s {%s} required by %s other statement%s:',
-        object.type,
+        object.kind,
         object.id.toQualifiedName(),
         object.dependents.size,
         object.dependents.size === 1 ? 's' : '',
       )
       for (const dependent of object.dependents) {
-        log.warn('  * %s {%s}', dependent.type, dependent.id.toQualifiedName())
+        log.warn('  * %s {%s}', dependent.kind, dependent.id.toQualifiedName())
       }
       continue
     }
 
-    if (await doesObjectExist(object.type, object.id)) {
-      if (object.type === 'type') {
-        if (object.subtype === 'composite') {
-          if (await hasCompositeTypeChanged(client, object)) {
+    if (await doesObjectExist(object.kind, object.id)) {
+      if (object.kind === 'type') {
+        if (object.subkind === 'composite') {
+          if (await hasCompositeTypeChanged(pg, object)) {
             log.magenta('Composite type changed:', object.id.toQualifiedName())
-            await client
+            await pg
               .query(sql`
                 DROP TYPE ${object.id.toSQL()} CASCADE;
                 ${sql.unsafe(object.query)}
@@ -203,13 +181,13 @@ export async function prepareDatabase(filePaths: string[], env: Env) {
               })
           }
         }
-      } else if (object.type === 'function') {
-        if (await hasRoutineTypeChanged(client, object)) {
+      } else if (object.kind === 'function') {
+        if (await hasRoutineTypeChanged(pg, object)) {
           log.magenta(
             'Function signature changed:',
             object.id.toQualifiedName(),
           )
-          await client
+          await pg
             .query(sql`
               DROP ROUTINE ${object.id.toSQL()} CASCADE;
               ${sql.unsafe(object.query)}
@@ -219,29 +197,58 @@ export async function prepareDatabase(filePaths: string[], env: Env) {
             })
         }
       }
+      // else if (object.type === 'view') {
+      //   if (await hasViewChanged(client, object)) {
+      //     log.magenta('View changed:', object.id.toQualifiedName())
+      //     await client
+      //       .query(sql`
+      //         DROP VIEW ${object.id.toSQL()} CASCADE;
+      //         ${sql.unsafe(object.query)}
+      //       `)
+      //       .catch(error => {
+      //         formatObjectError(error, object)
+      //       })
+      //   }
+      // }
     } else {
-      log('Creating %s %s', object.type, object.id.toQualifiedName())
-      await client.query(sql.unsafe(object.query)).catch(error => {
+      log('Creating %s %s', object.kind, object.id.toQualifiedName())
+      await pg.query(sql.unsafe(object.query)).catch(error => {
         formatObjectError(error, object)
       })
     }
   }
 
   // Drop the "nano" schema now that diffing is complete.
-  await client.query(sql`
+  await pg.query(sql`
     DROP SCHEMA IF EXISTS nano CASCADE;
   `)
 
-  const prePlanFile = path.join(env.untrackedDir, 'pre-plan.sql')
-  fs.writeFileSync(prePlanFile, prePlanDDL)
+  fs.rmSync(env.schemaDir, { recursive: true, force: true })
+  fs.mkdirSync(env.schemaDir, { recursive: true })
 
-  let outSchema = ''
+  const indexWidth = String(sortedObjects.size).length
+
+  let objectIndex = 1
   for (const object of sortedObjects) {
-    outSchema += object.query + ';\n\n'
-  }
+    const name = sift([
+      String(objectIndex++).padStart(indexWidth, '0'),
+      object.kind === 'extension' ? object.kind : null,
+      object.id.schema,
+      object.id.name,
+    ])
 
-  const outFile = path.join(env.schemaDir, 'schema.sql')
-  fs.writeFileSync(outFile, outSchema)
+    const outFile = path.join(env.schemaDir, name.join('-') + '.sql')
+    fs.writeFileSync(
+      outFile,
+      '-- file://' +
+        object.file +
+        '#L' +
+        object.line +
+        '\n' +
+        object.query +
+        ';\n',
+    )
+  }
 
   return allObjects
 }
@@ -293,10 +300,10 @@ async function preparePluginStatements(
         plugin.name.replace(/\//g, '__') + '.pgsql',
       )
 
-      const client = await env.client
-      const content = dedent(
-        await client.stringify(template, { reindent: true }),
-      )
+      const pg = await env.client
+      const content = await pg.stringify(template, {
+        reindent: true,
+      })
 
       // Write to disk so the developer can see the generated SQL, and possibly
       // commit it to source control (if desired). Note that this won't trigger
@@ -311,7 +318,7 @@ async function preparePluginStatements(
           log.warn(
             '[%s] Tried to create %s %s, but it already exists. Skipping.',
             plugin.name,
-            object.type,
+            object.kind,
             object.id.toQualifiedName(),
           )
           continue

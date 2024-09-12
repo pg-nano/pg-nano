@@ -4,7 +4,7 @@ import path from 'node:path'
 import { sql } from 'pg-nano'
 import { camel, mapify, pascal } from 'radashi'
 import type { Env } from './env'
-import { SQLIdentifier } from './identifier.js'
+import { quoteName, SQLIdentifier, unsafelyQuotedName } from './identifier.js'
 import {
   introspectNamespaces,
   type PgCompositeType,
@@ -22,6 +22,7 @@ import {
   type PgTypeMapping,
 } from './typeConversion'
 import { dedent } from './util/dedent'
+import { cwdRelative } from './util/path.js'
 
 export type GenerateOptions = {
   signal?: AbortSignal
@@ -32,32 +33,32 @@ export async function generate(
   filePaths: string[],
   options: GenerateOptions = {},
 ) {
-  const client = await env.client
+  const pg = await env.client
 
   const allObjects = await prepareDatabase(filePaths, env)
 
   const allFunctionsByName = mapify(
-    allObjects.filter(obj => obj.type === 'function'),
+    allObjects.filter(obj => obj.kind === 'function'),
     obj => obj.id.toQualifiedName(),
   )
 
   log('Migrating database...')
+
   await migrate(env)
 
   log('Generating type definitions...')
 
   // Step 1: Collect type information from the database.
-  const namespaces = await introspectNamespaces(client, options.signal)
-
-  // const { inspect } = await import('node:util')
-  // console.log(inspect(namespaces, { depth: null, colors: true }))
+  const namespaces = await introspectNamespaces(pg, options.signal)
 
   type PgUserType = {
-    kind: 'enum' | 'composite' | 'table'
     arity: 'unit' | 'array'
-    meta: PgEnumType | PgCompositeType | PgTable
     mapping: PgTypeMapping
-  }
+  } & (
+    | { kind: 'enum'; object: PgEnumType }
+    | { kind: 'composite'; object: PgCompositeType }
+    | { kind: 'table'; object: PgTable }
+  )
 
   const userTypes = new Map<number, PgUserType>()
 
@@ -91,13 +92,13 @@ export async function generate(
         userTypes.set(type.oid, {
           kind,
           arity: 'unit',
-          meta: type,
+          object: type,
           mapping: registerTypeMapping(type.oid, type.typname),
         })
         userTypes.set(type.typarray, {
           kind,
           arity: 'array',
-          meta: type,
+          object: type,
           mapping: registerTypeMapping(type.typarray, type.typname, '[]'),
         })
       }
@@ -117,6 +118,7 @@ export async function generate(
   const moduleBasename = path.basename(env.config.generate.outFile) + '.js'
   const builtinTypeRegex = /\b(Interval|Range|Circle|Point|JSON)\b/
   const renderedObjects = new Map<PgObject, string>()
+  const renderedTupleDefs = new Map<PgObject, string>()
   const unsupportedTypes = new Set<number>()
   const imports = new Set<string>()
 
@@ -153,9 +155,9 @@ export async function generate(
   const renderCompositeType = (type: PgCompositeType) =>
     dedent`
       export type ${pascal(type.typname)} = {
-        ${type.fields
-          .map(field => {
-            return `${field.attname}${field.attnotnull ? '' : '?'}: ${renderTypeReference(field.atttypid, type.nspname, 'type')}`
+        ${type.attributes
+          .map(attr => {
+            return `${attr.attname}${attr.attnotnull ? '' : '?'}: ${renderTypeReference(attr.atttypid, type.nspname, 'type')}`
           })
           .join('\n')}
       }\n\n
@@ -164,22 +166,34 @@ export async function generate(
   const renderTableType = (type: PgTable) =>
     dedent`
       export type ${pascal(type.typname)} = {
-        ${type.columns
-          .map(column => {
-            return `${column.attname}${column.attnotnull ? '' : '?'}: ${renderTypeReference(column.atttypid, type.nspname, 'return')}`
+        ${type.attributes
+          .map(attr => {
+            return `${attr.attname}${attr.attnotnull ? '' : '?'}: ${renderTypeReference(attr.atttypid, type.nspname, 'return')}`
           })
           .join('\n')}
       }
       export declare namespace ${pascal(type.typname)} {
         type InsertParams = {
-          ${type.columns
-            .filter(column => column.attidentity !== 'a')
-            .map(column => {
-              return `${column.attname}${column.attnotnull && !column.atthasdef ? '' : '?'}: ${renderTypeReference(column.atttypid, type.nspname, 'param')}`
+          ${type.attributes
+            .filter(attr => attr.attidentity !== 'a')
+            .map(attr => {
+              return `${attr.attname}${attr.attnotnull && !attr.atthasdef ? '' : '?'}: ${renderTypeReference(attr.atttypid, type.nspname, 'param')}`
             })
             .join('\n')}
         }
       }\n\n
+    `
+
+  const renderTupleDef = (type: PgCompositeType | PgTable) =>
+    dedent`
+      export const ${pascal(type.typname)} = [${type.attributes
+        .map(attr => {
+          const userType = userTypes.get(attr.atttypid)
+          return userType && userType.kind !== 'enum'
+            ? `{ ${unsafelyQuotedName(attr.attname)}: ${pascal(userType.object.typname)} }`
+            : quoteName(attr.attname)
+        })
+        .join(', ')}]\n\n
     `
 
   type TypeReferenceKind = 'return' | 'param' | 'type'
@@ -197,23 +211,23 @@ export async function generate(
     if (type) {
       const userType = userTypes.get(typeOid)
       if (userType) {
-        const object = userType.meta
+        const object = userType.object
         if (!renderedObjects.has(object)) {
           if (userType.kind === 'enum') {
             renderedObjects.set(object, renderEnumType(object as PgEnumType))
           } else {
-            // First set an empty string to avoid infinite recursion if there
-            // happens to be a circular reference.
+            // Prevent issue with circular references.
             renderedObjects.set(object, '')
+            renderedObjects.set(
+              object,
+              userType.kind === 'composite'
+                ? renderCompositeType(userType.object)
+                : renderTableType(userType.object),
+            )
 
-            if (userType.kind === 'composite') {
-              renderedObjects.set(
-                object,
-                renderCompositeType(object as PgCompositeType),
-              )
-            } else if (userType.kind === 'table') {
-              renderedObjects.set(object, renderTableType(object as PgTable))
-            }
+            // Prevent issue with circular references.
+            renderedTupleDefs.set(object, '')
+            renderedTupleDefs.set(object, renderTupleDef(userType.object))
           }
         }
         if (object.nspname !== context) {
@@ -328,6 +342,10 @@ export async function generate(
   for (const nsp of Object.values(namespaces)) {
     let nspCode = ''
 
+    for (const tupleDef of renderedTupleDefs.values()) {
+      nspCode += tupleDef
+    }
+
     for (const type of [
       ...nsp.enumTypes,
       ...nsp.compositeTypes,
@@ -352,7 +370,7 @@ export async function generate(
 
   // Step 7: Warn about any unsupported types.
   for (const typeOid of unsupportedTypes) {
-    const typeName = await client.queryOneValue<string>(sql`
+    const typeName = await pg.queryOneValue<string>(sql`
       SELECT typname FROM pg_type WHERE oid = ${sql.val(typeOid)}
     `)
 
@@ -371,7 +389,7 @@ async function migrate(env: Env) {
     applyStderr += data
   })
 
-  if (env.config.verbose) {
+  if (env.verbose) {
     const successRegex = /(No plan generated|Finished executing)/
     const commentRegex = /^\s+-- /
 
@@ -401,20 +419,48 @@ async function migrate(env: Env) {
   })
 
   if (applyStderr) {
-    throw new Error(applyStderr)
+    let message = applyStderr
+
+    const schemaDirRegex = new RegExp(env.schemaDir + '/[^)]+')
+    if (env.verbose) {
+      message = message.replace(schemaDirRegex, source => {
+        const [, file, line] = fs
+          .readFileSync(source, 'utf8')
+          .match(/file:\/\/(.+?)#L(\d+)/)!
+
+        return `${cwdRelative(file)}:${line}`
+      })
+    } else {
+      const source = applyStderr.match(schemaDirRegex)
+      const pgError = applyStderr.match(/\bERROR: ([\S\s]+)$/)?.[1]
+      if (pgError) {
+        message = pgError.trimEnd()
+      }
+      if (source) {
+        const [, file, line] = fs
+          .readFileSync(source[0], 'utf8')
+          .match(/file:\/\/(.+?)#L(\d+)/)!
+
+        message += `\n\n    at ${cwdRelative(file)}:${line}`
+      }
+    }
+    throw new Error(message)
   }
 }
 
 function pgSchemaDiff(env: Env, command: 'apply' | 'plan') {
   const applyArgs: string[] = []
   if (command === 'apply') {
+    const prePlanFile = path.join(env.untrackedDir, 'pre-plan.sql')
+    fs.writeFileSync(prePlanFile, 'SET check_function_bodies = off;')
+
     applyArgs.push(
       '--skip-confirm-prompt',
       '--allow-hazards',
       env.config.migration.allowHazards.join(','),
-      // '--pre-plan-file',
-      // path.join(env.untrackedDir, 'pre-plan.sql'),
       '--disable-plan-validation',
+      '--pre-plan-file',
+      prePlanFile,
     )
   }
 

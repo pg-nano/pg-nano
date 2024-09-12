@@ -1,12 +1,14 @@
-import type { QualifiedName } from '@pg-nano/pg-parser'
+import type { QualifiedName, TypeName } from '@pg-nano/pg-parser'
 import { sql } from 'pg-nano'
+import { unique } from 'radashi'
 
 export class SQLIdentifier {
+  public field?: string
   constructor(
     public name: string,
     public schema: string | undefined = undefined,
-    public start: number | undefined = undefined,
-    public end: number | undefined = undefined,
+    public start?: number | undefined,
+    public end?: number | undefined,
   ) {}
 
   /**
@@ -81,9 +83,21 @@ export class SQLIdentifier {
     )
   }
 
-  static fromQualifiedName(names: QualifiedName) {
-    const [name, schema] = names.map(name => name.String.sval).reverse()
-    return new SQLIdentifier(name, schema)
+  static fromQualifiedName(names: QualifiedName, includesField?: boolean) {
+    const id = new SQLIdentifier('')
+    let index = names.length
+    if (includesField) {
+      id.field = names[--index].String.sval
+    }
+    id.name = names[--index].String.sval
+    if (index > 0) {
+      id.schema = names[--index].String.sval
+    }
+    return id
+  }
+
+  static fromTypeName(typeName: TypeName) {
+    return SQLIdentifier.fromQualifiedName(typeName.names, typeName.pct_type)
   }
 }
 
@@ -92,9 +106,13 @@ export interface SQLIdentifier {
   toString(): never
 }
 
+export function toUniqueIdList(ids: SQLIdentifier[], defaultSchema?: string) {
+  return unique(ids, id => id.toQualifiedName(defaultSchema))
+}
+
 const unquotedChars = 'abcdefghijklmnopqrstuvwxyz0123456789_'
 
-function quoteName(name: string) {
+export function quoteName(name: string) {
   let quotedName = ''
   for (const char of name) {
     quotedName += char === '"' ? '""' : char
@@ -103,7 +121,7 @@ function quoteName(name: string) {
 }
 
 /** ⚠️ UNSAFE, do not use with untrusted input, as `\"` sequences are not handled */
-function unsafelyQuotedName(name: string) {
+export function unsafelyQuotedName(name: string) {
   let needsQuotes = false
   let quotedName = ''
   for (const char of name) {

@@ -3,6 +3,7 @@ import type { SQLIdentifier } from './identifier'
 import type {
   PgCompositeTypeStmt,
   PgFunctionStmt,
+  PgViewStmt,
 } from './parseObjectStatements.js'
 
 /**
@@ -107,6 +108,46 @@ export async function hasRoutineTypeChanged(
     FROM
       routine1 r1,
       routine2 r2;
+  `)
+
+  return hasChanges
+}
+
+/**
+ * Checks if a view has changed by comparing the existing view with a temporary
+ * version created in the "nano" schema.
+ *
+ * @returns `true` if the view has changed, `false` otherwise.
+ */
+export async function hasViewChanged(client: Client, view: PgViewStmt) {
+  const tmpId = view.id.withSchema('nano')
+  const tmpStmt = view.query.replace(
+    view.id.toRegExp(),
+    tmpId.toQualifiedName(),
+  )
+
+  // Create a temporary version of the view in the "nano" schema
+  await client.query(sql`
+    DROP VIEW IF EXISTS ${tmpId.toSQL()} CASCADE;
+    ${sql.unsafe(tmpStmt)}
+  `)
+
+  const selectViewDefinition = (id: SQLIdentifier) => sql`
+    SELECT pg_get_viewdef(${id.toSQL()}::regclass) AS view_definition
+  `
+
+  const hasChanges = await client.queryOneValue<boolean>(sql`
+    WITH view1 AS (
+      ${selectViewDefinition(view.id)}
+    ),
+    view2 AS (
+      ${selectViewDefinition(tmpId)}
+    )
+    SELECT
+      v1.view_definition <> v2.view_definition AS has_changes
+    FROM
+      view1 v1,
+      view2 v2;
   `)
 
   return hasChanges

@@ -351,31 +351,27 @@ export class Client {
   }
 
   /**
-   * Create a proxy object that allows you to call the given routines as methods
-   * on the client instance. The original methods and properties of the client
-   * are preserved, but routines of the same name take precedence over them.
+   * Create a proxy object that allows you to call routines from the given
+   * schema object as methods on the client instance. The original methods and
+   * properties of the client are preserved, but routines of the same name take
+   * precedence over them.
    *
-   * The easiest way to use `withRoutines` is by importing your
-   * `sql/routines.ts` file as a namespace and passing it to this method.
+   * The easiest way to use `withSchema` is by importing your `sql/schema.ts`
+   * file as a namespace and passing it to this method.
    *
    * @example
    * ```ts
-   * import * as routines from './sql/routines.js'
-   * const client = new Client().withRoutines(routines)
-   * await client.myRoutine(1, 2, 3)
+   * import * as schema from './sql/schema.js'
+   * const client = new Client().withSchema(schema)
+   * await client.myPostgresFunc(1, 2, 3)
    * ```
    */
-  withRoutines<TRoutines extends object>(
-    routines: TRoutines,
-  ): ClientProxy<TRoutines> {
+  withSchema<TSchema extends object>(routines: TSchema): ClientProxy<TSchema> {
     return new Proxy(this, {
       get(client, key) {
         if (key in routines) {
           // biome-ignore lint/complexity/noBannedTypes:
-          return (routines[key as keyof TRoutines] as Function).bind(
-            null,
-            client,
-          )
+          return (routines[key as keyof TSchema] as Function).bind(null, client)
         }
         return client[key as keyof Client]
       },
@@ -423,11 +419,11 @@ export class Client {
   }
 }
 
-export type ClientProxy<TRoutines extends object> = Omit<
+export type ClientProxy<TSchema extends object> = Omit<
   Client,
-  keyof TRoutines
+  keyof TSchema
 > & {
-  [K in keyof TRoutines]: TRoutines[K] extends (
+  [K in keyof TSchema]: TSchema[K] extends (
     client: Client,
     ...args: infer TArgs
   ) => infer TResult

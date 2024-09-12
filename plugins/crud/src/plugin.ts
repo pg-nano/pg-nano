@@ -6,10 +6,13 @@ export default function (): Plugin {
     name: '@pg-nano/plugin-crud',
     async statements(context) {
       const { objects, sql } = context
-      const tables = objects.filter(obj => obj.type === 'table')
+      const tables = objects.filter(obj => obj.kind === 'table')
 
       return sql`
-        ${tables.map(table => renderTableQueries(table, context))}
+        ${sql.join(
+          sql.unsafe('\n'),
+          tables.slice(0, 2).map(table => renderTableQueries(table, context)),
+        )}
       `
     },
   }

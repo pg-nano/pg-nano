@@ -5,37 +5,54 @@ import {
   NodeTag,
   parseQuery,
   splitWithScannerSync,
+  walk,
 } from '@pg-nano/pg-parser'
 import util from 'node:util'
-import { SQLIdentifier } from './identifier'
+import type { Field } from 'pg-nano'
+import { select } from 'radashi'
+import { debug } from './debug.js'
+import { SQLIdentifier, toUniqueIdList } from './identifier'
 import { log } from './log'
 
 const inspect = (value: any) =>
   util.inspect(value, { depth: null, colors: true })
 
+const dump = (value: any) => debug.enabled && debug(inspect(value))
+
 const whitespace = ' \n\t\r'
 
-export async function parseObjectStatements(sql: string, file: string) {
-  const stmts = splitWithScannerSync(sql)
+export async function parseObjectStatements(content: string, file: string) {
+  const stmts = splitWithScannerSync(content)
   const objects: ParsedObjectStmt[] = []
-  const lineBreaks = getLineBreakLocations(sql)
+  const lineBreaks = getLineBreakLocations(content)
 
   for (let { location, length } of stmts) {
     // Skip comments and empty lines.
     let i = location
-    while (whitespace.includes(sql[i]) || sql.slice(i, i + 2) === '--') {
-      i = sql.indexOf('\n', i + 1) + 1
+    while (
+      whitespace.includes(content[i]) ||
+      content.slice(i, i + 2) === '--'
+    ) {
+      i = content.indexOf('\n', i + 1) + 1
     }
     length -= i - location
     location = i
 
-    const query = sql.slice(location, location + length)
+    const query = content.slice(location, location + length)
     const node = (await parseQuery(query)).stmts[0].stmt
 
     // Get the line number.
     const line =
       lineBreaks.findIndex(lineBreak => location < lineBreak) + 1 ||
       lineBreaks.length
+
+    const stmt: Omit<PgObjectStmt, 'id' | 'kind'> = {
+      query,
+      line,
+      file,
+      dependencies: new Set(),
+      dependents: new Set(),
+    }
 
     if (NodeTag.isCreateFunctionStmt(node)) {
       const fn = node.CreateFunctionStmt
@@ -52,7 +69,7 @@ export async function parseObjectStatements(sql: string, file: string) {
           ) {
             inParams.push({
               name: param.name,
-              type: SQLIdentifier.fromQualifiedName(param.argType.names),
+              type: SQLIdentifier.fromTypeName(param.argType),
               variadic:
                 param.mode === FunctionParameterMode.FUNC_PARAM_VARIADIC,
             })
@@ -64,7 +81,7 @@ export async function parseObjectStatements(sql: string, file: string) {
           ) {
             outParams.push({
               name: param.name!,
-              type: SQLIdentifier.fromQualifiedName(param.argType.names),
+              type: SQLIdentifier.fromTypeName(param.argType),
             })
           }
         }
@@ -73,21 +90,17 @@ export async function parseObjectStatements(sql: string, file: string) {
       const returnType = outParams.length
         ? outParams
         : fn.returnType
-          ? SQLIdentifier.fromQualifiedName(fn.returnType.names)
+          ? SQLIdentifier.fromTypeName(fn.returnType)
           : undefined
 
       objects.push({
-        type: 'function',
+        kind: 'function',
         id,
         params: inParams,
         returnType,
         returnSet: fn.returnType?.setof ?? false,
         isProcedure: fn.is_procedure ?? false,
-        query,
-        line,
-        file,
-        dependencies: new Set(),
-        dependents: new Set(),
+        ...stmt,
       })
     } else if (NodeTag.isCreateStmt(node)) {
       const { relation, tableElts } = $(node)
@@ -102,18 +115,38 @@ export async function parseObjectStatements(sql: string, file: string) {
       for (const elt of tableElts) {
         if (NodeTag.isColumnDef(elt)) {
           const { colname, typeName, constraints } = $(elt)
-          columns.push({
-            name: colname!,
-            type: SQLIdentifier.fromQualifiedName(typeName!.names!),
-          })
+          if (!colname || !typeName) {
+            log.warn(
+              'Skipping table column with missing %s',
+              colname ? 'type' : 'name',
+            )
+            dump(elt)
+            continue
+          }
+
+          const refs: SQLIdentifier[] = []
+
           if (constraints) {
             for (const constraint of constraints) {
               const { contype } = $(constraint)
               if (contype === ConstrType.CONSTR_PRIMARY) {
                 primaryKeyColumns.push(colname!)
+              } else if (contype === ConstrType.CONSTR_FOREIGN) {
+                const { pktable } = $(constraint)
+                if (pktable) {
+                  refs.push(
+                    new SQLIdentifier(pktable.relname, pktable.schemaname),
+                  )
+                }
               }
             }
           }
+
+          columns.push({
+            name: colname,
+            type: SQLIdentifier.fromTypeName(typeName),
+            refs,
+          })
         } else if (NodeTag.isConstraint(elt)) {
           const { contype } = $(elt)
           if (contype === ConstrType.CONSTR_PRIMARY) {
@@ -125,35 +158,38 @@ export async function parseObjectStatements(sql: string, file: string) {
       }
 
       objects.push({
-        type: 'table',
+        kind: 'table',
         id,
         columns,
         primaryKeyColumns,
-        query,
-        line,
-        file,
-        dependencies: new Set(),
-        dependents: new Set(),
+        ...stmt,
       })
     } else if (NodeTag.isCompositeTypeStmt(node)) {
       const { typevar, coldeflist } = $(node)
 
       const id = new SQLIdentifier(typevar.relname, typevar.schemaname)
-      const columns = coldeflist.map(col => ({
-        name: $(col).colname!,
-        type: SQLIdentifier.fromQualifiedName($(col).typeName!.names!),
-      }))
+      const columns = select(coldeflist, (col): PgColumnDef | null => {
+        const { colname, typeName } = $(col)
+        if (!colname || !typeName) {
+          log.warn(
+            'Skipping composite column with missing %s',
+            colname ? 'type' : 'name',
+          )
+          dump(col)
+          return null
+        }
+        return {
+          name: colname,
+          type: SQLIdentifier.fromTypeName(typeName),
+        }
+      })
 
       objects.push({
-        type: 'type',
-        subtype: 'composite',
+        kind: 'type',
+        subkind: 'composite',
         id,
         columns,
-        query,
-        line,
-        file,
-        dependencies: new Set(),
-        dependents: new Set(),
+        ...stmt,
       })
     } else if (NodeTag.isCreateEnumStmt(node)) {
       const { typeName, vals } = $(node)
@@ -162,41 +198,54 @@ export async function parseObjectStatements(sql: string, file: string) {
       const labels = vals.map(val => $(val).sval)
 
       objects.push({
-        type: 'type',
-        subtype: 'enum',
+        kind: 'type',
+        subkind: 'enum',
         id,
         labels,
-        query,
-        line,
-        file,
-        dependencies: new Set(),
-        dependents: new Set(),
+        ...stmt,
       })
     } else if (NodeTag.isViewStmt(node)) {
-      const { view } = $(node)
+      const { view, query } = $(node)
+
       const id = new SQLIdentifier(view.relname, view.schemaname)
+      const refs: SQLIdentifier[] = []
+
+      walk(query, {
+        RangeVar(path) {
+          const { relname, schemaname } = path.node
+          refs.push(new SQLIdentifier(relname, schemaname))
+        },
+        FuncCall(path) {
+          const { funcname } = path.node
+          refs.push(SQLIdentifier.fromQualifiedName(funcname))
+        },
+        TypeCast(path) {
+          const { typeName } = path.node
+          refs.push(SQLIdentifier.fromTypeName(typeName))
+        },
+      })
 
       objects.push({
-        type: 'view',
+        kind: 'view',
         id,
-        query,
-        line,
-        file,
-        dependencies: new Set(),
-        dependents: new Set(),
+        refs: toUniqueIdList(
+          refs.filter(
+            id =>
+              id.schema !== 'pg_catalog' && id.schema !== 'information_schema',
+          ),
+          view.schemaname,
+        ),
+        fields: null,
+        ...stmt,
       })
     } else if (NodeTag.isCreateExtensionStmt(node)) {
       const { extname } = $(node)
       const id = new SQLIdentifier(extname)
 
       objects.push({
-        type: 'extension',
+        kind: 'extension',
         id,
-        query,
-        line,
-        file,
-        dependencies: new Set(),
-        dependents: new Set(),
+        ...stmt,
       })
     } else {
       // These are handled by pg-schema-diff.
@@ -219,6 +268,7 @@ export async function parseObjectStatements(sql: string, file: string) {
             ? cleanedStmt.slice(0, 50) + '…'
             : cleanedStmt),
       )
+      dump(node)
     }
   }
 
@@ -226,7 +276,7 @@ export async function parseObjectStatements(sql: string, file: string) {
 }
 
 export type ParsedObjectType<T = ParsedObjectStmt> = T extends ParsedObjectStmt
-  ? T['type']
+  ? T['kind']
   : never
 
 export type ParsedObjectStmt =
@@ -238,7 +288,7 @@ export type ParsedObjectStmt =
   | PgExtensionStmt
 
 export type PgObjectStmt = {
-  type: string
+  kind: string
   id: SQLIdentifier
   query: string
   line: number
@@ -256,10 +306,11 @@ export type PgParamDef = {
 export type PgColumnDef = {
   name: string
   type: SQLIdentifier
+  refs?: SQLIdentifier[]
 }
 
 export interface PgFunctionStmt extends PgObjectStmt {
-  type: 'function'
+  kind: 'function'
   params: PgParamDef[]
   returnType: SQLIdentifier | PgColumnDef[] | undefined
   returnSet: boolean
@@ -267,38 +318,44 @@ export interface PgFunctionStmt extends PgObjectStmt {
 }
 
 export interface PgTableStmt extends PgObjectStmt {
-  type: 'table'
+  kind: 'table'
   columns: PgColumnDef[]
   primaryKeyColumns: string[]
 }
 
 export interface PgTypeStmt extends PgObjectStmt {
-  type: 'type'
-  subtype: string
+  kind: 'type'
+  subkind: string
 }
 
 export interface PgEnumStmt extends PgTypeStmt {
-  subtype: 'enum'
+  subkind: 'enum'
   labels: string[]
 }
 
 export interface PgCompositeTypeStmt extends PgTypeStmt {
-  subtype: 'composite'
+  subkind: 'composite'
   columns: PgColumnDef[]
 }
 
 export interface PgViewStmt extends PgObjectStmt {
-  type: 'view'
+  kind: 'view'
+  /**
+   * References within the view's subquery to objects that aren't from the
+   * `pg_catalog` or `information_schema` namespaces.
+   */
+  refs: SQLIdentifier[]
+  fields: Field[] | null
 }
 
 export interface PgExtensionStmt extends PgObjectStmt {
-  type: 'extension'
+  kind: 'extension'
 }
 
-function getLineBreakLocations(sql: string) {
+function getLineBreakLocations(content: string) {
   const locations: number[] = []
-  for (let i = 0; i < sql.length; i++) {
-    if (sql[i] === '\n') {
+  for (let i = 0; i < content.length; i++) {
+    if (content[i] === '\n') {
       locations.push(i)
     }
   }

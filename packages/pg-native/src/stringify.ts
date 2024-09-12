@@ -19,17 +19,21 @@ export function stringifyTemplate(
         template.values[i],
         pq,
         options,
-        options?.reindent && /\n +$/.test(template.strings[i])
+        options?.reindent && /(^|\n) +$/.test(template.strings[i])
           ? template.indent
           : undefined,
       )
     }
   }
 
-  if (options?.reindent) {
+  if (
+    options?.reindent &&
+    template.values.length &&
+    template.indent !== (parentIndent ?? '')
+  ) {
     sql = sql
       .replace(new RegExp('^' + template.indent, 'gm'), parentIndent ?? '')
-      .replace(/^( *\n)+/, '')
+      .replace(/^\s+/, '')
   }
 
   return sql
@@ -39,18 +43,18 @@ export function stringifyTemplateValue(
   arg: SQLTemplateValue,
   pq: Libpq,
   options?: { reindent?: boolean },
-  indent?: string,
+  parentIndent?: string,
 ): string {
   if (!arg) {
     return ''
   }
   if (isArray(arg)) {
     return arg
-      .map(value => stringifyTemplateValue(value, pq, options, indent))
+      .map(value => stringifyTemplateValue(value, pq, options, parentIndent))
       .join('')
   }
   if (arg instanceof SQLTemplate) {
-    return stringifyTemplate(arg, pq, options, indent)
+    return stringifyTemplate(arg, pq, options, parentIndent)
   }
   switch (arg.type) {
     case 'id':
@@ -61,7 +65,7 @@ export function stringifyTemplateValue(
       const list: string[] = []
 
       for (const value of arg.list) {
-        const sql = stringifyTemplateValue(value, pq)
+        const sql = stringifyTemplateValue(value, pq, options, parentIndent)
         if (sql) {
           list.push(sql)
         }

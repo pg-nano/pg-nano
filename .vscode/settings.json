@@ -12,6 +12,9 @@
   "files.exclude": {
     "**/pg-native/index.d.ts": true
   },
+  "files.associations": {
+    "*.pgsql": "sql"
+  },
   "rewrap.wrappingColumn": 80,
   "clangd.arguments": [
     "--compile-commands-dir=${workspaceFolder}/packages/libpq/build"
@@ -20,15 +23,21 @@
   "pgFormatter.spaces": 2,
   "pgFormatter.noExtraLine": true,
   "pgFormatter.keepNewline": true,
-  "[postgres]": {
+  "[sql]": {
     "editor.defaultFormatter": "bradymholt.pgformatter"
   },
-  "plpgsqlLanguageServer.host": "localhost",
-  "plpgsqlLanguageServer.port": 5432,
-  "plpgsqlLanguageServer.user": "postgres",
-  "plpgsqlLanguageServer.password": "postgres",
-  "plpgsqlLanguageServer.database": "postgres",
-  "plpgsqlLanguageServer.definitionFiles": ["**/*.pgsql"],
+  "sqlLanguageServer.connections": [
+    {
+      "name": "demos/exhaustive",
+      "adapter": "postgres",
+      "host": "localhost",
+      "port": 5432,
+      "user": "postgres",
+      "password": "postgres",
+      "database": "postgres",
+      "projectPaths": ["${workspaceFolder}/demos/exhaustive"]
+    }
+  ],
   "autoHide.autoHidePanel": false,
   "typescript.preferences.importModuleSpecifierEnding": "js"
 }

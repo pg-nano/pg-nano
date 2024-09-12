@@ -19,43 +19,48 @@ export function linkObjectStatements(objects: ParsedObjectStmt[]) {
     objectsByName.set(object.id.toQualifiedName(), object)
   }
 
+  const link = (stmt: ParsedObjectStmt, id: SQLIdentifier) => {
+    const dep = objectsByName.get(id.toQualifiedName(stmt.id.schema))
+    if (dep) {
+      stmt.dependencies.add(dep)
+      dep.dependents.add(stmt)
+    }
+  }
+
   // Determine dependencies
   for (const stmt of idSortedObjects) {
-    if (stmt.type === 'function') {
+    if (stmt.kind === 'function') {
       for (const param of stmt.params) {
-        const dep = objectsByName.get(param.type.toQualifiedName())
-        if (dep) {
-          stmt.dependencies.add(dep)
-        }
+        link(stmt, param.type)
       }
       if (!stmt.returnType) {
         continue
       }
       if (stmt.returnType instanceof SQLIdentifier) {
-        const dep = objectsByName.get(stmt.returnType.toQualifiedName())
-        if (dep) {
-          stmt.dependencies.add(dep)
-        }
+        link(stmt, stmt.returnType)
       } else {
         for (const columnDef of stmt.returnType) {
-          const dep = objectsByName.get(columnDef.type.toQualifiedName())
-          if (dep) {
-            stmt.dependencies.add(dep)
-          }
+          link(stmt, columnDef.type)
         }
       }
     } else if (
-      stmt.type === 'table' ||
-      (stmt.type === 'type' && stmt.subtype === 'composite')
+      stmt.kind === 'table' ||
+      (stmt.kind === 'type' && stmt.subkind === 'composite')
     ) {
       for (const column of stmt.columns) {
-        const dep = objectsByName.get(column.type.toQualifiedName())
-        if (dep) {
-          stmt.dependencies.add(dep)
+        link(stmt, column.type)
+        if (column.refs) {
+          for (const ref of column.refs) {
+            link(stmt, ref)
+          }
         }
+      }
+    } else if (stmt.kind === 'view') {
+      for (const ref of stmt.refs) {
+        link(stmt, ref)
       }
     }
   }
 
-  return new ExecutionQueue(objects)
+  return new ExecutionQueue(idSortedObjects)
 }

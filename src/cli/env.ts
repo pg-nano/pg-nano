@@ -56,7 +56,6 @@ async function loadEnv(cwd: string, options: EnvOptions) {
 
   const config = {
     ...userConfig,
-    verbose: options.verbose,
     plugins: userConfig?.plugins ?? [],
     dev: {
       ...userConfig?.dev,
@@ -78,7 +77,7 @@ async function loadEnv(cwd: string, options: EnvOptions) {
       ...userConfig?.generate,
       outFile: path.resolve(
         root,
-        userConfig?.generate?.outFile ?? 'sql/routines.ts',
+        userConfig?.generate?.outFile ?? 'sql/schema.ts',
       ),
       pluginSqlDir: path.resolve(
         root,
@@ -106,6 +105,7 @@ async function loadEnv(cwd: string, options: EnvOptions) {
     config,
     untrackedDir,
     schemaDir,
+    verbose: options.verbose,
     watcher: options.watch
       ? watch([...config.schema.include, ...userConfigDependencies], {
           cwd: root,

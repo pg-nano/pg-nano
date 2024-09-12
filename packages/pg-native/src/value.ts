@@ -2,6 +2,7 @@ import { isTypedArray } from 'node:util/types'
 import { Range, serialize as stringifyRange } from 'postgres-range'
 import { isArray } from 'radashi'
 import { Interval } from './interval'
+import { Tuple } from './tuple.js'
 
 const noEscape = <T>(x: T) => x
 
@@ -23,6 +24,7 @@ type EscapedType =
   | 'pattern'
   | 'range'
   | 'string'
+  | 'tuple'
 
 export function escapeValue(value: unknown, escape: Escape = noEscape): string {
   if (value == null) {
@@ -42,6 +44,11 @@ export function escapeValue(value: unknown, escape: Escape = noEscape): string {
         return escape(escapeArray(obj), 'array')
       }
       switch (obj.constructor) {
+        case Tuple:
+          return escape(
+            `(${(obj as Tuple).map(value => escapeValue(value, escape)).join(',')})`,
+            'tuple',
+          )
         case Interval:
           return escape((obj as Interval).toISOString(), 'interval')
         case Range:
@@ -81,13 +88,21 @@ const DOUBLE_QUOTE_RE = /"/g
 const SINGLE_QUOTE_RE = /'/g
 
 function escapeArrayElement(str: string, type: EscapedType) {
-  return type === 'hex' || type === 'array'
-    ? str
-    : type === 'json'
-      ? "'" +
+  switch (type) {
+    case 'array':
+    case 'hex':
+    case 'tuple':
+      return str
+    case 'json':
+      return (
+        "'" +
         str.replace(BACKSLASH_RE, '\\\\').replace(SINGLE_QUOTE_RE, "\\'") +
         "'"
-      : '"' +
-        str.replace(BACKSLASH_RE, '\\\\').replace(DOUBLE_QUOTE_RE, '\\"') +
-        '"'
+      )
+  }
+  return (
+    '"' +
+    str.replace(BACKSLASH_RE, '\\\\').replace(DOUBLE_QUOTE_RE, '\\"') +
+    '"'
+  )
 }

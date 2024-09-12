@@ -39,7 +39,7 @@ export class SQLTemplate {
     readonly strings: readonly string[],
     readonly values: SQLTemplateValue[],
   ) {
-    this.indent = detectIndent(strings[0]) ?? ''
+    this.indent = (values.length && detectIndent(strings[0])) || ''
   }
 }
 
@@ -66,5 +66,5 @@ export type SQLToken = SQLTokenType extends infer Type
 
 // Find the indentation of the first non-empty line.
 function detectIndent(text: string) {
-  return text.match(/(?:^|\n)([ \t]+)(?:\S|$)/)?.[1]
+  return text.match(/\n([ \t]+)(?:\S|$)/)?.[1]
 }

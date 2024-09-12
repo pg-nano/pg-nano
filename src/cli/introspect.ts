@@ -4,7 +4,11 @@ import {
   type Client,
   type QueryHook,
   type Result,
+  type SQLTemplate,
 } from 'pg-nano'
+import { uid } from 'radashi'
+import type { PgViewStmt } from './parseObjectStatements.js'
+import { parseViewSubquery } from './parseViewSubquery.js'
 
 export type PgObject = PgFunction | PgTable | PgEnumType | PgCompositeType
 
@@ -114,21 +118,36 @@ export function introspectFunctions(pg: Client, signal?: AbortSignal) {
   return pg.queryAll<PgFunction>(query, { signal })
 }
 
-export async function introspectResultSet(
+export async function introspectViews(pg: Client, signal?: AbortSignal) {
+  const query = sql`
+    SELECT
+      n.nspname,
+      v.viewname,
+      v.viewquery
+    FROM pg_catalog.pg_view v
+  `
+}
+
+export async function introspectViewFields(
   pg: Client,
-  fn: PgFunction,
+  view: PgViewStmt,
   signal?: AbortSignal,
 ) {
-  const stmtName = 'pg_nano_' + fn.proname
+  return introspectResultSet(pg, sql.unsafe(parseViewSubquery(view)), 0, signal)
+}
+
+export async function introspectResultSet(
+  pg: Client,
+  command: SQLTemplate,
+  paramCount = 0,
+  signal?: AbortSignal,
+) {
+  const stmtName = 'pg_nano_' + uid(12)
+  const commandText = await pg.stringify(command)
 
   await sendCommand(
     pg,
-    libpq =>
-      libpq.sendPrepare(
-        stmtName,
-        `SELECT * FROM ${fn.nspname}.${fn.proname}(${fn.proargtypes.map((_, i) => `$${i + 1}`).join(', ')})`,
-        fn.proargtypes.length,
-      ),
+    libpq => libpq.sendPrepare(stmtName, commandText, paramCount),
     signal,
   )
 
@@ -141,8 +160,7 @@ export async function introspectResultSet(
     signal,
   )
 
-  const query = sql`DEALLOCATE ${sql.id(stmtName)}`
-  await pg.query(query).withOptions({ signal })
+  await pg.query(sql`DEALLOCATE ${sql.id(stmtName)}`).withOptions({ signal })
 
   return description.fields
 }
@@ -196,7 +214,7 @@ export type PgCompositeType = {
   typname: string
   nspname: string
   typarray: number
-  fields: {
+  attributes: {
     attname: string
     atttypid: number
     attnotnull: boolean
@@ -204,7 +222,7 @@ export type PgCompositeType = {
 }
 
 export function introspectCompositeTypes(client: Client, signal?: AbortSignal) {
-  const fieldsQuery = sql`
+  const attributesQuery = sql`
     SELECT array_agg(
       json_build_object(
         'attname', a.attname,
@@ -225,7 +243,7 @@ export function introspectCompositeTypes(client: Client, signal?: AbortSignal) {
       t.typname,
       n.nspname,
       t.typarray::oid,
-      (${fieldsQuery}) AS fields
+      (${attributesQuery}) AS attributes
     FROM pg_catalog.pg_class c
     JOIN pg_catalog.pg_type t ON t.oid = c.reltype
     JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace
@@ -241,7 +259,7 @@ export type PgTable = {
   typname: string
   nspname: string
   typarray: number
-  columns: {
+  attributes: {
     attname: string
     atttypid: number
     attnotnull: boolean
@@ -251,7 +269,7 @@ export type PgTable = {
 }
 
 export function introspectTables(client: Client, signal?: AbortSignal) {
-  const columnsQuery = sql`
+  const attributesQuery = sql`
     SELECT array_agg(
       json_build_object(
         'attname', a.attname,
@@ -274,7 +292,7 @@ export function introspectTables(client: Client, signal?: AbortSignal) {
       t.typname,
       n.nspname,
       t.typarray::oid,
-      (${columnsQuery}) AS columns
+      (${attributesQuery}) AS attributes
     FROM pg_catalog.pg_class c
     JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
     JOIN pg_catalog.pg_type t ON t.oid = c.reltype
