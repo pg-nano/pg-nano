@@ -123,7 +123,7 @@ export async function generate(
   }
 
   const moduleBasename = path.basename(env.config.generate.outFile) + '.js'
-  const builtinTypeRegex = /\b(Interval|Range|Circle|Point|JSON)\b/
+  const builtinTypeRegex = /\b(Interval|Range|Circle|Point|Timestamp|JSON)\b/
   const renderedObjects = new Map<PgObject, string>()
   const renderedCompositeFields = new Map<number, string>()
   const renderedEnumTypes = new Map<number, string>()

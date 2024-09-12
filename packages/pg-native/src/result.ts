@@ -1,5 +1,5 @@
 import type Libpq from '@pg-nano/libpq'
-import { getTypeParser } from './pg-types/text.js'
+import { getTypeParser } from './pg-types/textParsers.js'
 
 export class Result<TRow extends Row = Row> {
   constructor(

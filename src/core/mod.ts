@@ -22,5 +22,4 @@ export {
 } from 'pg-native'
 
 /** @internal */
-export { defineField } from './data/fields.js'
 export * from './routines.js'

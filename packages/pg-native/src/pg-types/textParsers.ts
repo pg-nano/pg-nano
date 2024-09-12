@@ -8,14 +8,6 @@ function parseArray(transform: (value: string) => any) {
   return (value: string) => array.parse(value, transform)
 }
 
-function parseBigInt(value: string | number) {
-  const valStr = String(value)
-  if (/^\d+$/.test(valStr)) {
-    return valStr
-  }
-  return String(value)
-}
-
 function parseBool(value: string) {
   return value === 't'
 }
@@ -73,7 +65,7 @@ function parseTimestamp(value: string) {
   return parseTimestampTz(utc)
 }
 
-const parseDate = parseString
+const parseBigInt = BigInt
 const parseFloat = Number.parseFloat
 const parseInt = Number
 
@@ -87,7 +79,7 @@ const parseIntRange = parseRange(parseInt)
 const parseBigIntRange = parseRange(parseBigInt)
 const parseTimestampRange = parseRange(parseTimestamp)
 const parseTimestampTzRange = parseRange(parseTimestampTz)
-const parseDateRange = parseRange(parseDate)
+const parseDateRange = parseRange(parseString)
 
 const textParsers: Record<number, (value: string) => any> = {
   16: parseBool, // bool
@@ -116,6 +108,7 @@ const textParsers: Record<number, (value: string) => any> = {
   3926: parseBigIntRange, // int8range
 
   // Array types
+  199: parseJsonArray, // json[]
   651: parseStringArray, // cidr[]
   791: parseStringArray, // money[]
   1000: parseArray(parseBool), // bool[]
@@ -136,12 +129,11 @@ const textParsers: Record<number, (value: string) => any> = {
   1041: parseStringArray, // inet[]
   1115: parseArray(parseTimestamp), // timestamp without time zone[]
   1183: parseStringArray, // time[]
-  1182: parseArray(parseDate), // date[]
+  1182: parseStringArray, // date[]
   1185: parseArray(parseTimestampTz), // timestamp with time zone[]
   1187: parseArray(parseInterval), // interval[]
   1231: parseBigIntArray, // numeric[]
   1270: parseStringArray, // timetz[]
-  199: parseJsonArray, // json[]
   2951: parseStringArray, // uuid[]
   3807: parseJsonArray, // jsonb[]
   3905: parseArray(parseIntRange), // int4range[]
