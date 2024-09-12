@@ -115,7 +115,7 @@ export function introspectFunctions(pg: Client, signal?: AbortSignal) {
       AND p.prorettype != 2279 -- trigger
   `
 
-  return pg.queryAll<PgFunction>(query, { signal })
+  return pg.queryRowList<PgFunction>(query, { signal })
 }
 
 export async function introspectViews(pg: Client, signal?: AbortSignal) {
@@ -177,7 +177,7 @@ export function introspectArrayTypes(client: Client, signal?: AbortSignal) {
     WHERE typlen = -1 AND typelem != 0 AND typarray = 0
   `
 
-  return client.queryAll<PgArrayType>(query, { signal })
+  return client.queryRowList<PgArrayType>(query, { signal })
 }
 
 export type PgEnumType = {
@@ -206,7 +206,7 @@ export function introspectEnumTypes(client: Client, signal?: AbortSignal) {
     WHERE t.typtype = 'e'
   `
 
-  return client.queryAll<PgEnumType>(query, { signal })
+  return client.queryRowList<PgEnumType>(query, { signal })
 }
 
 export type PgCompositeType = {
@@ -251,7 +251,7 @@ export function introspectCompositeTypes(client: Client, signal?: AbortSignal) {
       AND n.nspname NOT IN ('pg_catalog', 'information_schema')
   `
 
-  return client.queryAll<PgCompositeType>(query, { signal })
+  return client.queryRowList<PgCompositeType>(query, { signal })
 }
 
 export type PgTable = {
@@ -300,7 +300,7 @@ export function introspectTables(client: Client, signal?: AbortSignal) {
       AND n.nspname NOT IN ('pg_catalog', 'information_schema')
   `
 
-  return client.queryAll<PgTable>(query, { signal })
+  return client.queryRowList<PgTable>(query, { signal })
 }
 
 async function sendCommand<TResult = Result[]>(

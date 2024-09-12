@@ -44,7 +44,7 @@ export async function hasCompositeTypeChanged(
       AND t.typtype = 'c'
   `
 
-  const hasChanges = await client.queryOneValue<boolean>(sql`
+  const hasChanges = await client.queryValue<boolean>(sql`
     WITH type1 AS (
       ${selectTypeById(type.id)}
     ),
@@ -93,7 +93,7 @@ export async function hasRoutineTypeChanged(
       AND p.pronamespace = ${id.schemaVal}::regnamespace
   `
 
-  const hasChanges = await client.queryOneValue<boolean>(sql`
+  const hasChanges = await client.queryValue<boolean>(sql`
     WITH routine1 AS (
       ${selectRoutineById(fn.id)}
     ),
@@ -136,7 +136,7 @@ export async function hasViewChanged(client: Client, view: PgViewStmt) {
     SELECT pg_get_viewdef(${id.toSQL()}::regclass) AS view_definition
   `
 
-  const hasChanges = await client.queryOneValue<boolean>(sql`
+  const hasChanges = await client.queryValue<boolean>(sql`
     WITH view1 AS (
       ${selectViewDefinition(view.id)}
     ),

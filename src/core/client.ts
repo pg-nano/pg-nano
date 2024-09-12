@@ -273,7 +273,7 @@ export class Client {
    * - Your SQL template may contain multiple commands, but they run
    *   sequentially. The result sets are concatenated.
    */
-  queryAll<TRow extends Row>(
+  queryRowList<TRow extends Row>(
     command: SQLTemplate,
     options?: QueryOptions,
   ): Query<TRow[]> {
@@ -295,7 +295,7 @@ export class Client {
    * - Your SQL template may contain multiple commands, but they run
    *   sequentially. The result sets are concatenated.
    */
-  queryAllValues<T>(command: SQLTemplate, options?: QueryOptions): Query<T[]> {
+  queryValueList<T>(command: SQLTemplate, options?: QueryOptions): Query<T[]> {
     const query = this.query(command)
     return query.withOptions({
       ...options,
@@ -318,7 +318,7 @@ export class Client {
    *
    * You may define the row type using generics.
    */
-  async queryOne<TRow extends Row>(
+  async queryRow<TRow extends Row>(
     command: SQLTemplate,
     options?: QueryOptions,
   ): Promise<TRow | undefined> {
@@ -336,7 +336,7 @@ export class Client {
    * If you're not sure if the result set could be empty, you'd better include
    * `undefined` in the result type.
    */
-  async queryOneValue<T>(
+  async queryValue<T>(
     command: SQLTemplate,
     options?: QueryOptions,
   ): Promise<T> {

@@ -184,15 +184,18 @@ export async function generate(
       }\n\n
     `
 
+  const renderParamDef = (name: string, typeOid: number) => {
+    const userType = userTypes.get(typeOid)
+
+    return userType && userType.kind !== 'enum'
+      ? `{ ${unsafelyQuotedName(name)}: ${pascal(userType.object.typname)} }`
+      : quoteName(name)
+  }
+
   const renderTupleDef = (type: PgCompositeType | PgTable) =>
     dedent`
       export const ${pascal(type.typname)} = [${type.attributes
-        .map(attr => {
-          const userType = userTypes.get(attr.atttypid)
-          return userType && userType.kind !== 'enum'
-            ? `{ ${unsafelyQuotedName(attr.attname)}: ${pascal(userType.object.typname)} }`
-            : quoteName(attr.attname)
-        })
+        .map(attr => renderParamDef(attr.attname, attr.atttypid))
         .join(', ')}]\n\n
     `
 
@@ -264,11 +267,11 @@ export async function generate(
         camel(name.replace(/^p_/, '')),
       )
       const argTypes = fn.proargtypes
-        .map((typeOid, index, argTypes) => {
+        .map((typeOid, index) => {
           if (argNames) {
             const jsName = argNames[index]
             const optionalToken =
-              index >= argTypes.length - fn.pronargdefaults ? '?' : ''
+              index >= fn.proargtypes.length - fn.pronargdefaults ? '?' : ''
 
             return `${jsName}${optionalToken}: ${renderTypeReference(typeOid, fn.nspname, 'param')}`
           }
@@ -276,11 +279,9 @@ export async function generate(
         })
         .join(', ')
 
-      const schema =
-        fn.nspname !== 'public' ? `, ${JSON.stringify(fn.nspname)}` : ''
-
-      const params =
-        argNames || schema ? `, ${JSON.stringify(argNames || null)}` : ''
+      const paramDefs = argNames
+        ? `, [${argNames.map((name, index) => renderParamDef(name, fn.proargtypes[index])).join(', ')}]`
+        : ''
 
       let resultType: string | undefined
       let resultKind: 'row' | 'value' | undefined
@@ -313,13 +314,18 @@ export async function generate(
       const constructor =
         resultKind === 'row'
           ? fn.proretset
-            ? 'routineQueryAll'
-            : 'routineQueryOne'
+            ? 'bindQueryRowList'
+            : 'bindQueryRow'
           : fn.proretset
-            ? 'routineQueryAllValues'
-            : 'routineQueryOneValue'
+            ? 'bindQueryValueList'
+            : 'bindQueryValue'
 
       imports.add(constructor)
+
+      const pgName =
+        fn.nspname !== 'public'
+          ? `[${quoteName(fn.nspname)}, ${quoteName(fn.proname)}]`
+          : quoteName(fn.proname)
 
       const fnScript = dedent`
         export declare namespace ${jsName} {
@@ -327,7 +333,7 @@ export async function generate(
           type Result = ${resultType}
         }
 
-        export const ${jsName} = /* @__PURE__ */ ${constructor}<${jsName}.Params, ${jsName}.Result>(${JSON.stringify(fn.proname)}${params}${schema})\n\n
+        export const ${jsName} = /* @__PURE__ */ ${constructor}<${jsName}.Params, ${jsName}.Result>(${pgName}${paramDefs})\n\n
       `
 
       renderedObjects.set(fn, fnScript)
@@ -370,7 +376,7 @@ export async function generate(
 
   // Step 7: Warn about any unsupported types.
   for (const typeOid of unsupportedTypes) {
-    const typeName = await pg.queryOneValue<string>(sql`
+    const typeName = await pg.queryValue<string>(sql`
       SELECT typname FROM pg_type WHERE oid = ${sql.val(typeOid)}
     `)
 

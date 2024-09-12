@@ -78,7 +78,7 @@ export async function prepareDatabase(sqlFiles: string[], env: Env) {
 
     const { from, schemaKey, nameKey } = objectExistence[type]
 
-    return pg.queryOneValue<boolean>(sql`
+    return pg.queryValue<boolean>(sql`
       SELECT EXISTS (
         SELECT 1
         FROM ${sql.id(from)}

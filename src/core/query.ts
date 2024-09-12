@@ -1,7 +1,8 @@
 import type { Result, SQLTemplate } from 'pg-native'
 import type { Client } from './mod'
-import type { UnwrapArray } from './params.js'
 import { streamResults } from './stream.js'
+
+type UnwrapArray<T> = T extends readonly (infer U)[] ? U : T
 
 export interface QueryOptions {
   /**
