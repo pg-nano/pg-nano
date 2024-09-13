@@ -204,7 +204,7 @@ async function sendQuery<TResult = Result[]>(
   if (isFunction(command)) {
     sent = command(conn.pq)
   } else {
-    const query = stringifyTemplate(command, conn.pq)
+    const query = (command.ddl = stringifyTemplate(command, conn.pq))
 
     if (process.env.NODE_ENV !== 'production' && debug.enabled) {
       const indentedQuery = query.replace(/^|\n/g, '$&  ')

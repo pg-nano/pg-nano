@@ -43,7 +43,9 @@ Here are some caveats with the pg-nano approach.
 
 1. Every object in your database **must** be declared with a `CREATE` statement in your SQL directory. For example, if you create a table through your database GUI client, it will be dropped the next time you save a SQL file that `pg-nano dev` is watching. This behavior is necessary to ensure that any `CREATE` statements you remove during development are not left over in your Postgres instance.
 
-1. Writing raw PL/pgSQL for *everything* can be tedious, especially if you're doing a lot of basic CRUD queries. Luckily, pg-nano has a plugin system for generating SQL based on your schema. Any plugin-generated SQL will also have TypeScript definitions generated for it. Even better, you can use the [@pg-nano/plugin-crud](https://github.com/pg-nano/pg-nano/tree/master/plugins/crud) package to generate basic CRUD queries for your tables, so you get some of the benefits of ORMs without the limitations. Of course, you can even write your own plugins if you want to.
+1. Writing raw PL/pgSQL for *everything* can be tedious, especially if you're doing a lot of basic CRUD queries. Luckily, the [@pg-nano/plugin-crud](https://github.com/pg-nano/pg-nano/tree/master/plugins/crud) package can generate basic CRUD queries for your tables at compile time, so you can avoid writing repetitive code as often as possible. 
+
+   Even better, you can write your own plugins, since pg-nano has a plugin system for generating SQL based on your schema. All plugin-generated SQL immediately has TypeScript definitions generated for it.
 
 1. Some Postgres features are not yet supported by pg-schema-diff (the tool used by pg-nano to automatically migrate your schema during development). In some cases (e.g. with composite types and views), pg-nano handles the migration instead, but there are still some missing pieces.
 
@@ -55,6 +57,8 @@ Here are some caveats with the pg-nano approach.
    - Variadic parameters (#9)
    - Function overloading (#8)
    - LISTEN/NOTIFY (#5)
+   - [Domain types](https://www.postgresql.org/docs/current/sql-createdomain.html)
+   - [Pseudo types](https://www.postgresql.org/docs/current/extend-type-system.html#EXTEND-TYPE-SYSTEM-PSEUDO)
    - [Transforms](https://www.postgresql.org/docs/current/sql-createtransform.html)
    - [Rules](https://www.postgresql.org/docs/current/sql-createrule.html)
 

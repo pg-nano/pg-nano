@@ -34,6 +34,7 @@ export type SQLTemplateValue =
   | ''
 
 export class SQLTemplate {
+  ddl?: string = undefined
   readonly indent: string
   constructor(
     readonly strings: readonly string[],
@@ -44,7 +45,7 @@ export class SQLTemplate {
 }
 
 type SQLTokenType = 'id' | 'val' | 'join'
-type SQLTokenJoinSeparator = ';' | ',' | '.' | ' '
+type SQLTokenJoinSeparator = ';' | ',' | '.' | ' ' | '\n' | ''
 type SQLTokenValue = {
   id: {
     id: string

@@ -1,4 +1,4 @@
-import { type Client, sql } from 'pg-nano'
+import { type Client, isPgResultError, sql } from 'pg-nano'
 import { debug } from './debug.js'
 import type { SQLIdentifier } from './identifier'
 import type {
@@ -6,6 +6,7 @@ import type {
   PgRoutineStmt,
   PgViewStmt,
 } from './parseObjectStatements.js'
+import { appendCodeFrame } from './util/codeFrame.js'
 
 /**
  * Compare a type to an existing type in the database.
@@ -82,10 +83,23 @@ export async function hasRoutineSignatureChanged(
 
   // Add the latest routine to the database (but under the "nano" schema), so we
   // can compare it to the existing routine.
-  await client.query(sql`
-    DROP ROUTINE IF EXISTS ${tmpId.toSQL()} CASCADE;
-    ${sql.unsafe(tmpStmt)}
-  `)
+  await client
+    .query(sql`
+      DROP ROUTINE IF EXISTS ${tmpId.toSQL()} CASCADE;
+      ${sql.unsafe(tmpStmt)}
+    `)
+    .catch(error => {
+      if (isPgResultError(error) && error.statementPosition) {
+        appendCodeFrame(
+          error,
+          +error.statementPosition,
+          error.ddl,
+          fn.line - 2,
+          fn.file,
+        )
+      }
+      throw error
+    })
 
   const selectRoutineById = (id: SQLIdentifier) => sql`
     SELECT

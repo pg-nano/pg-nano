@@ -11,7 +11,6 @@ export const inet = 869
 export const int2 = 21
 export const int4 = 23
 export const int4range = 3904
-export const json = 114
 export const jsonb = 3802
 export const macaddr = 829
 export const numeric = 1700
@@ -34,15 +33,6 @@ export const student = {
   lastName: t.varchar
 } as const
 
-export const post = {
-  id: t.int4,
-  title: t.varchar,
-  content: t.text,
-  authorId: t.int4,
-  createdAt: t.timestamptz,
-  updatedAt: t.timestamptz
-} as const
-
 export const course_enrollment = {
   studentId: t.int4,
   courseId: t.int4,
@@ -53,6 +43,15 @@ export const course_enrollment = {
 export const course = {
   id: t.int4,
   courseName: t.varchar
+} as const
+
+export const post = {
+  id: t.int4,
+  title: t.varchar,
+  content: t.text,
+  authorId: t.int4,
+  createdAt: t.timestamptz,
+  updatedAt: t.timestamptz
 } as const
 
 export const account = {

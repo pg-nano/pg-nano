@@ -13,7 +13,7 @@ import { select, tryit } from 'radashi'
 import { debug } from './debug.js'
 import { SQLIdentifier, toUniqueIdList } from './identifier'
 import { log } from './log'
-import { cwdRelative } from './util/path.js'
+import { appendCodeFrame } from './util/codeFrame.js'
 
 const inspect = (value: any) =>
   util.inspect(value, { depth: null, colors: true })
@@ -52,7 +52,13 @@ export async function parseObjectStatements(content: string, file: string) {
 
     if (parseError) {
       if (isParseError(parseError)) {
-        appendCodeFrame(parseError, query, line, file)
+        appendCodeFrame(
+          parseError,
+          parseError.cursorPosition,
+          query,
+          line,
+          file,
+        )
       }
       throw parseError
     }
@@ -379,41 +385,4 @@ type ParseError = Error & { cursorPosition: number }
 
 function isParseError(error: Error): error is ParseError {
   return 'cursorPosition' in error
-}
-
-function appendCodeFrame(
-  error: ParseError,
-  query: string,
-  stmtStartLine: number,
-  stmtFile: string,
-) {
-  const queryLines = (query + ';').split('\n')
-
-  const errorPosition = error.cursorPosition
-  const errorLine = query.slice(0, errorPosition).split('\n').length - 1
-  const errorColumn = errorPosition - query.lastIndexOf('\n', errorPosition - 1)
-
-  const startLine = Math.max(0, errorLine - 2)
-  const endLine = Math.min(queryLines.length - 1, errorLine + 3)
-  const width = String(stmtStartLine + endLine).length
-
-  let output = ''
-
-  for (let line = startLine; line <= endLine; line++) {
-    output += `${line === errorLine ? '> ' : '  '}${String(stmtStartLine + line).padStart(width)} | ${queryLines[line]}\n`
-
-    if (line === errorLine) {
-      output += ' '.repeat(3 + width) + `| ${' '.repeat(errorColumn - 1)}^\n`
-    }
-  }
-
-  error.message +=
-    '\n\n' +
-    output +
-    '\n    at ' +
-    cwdRelative(stmtFile) +
-    ':' +
-    (stmtStartLine + errorLine) +
-    ':' +
-    errorColumn
 }

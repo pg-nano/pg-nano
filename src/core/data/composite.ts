@@ -21,11 +21,11 @@ function parseCompositeField(
   type: Fields,
 ) {
   // The value may be an array of unparsed objects.
-  return isArray(value)
-    ? value.map(item => parseTuple(item, type))
-    : value != null
-      ? parseTuple(value, type)
-      : value
+  return value != null
+    ? isArray(value)
+      ? value.map(item => parseTuple(item, type))
+      : parseTuple(value, type)
+    : value
 }
 
 function parseTuple(rawValue: string, fields: Fields) {

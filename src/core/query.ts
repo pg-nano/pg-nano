@@ -1,4 +1,9 @@
-import type { Result, SQLTemplate } from 'pg-native'
+import type {
+  PgNativeError,
+  PgResultError,
+  Result,
+  SQLTemplate,
+} from 'pg-native'
 import type { Client } from './mod'
 import { streamResults } from './stream.js'
 
@@ -61,7 +66,9 @@ export class Query<
     if (this.options?.resolve) {
       promise = promise.then(this.options.resolve)
     }
+    const template = this.sql
     promise = promise.catch(function onError(error) {
+      error.ddl = template.ddl
       Error.captureStackTrace(error, onError)
       throw error
     })
@@ -70,7 +77,9 @@ export class Query<
 
   catch<TCatchResult = TPromiseResult>(
     onrejected?:
-      | ((reason: any) => TCatchResult | PromiseLike<TCatchResult>)
+      | ((
+          reason: (Error | PgNativeError | PgResultError) & { ddl: string },
+        ) => TCatchResult | PromiseLike<TCatchResult>)
       | undefined
       | null,
   ): Promise<TPromiseResult | TCatchResult> {

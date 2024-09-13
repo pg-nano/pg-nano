@@ -9,20 +9,23 @@ export function stringifyTemplate(
   options?: { reindent?: boolean },
   parentIndent?: string,
 ): string {
-  let sql = ''
+  let ddl = ''
 
   for (let i = 0; i < template.strings.length; i++) {
-    sql += template.strings[i]
+    ddl += template.strings[i]
 
     if (i < template.values.length) {
-      sql += stringifyTemplateValue(
+      const hasIndent =
+        options?.reindent && /(^|\n) +$/.test(template.strings[i])
+
+      const valueString = stringifyTemplateValue(
         template.values[i],
         pq,
         options,
-        options?.reindent && /(^|\n) +$/.test(template.strings[i])
-          ? template.indent
-          : undefined,
+        hasIndent ? template.indent : undefined,
       )
+
+      ddl += hasIndent ? valueString.replace(/^[ \t]+/, '') : valueString
     }
   }
 
@@ -31,12 +34,15 @@ export function stringifyTemplate(
     template.values.length &&
     template.indent !== (parentIndent ?? '')
   ) {
-    sql = sql
-      .replace(new RegExp('^' + template.indent, 'gm'), parentIndent ?? '')
-      .replace(/^\s+/, '')
+    ddl = ddl.replace(
+      new RegExp('^' + template.indent, 'gm'),
+      parentIndent ?? '',
+    )
+    // Remove leading empty lines from multi-line template strings.
+    ddl = ddl.replace(/^\s*\n(?= *\S)/, '')
   }
 
-  return sql
+  return ddl
 }
 
 export function stringifyTemplateValue(
@@ -63,22 +69,25 @@ export function stringifyTemplateValue(
       return escapeValue(arg.value, str => pq.escapeLiteral(str))
     case 'join': {
       const list: string[] = []
+      const separator = isString(arg.separator)
+        ? arg.separator.length <= 1
+          ? arg.separator
+          : ''
+        : stringifyTemplateValue(arg.separator, pq)
 
       for (const value of arg.list) {
-        const sql = stringifyTemplateValue(value, pq, options, parentIndent)
-        if (sql) {
-          list.push(sql)
+        const valueString = stringifyTemplateValue(
+          value,
+          pq,
+          options,
+          parentIndent,
+        )
+        if (valueString) {
+          list.push(valueString)
         }
       }
 
-      if (list.length > 1) {
-        const separator = isString(arg.separator)
-          ? arg.separator
-          : stringifyTemplateValue(arg.separator, pq)
-
-        return list.join(separator)
-      }
-      return list[0] ?? ''
+      return list.join(separator)
     }
   }
 }

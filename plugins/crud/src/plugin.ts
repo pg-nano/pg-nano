@@ -121,24 +121,29 @@ function renderTableQueries(
     $$;
 
     -- Update a row by primary key
-    CREATE FUNCTION ${fn.update}(${pkParams}, data JSON)
+    CREATE FUNCTION ${fn.update}(${pkParams}, entries text[])
     RETURNS ${tableId}
     LANGUAGE plpgsql
     AS $$
     DECLARE
-      sql text := 'UPDATE ${tableId} SET ';
-      key text;
-      value json;
+      entry_key text;
+      entry_value text;
       result ${tableId};
     BEGIN
-      FOR key, value IN SELECT * FROM json_each(data) LOOP
-        sql := sql || quote_ident(key) || ' = ' || quote_nullable(value::text) || ', ';
+      SELECT * FROM ${tableId} WHERE ${pkParamsMatch} INTO result;
+
+      FOR i IN 1..array_upper(entries, 1) BY 2 LOOP
+        entry_key := entries[i];
+        entry_value := entries[i + 1];
+
+        CASE entry_key
+        ${table.columns.map(
+          (col, i) =>
+            sql`WHEN ${sql.val(col.name)} THEN result.${sql.id(col.name)} := CAST(entry_value AS ${col.type.toSQL()});\n`,
+        )}
+        END CASE;
       END LOOP;
-
-      sql := left(sql, -2); -- Remove trailing comma and space
-      sql := sql || ' WHERE ${pkParamsMatch} RETURNING *';
-
-      EXECUTE sql INTO result;
+      
       RETURN result;
     END;
     $$;

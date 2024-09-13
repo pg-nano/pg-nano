@@ -32,7 +32,10 @@ export class SQLIdentifier {
    * will be safely escaped by libpq.
    */
   toSQL(defaultSchema?: string) {
-    return sql.id(this.schema ?? defaultSchema ?? 'public', this.name)
+    const schema = this.schema ?? defaultSchema ?? 'public'
+    return schema === 'pg_catalog'
+      ? sql.unsafe(this.name)
+      : sql.id(schema, this.name)
   }
 
   /**

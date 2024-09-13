@@ -43,24 +43,28 @@ END;
 $$;
 
 -- Update a row by primary key
-CREATE FUNCTION "public"."update_course"("p_id" "course"."id"%TYPE, data JSON)
+CREATE FUNCTION "public"."update_course"("p_id" "course"."id"%TYPE, entries text[])
 RETURNS "public"."course"
 LANGUAGE plpgsql
 AS $$
 DECLARE
-  sql text := 'UPDATE "public"."course" SET ';
-  key text;
-  value json;
+  entry_key text;
+  entry_value text;
   result "public"."course";
 BEGIN
-  FOR key, value IN SELECT * FROM json_each(data) LOOP
-    sql := sql || quote_ident(key) || ' = ' || quote_nullable(value::text) || ', ';
+  SELECT * FROM "public"."course" WHERE "id" = p_id INTO result;
+
+  FOR i IN 1..array_upper(entries, 1) BY 2 LOOP
+    entry_key := entries[i];
+    entry_value := entries[i + 1];
+
+    CASE entry_key
+    WHEN 'id' THEN result."id" := CAST(entry_value AS int4);
+    WHEN 'course_name' THEN result."course_name" := CAST(entry_value AS varchar);
+
+    END CASE;
   END LOOP;
-
-  sql := left(sql, -2); -- Remove trailing comma and space
-  sql := sql || ' WHERE "id" = p_id RETURNING *';
-
-  EXECUTE sql INTO result;
+  
   RETURN result;
 END;
 $$;
@@ -142,24 +146,30 @@ END;
 $$;
 
 -- Update a row by primary key
-CREATE FUNCTION "public"."update_course_enrollment"("p_student_id" "course_enrollment"."student_id"%TYPE,"p_course_id" "course_enrollment"."course_id"%TYPE, data JSON)
+CREATE FUNCTION "public"."update_course_enrollment"("p_student_id" "course_enrollment"."student_id"%TYPE,"p_course_id" "course_enrollment"."course_id"%TYPE, entries text[])
 RETURNS "public"."course_enrollment"
 LANGUAGE plpgsql
 AS $$
 DECLARE
-  sql text := 'UPDATE "public"."course_enrollment" SET ';
-  key text;
-  value json;
+  entry_key text;
+  entry_value text;
   result "public"."course_enrollment";
 BEGIN
-  FOR key, value IN SELECT * FROM json_each(data) LOOP
-    sql := sql || quote_ident(key) || ' = ' || quote_nullable(value::text) || ', ';
+  SELECT * FROM "public"."course_enrollment" WHERE "student_id" = p_student_id AND "course_id" = p_course_id INTO result;
+
+  FOR i IN 1..array_upper(entries, 1) BY 2 LOOP
+    entry_key := entries[i];
+    entry_value := entries[i + 1];
+
+    CASE entry_key
+    WHEN 'student_id' THEN result."student_id" := CAST(entry_value AS int4);
+    WHEN 'course_id' THEN result."course_id" := CAST(entry_value AS int4);
+    WHEN 'enrollment_date' THEN result."enrollment_date" := CAST(entry_value AS "public"."date");
+    WHEN 'grade' THEN result."grade" := CAST(entry_value AS bpchar);
+
+    END CASE;
   END LOOP;
-
-  sql := left(sql, -2); -- Remove trailing comma and space
-  sql := sql || ' WHERE "student_id" = p_student_id AND "course_id" = p_course_id RETURNING *';
-
-  EXECUTE sql INTO result;
+  
   RETURN result;
 END;
 $$;
@@ -241,24 +251,29 @@ END;
 $$;
 
 -- Update a row by primary key
-CREATE FUNCTION "public"."update_student"("p_id" "student"."id"%TYPE, data JSON)
+CREATE FUNCTION "public"."update_student"("p_id" "student"."id"%TYPE, entries text[])
 RETURNS "public"."student"
 LANGUAGE plpgsql
 AS $$
 DECLARE
-  sql text := 'UPDATE "public"."student" SET ';
-  key text;
-  value json;
+  entry_key text;
+  entry_value text;
   result "public"."student";
 BEGIN
-  FOR key, value IN SELECT * FROM json_each(data) LOOP
-    sql := sql || quote_ident(key) || ' = ' || quote_nullable(value::text) || ', ';
+  SELECT * FROM "public"."student" WHERE "id" = p_id INTO result;
+
+  FOR i IN 1..array_upper(entries, 1) BY 2 LOOP
+    entry_key := entries[i];
+    entry_value := entries[i + 1];
+
+    CASE entry_key
+    WHEN 'id' THEN result."id" := CAST(entry_value AS int4);
+    WHEN 'first_name' THEN result."first_name" := CAST(entry_value AS varchar);
+    WHEN 'last_name' THEN result."last_name" := CAST(entry_value AS varchar);
+
+    END CASE;
   END LOOP;
-
-  sql := left(sql, -2); -- Remove trailing comma and space
-  sql := sql || ' WHERE "id" = p_id RETURNING *';
-
-  EXECUTE sql INTO result;
+  
   RETURN result;
 END;
 $$;
@@ -340,24 +355,49 @@ END;
 $$;
 
 -- Update a row by primary key
-CREATE FUNCTION "public"."update_foo"("p_id" "foo"."id"%TYPE, data JSON)
+CREATE FUNCTION "public"."update_foo"("p_id" "foo"."id"%TYPE, entries text[])
 RETURNS "public"."foo"
 LANGUAGE plpgsql
 AS $$
 DECLARE
-  sql text := 'UPDATE "public"."foo" SET ';
-  key text;
-  value json;
+  entry_key text;
+  entry_value text;
   result "public"."foo";
 BEGIN
-  FOR key, value IN SELECT * FROM json_each(data) LOOP
-    sql := sql || quote_ident(key) || ' = ' || quote_nullable(value::text) || ', ';
+  SELECT * FROM "public"."foo" WHERE "id" = p_id INTO result;
+
+  FOR i IN 1..array_upper(entries, 1) BY 2 LOOP
+    entry_key := entries[i];
+    entry_value := entries[i + 1];
+
+    CASE entry_key
+    WHEN 'id' THEN result."id" := CAST(entry_value AS int4);
+    WHEN 'name' THEN result."name" := CAST(entry_value AS varchar);
+    WHEN 'description' THEN result."description" := CAST(entry_value AS "public"."text");
+    WHEN 'created_at' THEN result."created_at" := CAST(entry_value AS timestamptz);
+    WHEN 'updated_at' THEN result."updated_at" := CAST(entry_value AS timestamptz);
+    WHEN 'is_active' THEN result."is_active" := CAST(entry_value AS bool);
+    WHEN 'score' THEN result."score" := CAST(entry_value AS numeric);
+    WHEN 'tags' THEN result."tags" := CAST(entry_value AS "public"."text");
+    WHEN 'matrix' THEN result."matrix" := CAST(entry_value AS float8);
+    WHEN 'metadata' THEN result."metadata" := CAST(entry_value AS "public"."jsonb");
+    WHEN 'color_preference' THEN result."color_preference" := CAST(entry_value AS varchar);
+    WHEN 'binary_data' THEN result."binary_data" := CAST(entry_value AS "public"."bytea");
+    WHEN 'coordinates' THEN result."coordinates" := CAST(entry_value AS "public"."point");
+    WHEN 'ip_address' THEN result."ip_address" := CAST(entry_value AS "public"."inet");
+    WHEN 'mac_address' THEN result."mac_address" := CAST(entry_value AS "public"."macaddr");
+    WHEN 'price_range' THEN result."price_range" := CAST(entry_value AS "public"."int4range");
+    WHEN 'schedule' THEN result."schedule" := CAST(entry_value AS "public"."tstzrange");
+    WHEN 'priority' THEN result."priority" := CAST(entry_value AS int2);
+    WHEN 'uuid' THEN result."uuid" := CAST(entry_value AS "public"."uuid");
+    WHEN 'search_vector' THEN result."search_vector" := CAST(entry_value AS "public"."tsvector");
+    WHEN 'status' THEN result."status" := CAST(entry_value AS "public"."status_type");
+    WHEN 'address' THEN result."address" := CAST(entry_value AS "public"."address_type");
+    WHEN 'product_attributes' THEN result."product_attributes" := CAST(entry_value AS "public"."hstore");
+
+    END CASE;
   END LOOP;
-
-  sql := left(sql, -2); -- Remove trailing comma and space
-  sql := sql || ' WHERE "id" = p_id RETURNING *';
-
-  EXECUTE sql INTO result;
+  
   RETURN result;
 END;
 $$;
@@ -439,24 +479,38 @@ END;
 $$;
 
 -- Update a row by primary key
-CREATE FUNCTION "public"."update_account"("p_id" "account"."id"%TYPE, data JSON)
+CREATE FUNCTION "public"."update_account"("p_id" "account"."id"%TYPE, entries text[])
 RETURNS "public"."account"
 LANGUAGE plpgsql
 AS $$
 DECLARE
-  sql text := 'UPDATE "public"."account" SET ';
-  key text;
-  value json;
+  entry_key text;
+  entry_value text;
   result "public"."account";
 BEGIN
-  FOR key, value IN SELECT * FROM json_each(data) LOOP
-    sql := sql || quote_ident(key) || ' = ' || quote_nullable(value::text) || ', ';
+  SELECT * FROM "public"."account" WHERE "id" = p_id INTO result;
+
+  FOR i IN 1..array_upper(entries, 1) BY 2 LOOP
+    entry_key := entries[i];
+    entry_value := entries[i + 1];
+
+    CASE entry_key
+    WHEN 'id' THEN result."id" := CAST(entry_value AS "public"."serial");
+    WHEN 'username' THEN result."username" := CAST(entry_value AS varchar);
+    WHEN 'email' THEN result."email" := CAST(entry_value AS varchar);
+    WHEN 'password_hash' THEN result."password_hash" := CAST(entry_value AS varchar);
+    WHEN 'posts_count' THEN result."posts_count" := CAST(entry_value AS int4);
+    WHEN 'first_name' THEN result."first_name" := CAST(entry_value AS varchar);
+    WHEN 'last_name' THEN result."last_name" := CAST(entry_value AS varchar);
+    WHEN 'date_of_birth' THEN result."date_of_birth" := CAST(entry_value AS "public"."date");
+    WHEN 'created_at' THEN result."created_at" := CAST(entry_value AS timestamptz);
+    WHEN 'updated_at' THEN result."updated_at" := CAST(entry_value AS timestamptz);
+    WHEN 'last_login' THEN result."last_login" := CAST(entry_value AS timestamptz);
+    WHEN 'is_deleted' THEN result."is_deleted" := CAST(entry_value AS bool);
+
+    END CASE;
   END LOOP;
-
-  sql := left(sql, -2); -- Remove trailing comma and space
-  sql := sql || ' WHERE "id" = p_id RETURNING *';
-
-  EXECUTE sql INTO result;
+  
   RETURN result;
 END;
 $$;
@@ -538,24 +592,32 @@ END;
 $$;
 
 -- Update a row by primary key
-CREATE FUNCTION "public"."update_post"("p_id" "post"."id"%TYPE, data JSON)
+CREATE FUNCTION "public"."update_post"("p_id" "post"."id"%TYPE, entries text[])
 RETURNS "public"."post"
 LANGUAGE plpgsql
 AS $$
 DECLARE
-  sql text := 'UPDATE "public"."post" SET ';
-  key text;
-  value json;
+  entry_key text;
+  entry_value text;
   result "public"."post";
 BEGIN
-  FOR key, value IN SELECT * FROM json_each(data) LOOP
-    sql := sql || quote_ident(key) || ' = ' || quote_nullable(value::text) || ', ';
+  SELECT * FROM "public"."post" WHERE "id" = p_id INTO result;
+
+  FOR i IN 1..array_upper(entries, 1) BY 2 LOOP
+    entry_key := entries[i];
+    entry_value := entries[i + 1];
+
+    CASE entry_key
+    WHEN 'id' THEN result."id" := CAST(entry_value AS "public"."serial");
+    WHEN 'title' THEN result."title" := CAST(entry_value AS varchar);
+    WHEN 'content' THEN result."content" := CAST(entry_value AS "public"."text");
+    WHEN 'author_id' THEN result."author_id" := CAST(entry_value AS int4);
+    WHEN 'created_at' THEN result."created_at" := CAST(entry_value AS timestamptz);
+    WHEN 'updated_at' THEN result."updated_at" := CAST(entry_value AS timestamptz);
+
+    END CASE;
   END LOOP;
-
-  sql := left(sql, -2); -- Remove trailing comma and space
-  sql := sql || ' WHERE "id" = p_id RETURNING *';
-
-  EXECUTE sql INTO result;
+  
   RETURN result;
 END;
 $$;

@@ -18,11 +18,11 @@ export default defineConfig({
 
 For every table, the following routines are generated:
 
-- `get_widget(id INT) RETURNS "widget"%ROWTYPE`
-- `create_widget(data JSON) RETURNS "widget"%ROWTYPE`
-- `upsert_widget(data JSON) RETURNS "widget"%ROWTYPE`
-- `update_widget(id INT, data JSON) RETURNS "widget"%ROWTYPE`
-- `replace_widget(id INT, data JSON) RETURNS "widget"%ROWTYPE`
+- `get_widget(id INT) RETURNS widget`
+- `create_widget(data widget) RETURNS widget`
+- `upsert_widget(data widget) RETURNS widget`
+- `update_widget(id INT, data JSON) RETURNS widget`
+- `replace_widget(id INT, data widget) RETURNS widget`
 - `delete_widget(id INT) RETURNS BOOLEAN`
 
 Note that the `get`, `update`, `replace`, and `delete` routines also work for tables with composite primary keys.
