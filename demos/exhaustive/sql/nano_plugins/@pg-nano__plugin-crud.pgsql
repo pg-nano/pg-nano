@@ -7,7 +7,7 @@ DECLARE
   result "public"."course";
 BEGIN
   SELECT * FROM "public"."course"
-    WHERE "id" = "p_id"
+    WHERE "id" = p_id
     LIMIT 1
     INTO result;
   RETURN result;
@@ -58,7 +58,7 @@ BEGIN
   END LOOP;
 
   sql := left(sql, -2); -- Remove trailing comma and space
-  sql := sql || ' WHERE "id" = "p_id" RETURNING *';
+  sql := sql || ' WHERE "id" = p_id RETURNING *';
 
   EXECUTE sql INTO result;
   RETURN result;
@@ -73,7 +73,7 @@ AS $$
 DECLARE
   result "public"."course";
 BEGIN
-  DELETE FROM "public"."course" WHERE "id" = "p_id";
+  DELETE FROM "public"."course" WHERE "id" = p_id;
   INSERT INTO "public"."course" VALUES (rec.*) RETURNING * INTO result;
   RETURN result;
 END;
@@ -89,7 +89,7 @@ DECLARE
 BEGIN
   WITH deleted AS (
     DELETE FROM "public"."course"
-    WHERE "id" = "p_id"
+    WHERE "id" = p_id
     RETURNING *
   )
   SELECT COUNT(*) INTO rows_affected FROM deleted;
@@ -106,7 +106,7 @@ DECLARE
   result "public"."course_enrollment";
 BEGIN
   SELECT * FROM "public"."course_enrollment"
-    WHERE "student_id" = "p_student_id" AND "course_id" = "p_course_id"
+    WHERE "student_id" = p_student_id AND "course_id" = p_course_id
     LIMIT 1
     INTO result;
   RETURN result;
@@ -157,7 +157,7 @@ BEGIN
   END LOOP;
 
   sql := left(sql, -2); -- Remove trailing comma and space
-  sql := sql || ' WHERE "student_id" = "p_student_id" AND "course_id" = "p_course_id" RETURNING *';
+  sql := sql || ' WHERE "student_id" = p_student_id AND "course_id" = p_course_id RETURNING *';
 
   EXECUTE sql INTO result;
   RETURN result;
@@ -172,7 +172,7 @@ AS $$
 DECLARE
   result "public"."course_enrollment";
 BEGIN
-  DELETE FROM "public"."course_enrollment" WHERE "student_id" = "p_student_id" AND "course_id" = "p_course_id";
+  DELETE FROM "public"."course_enrollment" WHERE "student_id" = p_student_id AND "course_id" = p_course_id;
   INSERT INTO "public"."course_enrollment" VALUES (rec.*) RETURNING * INTO result;
   RETURN result;
 END;
@@ -188,7 +188,7 @@ DECLARE
 BEGIN
   WITH deleted AS (
     DELETE FROM "public"."course_enrollment"
-    WHERE "student_id" = "p_student_id" AND "course_id" = "p_course_id"
+    WHERE "student_id" = p_student_id AND "course_id" = p_course_id
     RETURNING *
   )
   SELECT COUNT(*) INTO rows_affected FROM deleted;
@@ -205,7 +205,7 @@ DECLARE
   result "public"."student";
 BEGIN
   SELECT * FROM "public"."student"
-    WHERE "id" = "p_id"
+    WHERE "id" = p_id
     LIMIT 1
     INTO result;
   RETURN result;
@@ -256,7 +256,7 @@ BEGIN
   END LOOP;
 
   sql := left(sql, -2); -- Remove trailing comma and space
-  sql := sql || ' WHERE "id" = "p_id" RETURNING *';
+  sql := sql || ' WHERE "id" = p_id RETURNING *';
 
   EXECUTE sql INTO result;
   RETURN result;
@@ -271,7 +271,7 @@ AS $$
 DECLARE
   result "public"."student";
 BEGIN
-  DELETE FROM "public"."student" WHERE "id" = "p_id";
+  DELETE FROM "public"."student" WHERE "id" = p_id;
   INSERT INTO "public"."student" VALUES (rec.*) RETURNING * INTO result;
   RETURN result;
 END;
@@ -287,7 +287,7 @@ DECLARE
 BEGIN
   WITH deleted AS (
     DELETE FROM "public"."student"
-    WHERE "id" = "p_id"
+    WHERE "id" = p_id
     RETURNING *
   )
   SELECT COUNT(*) INTO rows_affected FROM deleted;
@@ -304,7 +304,7 @@ DECLARE
   result "public"."foo";
 BEGIN
   SELECT * FROM "public"."foo"
-    WHERE "id" = "p_id"
+    WHERE "id" = p_id
     LIMIT 1
     INTO result;
   RETURN result;
@@ -355,7 +355,7 @@ BEGIN
   END LOOP;
 
   sql := left(sql, -2); -- Remove trailing comma and space
-  sql := sql || ' WHERE "id" = "p_id" RETURNING *';
+  sql := sql || ' WHERE "id" = p_id RETURNING *';
 
   EXECUTE sql INTO result;
   RETURN result;
@@ -370,7 +370,7 @@ AS $$
 DECLARE
   result "public"."foo";
 BEGIN
-  DELETE FROM "public"."foo" WHERE "id" = "p_id";
+  DELETE FROM "public"."foo" WHERE "id" = p_id;
   INSERT INTO "public"."foo" VALUES (rec.*) RETURNING * INTO result;
   RETURN result;
 END;
@@ -386,7 +386,7 @@ DECLARE
 BEGIN
   WITH deleted AS (
     DELETE FROM "public"."foo"
-    WHERE "id" = "p_id"
+    WHERE "id" = p_id
     RETURNING *
   )
   SELECT COUNT(*) INTO rows_affected FROM deleted;
@@ -403,7 +403,7 @@ DECLARE
   result "public"."account";
 BEGIN
   SELECT * FROM "public"."account"
-    WHERE "id" = "p_id"
+    WHERE "id" = p_id
     LIMIT 1
     INTO result;
   RETURN result;
@@ -454,7 +454,7 @@ BEGIN
   END LOOP;
 
   sql := left(sql, -2); -- Remove trailing comma and space
-  sql := sql || ' WHERE "id" = "p_id" RETURNING *';
+  sql := sql || ' WHERE "id" = p_id RETURNING *';
 
   EXECUTE sql INTO result;
   RETURN result;
@@ -469,7 +469,7 @@ AS $$
 DECLARE
   result "public"."account";
 BEGIN
-  DELETE FROM "public"."account" WHERE "id" = "p_id";
+  DELETE FROM "public"."account" WHERE "id" = p_id;
   INSERT INTO "public"."account" VALUES (rec.*) RETURNING * INTO result;
   RETURN result;
 END;
@@ -485,7 +485,7 @@ DECLARE
 BEGIN
   WITH deleted AS (
     DELETE FROM "public"."account"
-    WHERE "id" = "p_id"
+    WHERE "id" = p_id
     RETURNING *
   )
   SELECT COUNT(*) INTO rows_affected FROM deleted;
@@ -502,7 +502,7 @@ DECLARE
   result "public"."post";
 BEGIN
   SELECT * FROM "public"."post"
-    WHERE "id" = "p_id"
+    WHERE "id" = p_id
     LIMIT 1
     INTO result;
   RETURN result;
@@ -553,7 +553,7 @@ BEGIN
   END LOOP;
 
   sql := left(sql, -2); -- Remove trailing comma and space
-  sql := sql || ' WHERE "id" = "p_id" RETURNING *';
+  sql := sql || ' WHERE "id" = p_id RETURNING *';
 
   EXECUTE sql INTO result;
   RETURN result;
@@ -568,7 +568,7 @@ AS $$
 DECLARE
   result "public"."post";
 BEGIN
-  DELETE FROM "public"."post" WHERE "id" = "p_id";
+  DELETE FROM "public"."post" WHERE "id" = p_id;
   INSERT INTO "public"."post" VALUES (rec.*) RETURNING * INTO result;
   RETURN result;
 END;
@@ -584,7 +584,7 @@ DECLARE
 BEGIN
   WITH deleted AS (
     DELETE FROM "public"."post"
-    WHERE "id" = "p_id"
+    WHERE "id" = p_id
     RETURNING *
   )
   SELECT COUNT(*) INTO rows_affected FROM deleted;

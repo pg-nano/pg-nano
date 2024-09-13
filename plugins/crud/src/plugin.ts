@@ -48,7 +48,7 @@ function renderTableQueries(
   const pkParamsMatch = sql.join(
     sql.unsafe(' AND '),
     table.primaryKeyColumns.map(pk =>
-      sql.join(sql.unsafe(' = '), [sql.id(pk), sql.id(`p_${pk}`)]),
+      sql.join(sql.unsafe(' = '), [sql.id(pk), sql.unsafe(`p_${pk}`)]),
     ),
   )
 

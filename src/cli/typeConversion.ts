@@ -33,6 +33,7 @@ export const typeMappings: PgTypeMapping[] = [
   type(1114, 'timestamp', 'Timestamp'),
   type(1184, 'timestamptz', 'Timestamp'),
   type(1186, 'interval', 'Interval'),
+  type(2278, 'void', 'void'),
   type(3802, 'jsonb', 'JSON'),
 
   /* Range types */

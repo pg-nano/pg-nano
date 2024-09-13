@@ -324,6 +324,13 @@ export declare namespace getAccount {
 
 export const getAccount = /* @__PURE__ */ bindQueryRow<getAccount.Params, getAccount.Result>("get_account", { id: t.int4 })
 
+export declare namespace dropAccountNamed {
+  type Params = { username: string }
+  type Result = unknown
+}
+
+export const dropAccountNamed = /* @__PURE__ */ bindQueryValue<dropAccountNamed.Params, dropAccountNamed.Result>("drop_account_named", { username: t.varchar })
+
 export declare namespace updateStudent {
   type Params = { id: number, data: JSON }
   type Result = Student

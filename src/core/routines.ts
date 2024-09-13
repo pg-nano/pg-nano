@@ -56,13 +56,13 @@ export function bindQueryRow<TArgs extends object, TRow extends Row>(
 
 /**
  * Create a dedicated query function for a Postgres routine that returns a
- * single value (i.e. one row with one column) or nothing.
+ * single value (i.e. one row with one column).
  */
 export function bindQueryValue<TArgs extends object, TResult>(
   name: string | string[],
   inParams?: Params | null,
   outParams?: { [name: string]: Fields } | null,
-): Routine<TArgs, Promise<TResult | null>> {
+): Routine<TArgs, Promise<TResult>> {
   return bindRoutine('queryValue', name, inParams, outParams) as any
 }
 
@@ -93,7 +93,7 @@ function bindRoutine(
 
 function sqlRoutineCall(id: SQLToken, values: any[], limit: number) {
   return sql`
-    SELECT * FROM ${id}(${values.map(sql.val)})
+    SELECT * FROM ${id}(${sql.join(',', values.map(sql.val))})
     ${limit ? sql`LIMIT ${sql.unsafe(String(limit))}` : ''}
   `
 }
