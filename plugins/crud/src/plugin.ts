@@ -11,7 +11,7 @@ export default function (): Plugin {
       return sql`
         ${sql.join(
           sql.unsafe('\n'),
-          tables.slice(0, 2).map(table => renderTableQueries(table, context)),
+          tables.map(table => renderTableQueries(table, context)),
         )}
       `
     },
@@ -23,6 +23,10 @@ function renderTableQueries(
   { sql }: StatementsContext,
 ) {
   if (!table.primaryKeyColumns.length) {
+    console.warn(
+      'Table %s has no primary key, skipping',
+      table.id.toQualifiedName(),
+    )
     // No primary key, skip
     return ''
   }
@@ -82,26 +86,26 @@ function renderTableQueries(
     $$;
 
     -- Insert a new row
-    CREATE FUNCTION ${fn.create}(rec ${tableId})
+    CREATE FUNCTION ${fn.create}(${tableId})
     RETURNS SETOF ${tableId}
     LANGUAGE plpgsql
     AS $$
     BEGIN
       RETURN QUERY
-        INSERT INTO ${tableId} VALUES (rec.*)
+        INSERT INTO ${tableId} VALUES ($1.*)
         RETURNING *;
     END;
     $$;
 
     -- Upsert a row by primary key
-    CREATE FUNCTION ${fn.upsert}(rec ${tableId})
+    CREATE FUNCTION ${fn.upsert}(${tableId})
     RETURNS ${tableId}
     LANGUAGE plpgsql
     AS $$
     DECLARE
       result ${tableId};
     BEGIN
-      INSERT INTO ${tableId} VALUES (rec.*)
+      INSERT INTO ${tableId} VALUES ($1.*)
       ON CONFLICT (${pkColumns}) DO UPDATE
       SET ${sql.join(
         ',',

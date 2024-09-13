@@ -5,7 +5,7 @@ import { isFunction, uid } from 'radashi'
 import type { StrictEventEmitter } from 'strict-event-emitter-types'
 import { debug } from './debug'
 import { PgNativeError, PgResultError } from './error'
-import { buildResult, type Result } from './result'
+import { buildResult, type FieldCase, type Result } from './result'
 import { stringifyTemplate } from './stringify'
 import type { SQLTemplate } from './template'
 
@@ -46,7 +46,10 @@ export class Connection extends ConnectionEmitter {
   protected declare pq: Libpq
   declare readonly status: ConnectionStatus
 
-  constructor(readonly idleTimeout: number = 30e3) {
+  constructor(
+    readonly fieldCase: FieldCase,
+    readonly idleTimeout: number,
+  ) {
     super()
     reset(unprotect(this), ConnectionStatus.CLOSED)
   }
@@ -113,6 +116,7 @@ export enum ConnectionStatus {
 interface IConnection extends ConnectionEmitter {
   pq: Libpq
   status: ConnectionStatus
+  fieldCase: FieldCase
   reader: (() => void) | null
   results: Result[]
   promise: Promise<any>
@@ -331,7 +335,7 @@ function processResult(
     }
 
     case 'PGRES_SINGLE_TUPLE': {
-      const result = buildResult(conn.pq)
+      const result = buildResult(conn.pq, conn.fieldCase)
       resultParser?.(result)
       conn.emit('result', result)
       return
@@ -340,7 +344,7 @@ function processResult(
     case 'PGRES_TUPLES_OK':
     case 'PGRES_COMMAND_OK':
     case 'PGRES_EMPTY_QUERY': {
-      const result = buildResult(conn.pq)
+      const result = buildResult(conn.pq, conn.fieldCase)
       resultParser?.(result)
       conn.results.push(result)
       return

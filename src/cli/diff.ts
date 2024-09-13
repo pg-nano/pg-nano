@@ -1,8 +1,9 @@
 import { type Client, sql } from 'pg-nano'
+import { debug } from './debug.js'
 import type { SQLIdentifier } from './identifier'
 import type {
   PgCompositeTypeStmt,
-  PgFunctionStmt,
+  PgRoutineStmt,
   PgViewStmt,
 } from './parseObjectStatements.js'
 
@@ -35,14 +36,20 @@ export async function hasCompositeTypeChanged(
         ORDER BY a.attnum
       ) AS columns
     FROM
-      pg_attribute a
+      pg_type t
     JOIN
-      pg_type t ON t.oid = a.attrelid
+      pg_attribute a ON a.attrelid = t.typrelid
     WHERE
       t.typname = ${id.nameVal}
       AND t.typnamespace = ${id.schemaVal}::regnamespace
       AND t.typtype = 'c'
+      AND a.attnum > 0
+      AND NOT a.attisdropped
   `
+
+  if (debug.enabled) {
+    debug('did %s change?', type.id.toQualifiedName())
+  }
 
   const hasChanges = await client.queryValue<boolean>(sql`
     WITH type1 AS (
@@ -66,9 +73,9 @@ export async function hasCompositeTypeChanged(
  *
  * @returns `true` if the routine has changed, `false` otherwise.
  */
-export async function hasRoutineTypeChanged(
+export async function hasRoutineSignatureChanged(
   client: Client,
-  fn: PgFunctionStmt,
+  fn: PgRoutineStmt,
 ) {
   const tmpId = fn.id.withSchema('nano')
   const tmpStmt = fn.query.replace(fn.id.toRegExp(), tmpId.toQualifiedName())
@@ -82,6 +89,8 @@ export async function hasRoutineTypeChanged(
 
   const selectRoutineById = (id: SQLIdentifier) => sql`
     SELECT
+      coalesce(p.proargnames, '{}') AS argument_names,
+      coalesce(p.proargmodes, '{}') AS argument_modes,
       p.proargtypes::oid[] AS argument_types,
       p.prorettype AS return_type,
       p.provariadic AS variadic_type,
@@ -93,6 +102,10 @@ export async function hasRoutineTypeChanged(
       AND p.pronamespace = ${id.schemaVal}::regnamespace
   `
 
+  if (debug.enabled) {
+    debug('did %s change?', fn.id.toQualifiedName())
+  }
+
   const hasChanges = await client.queryValue<boolean>(sql`
     WITH routine1 AS (
       ${selectRoutineById(fn.id)}
@@ -101,7 +114,9 @@ export async function hasRoutineTypeChanged(
       ${selectRoutineById(tmpId)}
     )
     SELECT
+      r1.argument_names <> r2.argument_names OR
       r1.argument_types <> r2.argument_types OR
+      r1.argument_modes <> r2.argument_modes OR
       r1.return_type <> r2.return_type OR
       r1.variadic_type <> r2.variadic_type OR
       r1.function_kind <> r2.function_kind AS has_changes

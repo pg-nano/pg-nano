@@ -28,47 +28,77 @@ export const varchar = 1043
 export const status_type = 3338343
 
 // Composite types
-export const course = {
+export const student = {
   id: t.int4,
-  course_name: t.varchar
+  firstName: t.varchar,
+  lastName: t.varchar
+} as const
+
+export const post = {
+  id: t.int4,
+  title: t.varchar,
+  content: t.text,
+  authorId: t.int4,
+  createdAt: t.timestamptz,
+  updatedAt: t.timestamptz
 } as const
 
 export const course_enrollment = {
-  student_id: t.int4,
-  course_id: t.int4,
-  enrollment_date: t.date,
+  studentId: t.int4,
+  courseId: t.int4,
+  enrollmentDate: t.date,
   grade: t.bpchar
+} as const
+
+export const course = {
+  id: t.int4,
+  courseName: t.varchar
+} as const
+
+export const account = {
+  id: t.int4,
+  username: t.varchar,
+  email: t.varchar,
+  passwordHash: t.varchar,
+  firstName: t.varchar,
+  lastName: t.varchar,
+  dateOfBirth: t.date,
+  createdAt: t.timestamptz,
+  updatedAt: t.timestamptz,
+  lastLogin: t.timestamptz,
+  isDeleted: t.bool,
+  postsCount: t.int4
 } as const
 
 export const address_type = {
   street: t.varchar,
   city: t.varchar,
   state: t.varchar,
-  zip_code: t.varchar
+  zipCode: t.varchar
 } as const
 
 export const foo = {
   id: t.int4,
   name: t.varchar,
   description: t.text,
-  created_at: t.timestamptz,
-  updated_at: t.timestamptz,
-  is_active: t.bool,
+  createdAt: t.timestamptz,
+  updatedAt: t.timestamptz,
+  isActive: t.bool,
   score: t.numeric,
   tags: t.text_array,
   matrix: t.float8_array,
   metadata: t.jsonb,
-  binary_data: t.bytea,
+  binaryData: t.bytea,
   coordinates: t.point,
-  ip_address: t.inet,
-  mac_address: t.macaddr,
-  price_range: t.int4range,
+  ipAddress: t.inet,
+  macAddress: t.macaddr,
+  priceRange: t.int4range,
   schedule: t.tstzrange,
   priority: t.int2,
   uuid: t.uuid,
-  search_vector: t.tsvector,
+  searchVector: t.tsvector,
   status: 3338343 /* status_type */,
   address: t.address_type,
-  product_attributes: t.hstore,
-  color_preference: t.varchar
+  productAttributes: t.hstore,
+  colorPreference: t.varchar
 } as const

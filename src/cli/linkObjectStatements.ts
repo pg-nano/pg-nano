@@ -29,7 +29,7 @@ export function linkObjectStatements(objects: ParsedObjectStmt[]) {
 
   // Determine dependencies
   for (const stmt of idSortedObjects) {
-    if (stmt.kind === 'function') {
+    if (stmt.kind === 'routine') {
       for (const param of stmt.params) {
         link(stmt, param.type)
       }

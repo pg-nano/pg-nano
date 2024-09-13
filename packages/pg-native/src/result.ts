@@ -1,4 +1,5 @@
 import type Libpq from '@pg-nano/libpq'
+import { snakeToCamel } from './casing.js'
 import { getTypeParser } from './pg-types/textParsers.js'
 
 export class Result<TRow extends Row = Row> {
@@ -17,18 +18,23 @@ export interface Field {
   dataTypeID: number
 }
 
+export enum FieldCase {
+  preserve = 0,
+  camel = 1,
+}
+
 const emptyArray = Object.freeze([]) as never[]
 const getEmptyResult = memoize((command: string) =>
   Object.freeze(new Result(command, 0, emptyArray, emptyArray)),
 )
 
-export function buildResult(pq: Libpq) {
+export function buildResult(pq: Libpq, fieldCase: FieldCase) {
   const command = consumeCommand(pq)
   const rowCount = consumeRowCount(pq)
 
   let result: Result
   if (rowCount > 0) {
-    const fields = consumeFields(pq)
+    const fields = consumeFields(pq, fieldCase)
     const rows = consumeRows(pq, fields)
 
     result = new Result(command, rowCount, fields, rows)
@@ -49,11 +55,12 @@ function consumeRowCount(pq: Libpq) {
   return cmdTuples ? Number.parseInt(cmdTuples, 10) : 0
 }
 
-function consumeFields(pq: Libpq) {
+function consumeFields(pq: Libpq, fieldCase: FieldCase) {
   const fields = new Array(pq.nfields())
   for (let i = 0; i < fields.length; i++) {
+    const name = pq.fname(i)
     fields[i] = {
-      name: pq.fname(i),
+      name: fieldCase === FieldCase.camel ? snakeToCamel(name) : name,
       dataTypeID: pq.ftype(i),
     }
   }

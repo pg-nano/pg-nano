@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
-import { sql } from 'pg-nano'
+import { snakeToCamel, sql } from 'pg-nano'
 import { camel, mapify, pascal, select } from 'radashi'
 import type { Env } from './env'
 import { quoteName, SQLIdentifier, unsafelyQuotedName } from './identifier.js'
@@ -39,7 +39,7 @@ export async function generate(
   const allObjects = await prepareDatabase(filePaths, env)
 
   const allFunctionsByName = mapify(
-    allObjects.filter(obj => obj.kind === 'function'),
+    allObjects.filter(obj => obj.kind === 'routine'),
     obj => obj.id.toQualifiedName(),
   )
 
@@ -132,6 +132,11 @@ export async function generate(
   const foreignImports = new Set<string>()
   const imports = new Set<string>()
 
+  const formatFieldName = (name: string) =>
+    env.config.generate.fieldCase === 'camel'
+      ? unsafelyQuotedName(snakeToCamel(name), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ')
+      : unsafelyQuotedName(name)
+
   const addNamespacePrefix = (
     typname: string,
     nspname: string,
@@ -167,7 +172,7 @@ export async function generate(
       export type ${pascal(type.typname)} = {
         ${type.attributes
           .map(attr => {
-            return `${attr.attname}${attr.attnotnull ? '' : '?'}: ${renderTypeReference(attr.atttypid, type.nspname, 'type')}`
+            return `${formatFieldName(attr.attname)}${attr.attnotnull ? '' : '?'}: ${renderTypeReference(attr.atttypid, type.nspname, 'type')}`
           })
           .join('\n')}
       }\n\n
@@ -178,7 +183,7 @@ export async function generate(
       export type ${pascal(type.typname)} = {
         ${type.attributes
           .map(attr => {
-            return `${attr.attname}${attr.attnotnull ? '' : '?'}: ${renderTypeReference(attr.atttypid, type.nspname, 'return')}`
+            return `${formatFieldName(attr.attname)}${attr.attnotnull ? '' : '?'}: ${renderTypeReference(attr.atttypid, type.nspname, 'return')}`
           })
           .join('\n')}
       }
@@ -187,7 +192,7 @@ export async function generate(
           ${type.attributes
             .filter(attr => attr.attidentity !== 'a')
             .map(attr => {
-              return `${attr.attname}${attr.attnotnull && !attr.atthasdef ? '' : '?'}: ${renderTypeReference(attr.atttypid, type.nspname, 'param')}`
+              return `${formatFieldName(attr.attname)}${attr.attnotnull && !attr.atthasdef ? '' : '?'}: ${renderTypeReference(attr.atttypid, type.nspname, 'param')}`
             })
             .join('\n')}
         }
@@ -237,7 +242,7 @@ export async function generate(
         return null
       }
 
-      const name = unsafelyQuotedName(field.attname)
+      const name = formatFieldName(field.attname)
       const type = renderFieldType(field.atttypid)
 
       return `${name}: ${type}`
@@ -312,16 +317,16 @@ export async function generate(
 
       const argNames = fn.proargnames
         ?.slice(0, fn.proargtypes.length)
-        .map(name => camel(name.replace(/^p_/, '')))
+        .map(name => formatFieldName(name.replace(/^p_/, '')))
 
       const argTypes = fn.proargtypes
         .map((typeOid, index) => {
           if (argNames) {
-            const jsName = argNames[index]
+            const name = argNames[index]
             const optionalToken =
               index >= fn.proargtypes.length - fn.pronargdefaults ? '?' : ''
 
-            return `${jsName}${optionalToken}: ${renderTypeReference(typeOid, fn.nspname, 'param')}`
+            return `${name}${optionalToken}: ${renderTypeReference(typeOid, fn.nspname, 'param')}`
           }
           return renderTypeReference(typeOid, fn.nspname, 'param')
         })
@@ -376,11 +381,12 @@ export async function generate(
                   }
                 : null
 
-            const columnType = mapping
+            const name = formatFieldName(col.name)
+            const jsType = mapping
               ? renderTypeReference(mapping.oid, fn.nspname, 'return')
               : 'unknown'
 
-            return `${col.name}: ${columnType}`
+            return `${name}: ${jsType}`
           })
           .join(', ')} }`
 
@@ -568,11 +574,13 @@ async function migrate(env: Env) {
         message = pgError.trimEnd()
       }
       if (source) {
-        const [, file, line] = fs
-          .readFileSync(source[0], 'utf8')
-          .match(/file:\/\/(.+?)#L(\d+)/)!
+        const [, file, line] =
+          fs.readFileSync(source[0], 'utf8').match(/file:\/\/(.+?)#L(\d+)/) ||
+          []
 
-        message += `\n\n    at ${cwdRelative(file)}:${line}`
+        if (file && line) {
+          message += `\n\n    at ${cwdRelative(file)}:${line}`
+        }
       }
     }
     throw new Error(message)

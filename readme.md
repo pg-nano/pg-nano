@@ -55,6 +55,8 @@ Here are some caveats with the pg-nano approach.
    - Variadic parameters (#9)
    - Function overloading (#8)
    - LISTEN/NOTIFY (#5)
+   - [Transforms](https://www.postgresql.org/docs/current/sql-createtransform.html)
+   - [Rules](https://www.postgresql.org/docs/current/sql-createrule.html)
 
 ### Supported Postgres features
 
@@ -71,12 +73,17 @@ You can be sure these features are supported:
 - [x] Identity columns
 - [x] Indexes
 - [x] Procedures
+- [x] Sequences
 - [x] Single row mode
 - [x] Tables
 - [x] Triggers
 - [x] Views
 
 Since pg-nano uses [libpg_query](https://github.com/pganalyze/libpg_query) to parse your SQL, we're able to support features before pg-schema-diff does. This is how we support composite types and views, for example. This also allows pg-nano to build a dependency graph to ensure database objects are created in the correct order.
+
+### Roadmap
+
+I'm an independent developer without big sponsors, so I only develop what I need (or sometimes want). I keep track of cool ideas in the issues, but I don't promise that I'll develop them. Collaboration is welcome if you'd like to contribute!
 
 ## Installation
 

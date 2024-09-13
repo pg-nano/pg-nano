@@ -2,9 +2,9 @@ import type { Plugin } from '@pg-nano/plugin'
 import fs from 'node:fs'
 import path from 'node:path'
 import { PgResultError, sql } from 'pg-nano'
-import { map, memo, sift } from 'radashi'
+import { capitalize, map, memo, sift } from 'radashi'
 import { debug } from './debug.js'
-import { hasCompositeTypeChanged, hasRoutineTypeChanged } from './diff'
+import { hasCompositeTypeChanged, hasRoutineSignatureChanged } from './diff'
 import type { Env } from './env'
 import type { SQLIdentifier } from './identifier'
 import { linkObjectStatements } from './linkObjectStatements'
@@ -43,7 +43,7 @@ export async function prepareDatabase(sqlFiles: string[], env: Env) {
    * before the pg-schema-diff migration process begins.
    */
   const objectExistence: Record<ParsedObjectType, ObjectExistenceConfig> = {
-    function: {
+    routine: {
       from: 'pg_proc',
       schemaKey: 'pronamespace',
       nameKey: 'proname',
@@ -80,7 +80,7 @@ export async function prepareDatabase(sqlFiles: string[], env: Env) {
       return false
     }
 
-    debug('checking if object exists:', id.toQualifiedName())
+    debug('does %s exist?', id.toQualifiedName())
 
     const { from, schemaKey, nameKey } = objectExistence[type]
 
@@ -189,12 +189,9 @@ export async function prepareDatabase(sqlFiles: string[], env: Env) {
               })
           }
         }
-      } else if (object.kind === 'function') {
-        if (await hasRoutineTypeChanged(pg, object)) {
-          log.magenta(
-            'Function signature changed:',
-            object.id.toQualifiedName(),
-          )
+      } else if (object.kind === 'routine') {
+        if (await hasRoutineSignatureChanged(pg, object)) {
+          log.magenta('Routine signature changed:', object.id.toQualifiedName())
           await pg
             .query(sql`
               DROP ROUTINE ${object.id.toSQL()} CASCADE;
@@ -324,9 +321,8 @@ async function preparePluginStatements(
       for (const object of objects) {
         if (allObjects.some(other => other.id.equals(object.id))) {
           log.warn(
-            '[%s] Tried to create %s %s, but it already exists. Skipping.',
-            plugin.name,
-            object.kind,
+            '%s name is already in use:',
+            capitalize(object.kind),
             object.id.toQualifiedName(),
           )
           continue

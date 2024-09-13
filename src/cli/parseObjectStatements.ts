@@ -107,7 +107,7 @@ export async function parseObjectStatements(content: string, file: string) {
           : undefined
 
       objects.push({
-        kind: 'function',
+        kind: 'routine',
         id,
         params: inParams,
         returnType,
@@ -293,7 +293,7 @@ export type ParsedObjectType<T = ParsedObjectStmt> = T extends ParsedObjectStmt
   : never
 
 export type ParsedObjectStmt =
-  | PgFunctionStmt
+  | PgRoutineStmt
   | PgTableStmt
   | PgEnumStmt
   | PgCompositeTypeStmt
@@ -322,8 +322,8 @@ export type PgColumnDef = {
   refs?: SQLIdentifier[]
 }
 
-export interface PgFunctionStmt extends PgObjectStmt {
-  kind: 'function'
+export interface PgRoutineStmt extends PgObjectStmt {
+  kind: 'routine'
   params: PgParamDef[]
   returnType: SQLIdentifier | PgColumnDef[] | undefined
   returnSet: boolean

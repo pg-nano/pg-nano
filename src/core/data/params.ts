@@ -11,25 +11,37 @@ export type Params = Fields | readonly (number | Fields)[]
  *   2. Prepare composite types for query execution.
  */
 export function prepareParams(
-  namedValues: Record<string, unknown> | unknown[] | undefined,
-  params: Params,
+  input: unknown,
+  params: Params | null | undefined,
   values?: unknown[],
 ) {
-  // All named parameters may be optional, in which case, passing in `undefined`
-  // is perfectly valid.
-  if (!namedValues) {
+  // When all named parameters could be optional, passing `undefined` is
+  // perfectly valid.
+  if (input === undefined) {
     return []
   }
+  if (!params) {
+    // If there are no params, the input must be an array of values.
+    return input as unknown[]
+  }
 
+  let namedValues: Record<string, unknown> | undefined
   let names: string[] | undefined
   let types: readonly (number | Fields)[]
 
-  if (isArray(namedValues)) {
+  // When the params are an array, the input must be an array of values.
+  if (isArray(params)) {
     types = params as readonly (number | Fields)[]
-    values = namedValues
-    namedValues = undefined
+    values = input as unknown[]
   } else {
-    names = Object.keys(namedValues)
+    names = Object.keys(params)
+    if (isObject(input)) {
+      namedValues = input as Record<string, unknown>
+    } else {
+      // When the input is not a plain object, there can only be one named
+      // parameter.
+      namedValues = { [names[0]]: input }
+    }
     types = Object.values(params)
     values = []
   }

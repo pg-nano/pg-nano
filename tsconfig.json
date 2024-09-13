@@ -1,5 +1,5 @@
 {
-  "include": ["src", "plugins"],
+  "include": ["src", "plugins", "packages/pg-native/src/casing.ts"],
   "compilerOptions": {
     "declaration": true,
     "emitDeclarationOnly": true,

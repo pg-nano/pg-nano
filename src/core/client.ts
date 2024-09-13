@@ -3,6 +3,7 @@ import { isPromise } from 'node:util/types'
 import {
   Connection,
   ConnectionStatus,
+  FieldCase,
   stringifyTemplate,
   type QueryHook,
   type Result,
@@ -51,6 +52,18 @@ export interface ClientOptions {
    * @default 30000
    */
   idleTimeout: number
+
+  /**
+   * Fixes the casing of field names in generated types.
+   *
+   * - `camel` will convert snake case field names to camel case.
+   * - `preserve` will leave field names as is.
+   *
+   * This should match the `generate.fieldCase` option in your pg-nano config.
+   *
+   * @default FieldCase.camel
+   */
+  fieldCase: FieldCase
 }
 
 /**
@@ -76,6 +89,7 @@ export class Client {
     maxRetryDelay = 10e3,
     maxRetries = Number.POSITIVE_INFINITY,
     idleTimeout = 30e3,
+    fieldCase = 'camel',
   }: Partial<ClientOptions> = {}) {
     this.config = {
       minConnections,
@@ -84,6 +98,7 @@ export class Client {
       maxRetryDelay,
       maxRetries,
       idleTimeout,
+      fieldCase,
     }
   }
 
@@ -121,7 +136,10 @@ export class Client {
     signal?: AbortSignal,
     idleTimeout = this.config.idleTimeout,
   ): Promise<Connection> {
-    const connection = new Connection(idleTimeout)
+    const connection = new Connection(
+      FieldCase[this.config.fieldCase],
+      idleTimeout,
+    )
 
     const connecting = this.connectWithRetry(connection, signal).then(
       () => {
@@ -338,13 +356,11 @@ export class Client {
    * Create a query that resolves with a single value, derived from the single
    * column of the single row of the result set.
    *
-   * If you're not sure if the result set could be empty, you'd better include
-   * `undefined` in the result type.
    */
-  async queryValue<T>(
+  async queryValueOrNull<T>(
     command: SQLTemplate,
     options?: QueryOptions,
-  ): Promise<T> {
+  ): Promise<T | null> {
     const [result] = await this.query(command).withOptions(options)
     if (result.rows.length > 1) {
       throw new QueryError('Expected at most 1 row, got ' + result.rows.length)
@@ -352,7 +368,24 @@ export class Client {
     if (result.fields.length !== 1) {
       throw new QueryError('Expected 1 field, got ' + result.fields.length)
     }
-    return result.rows[0]?.[result.fields[0].name] as T
+    if (result.rows.length > 0) {
+      return result.rows[0][result.fields[0].name] as T | null
+    }
+    return null
+  }
+
+  /**
+   * Like `queryValueOrNull`, but throws an error if the result is null.
+   */
+  async queryValue<T>(
+    command: SQLTemplate,
+    options?: QueryOptions,
+  ): Promise<T> {
+    const value = await this.queryValueOrNull<T>(command, options)
+    if (value == null) {
+      throw new QueryError('Expected value, got null')
+    }
+    return value
   }
 
   /**
@@ -371,12 +404,12 @@ export class Client {
    * await client.myPostgresFunc(1, 2, 3)
    * ```
    */
-  withSchema<TSchema extends object>(routines: TSchema): ClientProxy<TSchema> {
+  withSchema<TSchema extends object>(schema: TSchema): ClientProxy<TSchema> {
     return new Proxy(this, {
       get(client, key) {
-        if (key in routines) {
+        if (key in schema) {
           // biome-ignore lint/complexity/noBannedTypes:
-          return (routines[key as keyof TSchema] as Function).bind(null, client)
+          return (schema[key as keyof TSchema] as Function).bind(null, client)
         }
         return client[key as keyof Client]
       },

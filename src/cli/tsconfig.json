@@ -1,6 +1,6 @@
 {
   "extends": "../../tsconfig.json",
-  "include": ["./"],
+  "include": ["./", "../../packages/pg-native/src/casing.ts"],
   "compilerOptions": {
     "outDir": "../../dist/tmp",
     "paths": {

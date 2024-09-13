@@ -1,5 +1,11 @@
-import { sql, type Row, type SQLToken } from 'pg-native'
-import { isArray } from 'radashi'
+import {
+  sql,
+  type Interval,
+  type Range,
+  type Row,
+  type SQLToken,
+} from 'pg-native'
+import { isArray, isObject } from 'radashi'
 import type { Client } from './client.js'
 import { parseCompositeFields } from './data/composite.js'
 import type { Fields } from './data/fields.js'
@@ -9,8 +15,8 @@ import type { Query, QueryOptions } from './query.js'
 export type Routine<TArgs extends object, TResult> = TArgs extends any[]
   ? (client: Client, ...args: TArgs) => TResult
   : object extends TArgs
-    ? (client: Client, args?: TArgs) => TResult
-    : (client: Client, args: TArgs) => TResult
+    ? (client: Client, args?: TArgs | UnwrapSingleKey<TArgs>) => TResult
+    : (client: Client, args: TArgs | UnwrapSingleKey<TArgs>) => TResult
 
 /**
  * Create a dedicated query function for a Postgres routine that returns a
@@ -72,14 +78,17 @@ function bindRoutine(
     ? { resultParser: result => parseCompositeFields(result, outParams) }
     : undefined
 
-  return inParams
-    ? (client: Client, namedValues?: Record<string, unknown>) =>
+  return isObject(inParams)
+    ? (client: Client, namedValues?: unknown) =>
         client[method as 'queryRow'](
           sqlRoutineCall(id, prepareParams(namedValues, inParams), limit),
           options,
         )
     : (client: Client, ...values: any[]) =>
-        client[method as 'queryRow'](sqlRoutineCall(id, values, limit), options)
+        client[method as 'queryRow'](
+          sqlRoutineCall(id, prepareParams(values, inParams), limit),
+          options,
+        )
 }
 
 function sqlRoutineCall(id: SQLToken, values: any[], limit: number) {
@@ -88,3 +97,24 @@ function sqlRoutineCall(id: SQLToken, values: any[], limit: number) {
     ${limit ? sql`LIMIT ${sql.unsafe(String(limit))}` : ''}
   `
 }
+
+/**
+ * Allow a single value to be passed instead of named parameters, unless the
+ * value is a plain object.
+ */
+type UnwrapSingleKey<T> = keyof T extends infer TKey
+  ? TKey extends keyof T
+    ? { [K in TKey]: T[K] } extends T
+      ? T[TKey] extends
+          | readonly any[]
+          | Interval
+          | Range<any>
+          | Date
+          | RegExp
+          | NodeJS.TypedArray
+          | Buffer
+        ? T[TKey]
+        : Exclude<T[TKey], object>
+      : never
+    : never
+  : never

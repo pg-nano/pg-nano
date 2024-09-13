@@ -79,6 +79,7 @@ async function loadEnv(cwd: string, options: EnvOptions) {
         root,
         userConfig?.generate?.outFile ?? 'sql/schema.ts',
       ),
+      fieldCase: userConfig?.generate?.fieldCase ?? 'camel',
       pluginSqlDir: path.resolve(
         root,
         userConfig?.generate?.pluginSqlDir ?? 'sql/nano_plugins',

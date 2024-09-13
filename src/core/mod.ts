@@ -4,12 +4,14 @@ export * from './error.js'
 export * from './query.js'
 
 export {
+  FieldCase,
   Interval,
   PgNativeError,
   PgResultError,
   Range,
   buildResult,
   isPgResultError,
+  snakeToCamel,
   sql,
   type Field,
   type IntervalParts,

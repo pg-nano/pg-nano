@@ -110,7 +110,7 @@ export function toUniqueIdList(ids: SQLIdentifier[], defaultSchema?: string) {
   return unique(ids, id => id.toQualifiedName(defaultSchema))
 }
 
-const unquotedChars = 'abcdefghijklmnopqrstuvwxyz0123456789_'
+const defaultUnquotedChars = 'abcdefghijklmnopqrstuvwxyz0123456789_'
 
 export function quoteName(name: string) {
   let quotedName = ''
@@ -121,7 +121,8 @@ export function quoteName(name: string) {
 }
 
 /** ⚠️ UNSAFE, do not use with untrusted input, as `\"` sequences are not handled */
-export function unsafelyQuotedName(name: string) {
+export function unsafelyQuotedName(name: string, moreUnquotedChars = '') {
+  const unquotedChars = defaultUnquotedChars + moreUnquotedChars
   let needsQuotes = false
   let quotedName = ''
   for (const char of name) {
