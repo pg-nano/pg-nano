@@ -29,7 +29,6 @@
     "mri": "^1.2.0",
     "pg-nano": "link:",
     "pg-native": "workspace:^",
-    "pg-types": "workspace:^",
     "postgres-interval": "workspace:^",
     "postgres-range": "workspace:^",
     "radashi": "12.2.0-beta.af825f4",

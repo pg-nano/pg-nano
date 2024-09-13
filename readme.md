@@ -289,9 +289,10 @@ The `nano` schema is reserved for use by pg-nano. It is used to store temporary 
 
 ## Development
 
-If you'd like to make changes to pg-nano itself, you can run `pnpm dev` to start a long-running process that compiles the project and rebuilds it on every change. Be sure to first run `pnpm install` in the project root to install the project's dependencies.
+When making changes to pg-nano, first install the dependencies and start the dev server.
 
 ```
+pnpm install
 pnpm dev
 ```
 
@@ -299,8 +300,29 @@ You can play with your changes in the `./demos/exhaustive` directory.
 
 ```
 cd demos/exhaustive
-pnpm pg-nano dev
+pnpm dev
 ```
+
+### C++ development
+
+If you're editing C++ code in either `packages/libpq` or `packages/pg-parser`, you'll want to have [compiledb](https://github.com/nickdiego/compiledb) installed and the [clangd extension](https://marketplace.visualstudio.com/items?itemName=llvm-vs-code-extensions.vscode-clangd) in VSCode. This enables the `clangd` language server for features like autocomplete, static analysis, and code navigation.
+
+```
+brew install compiledb
+```
+
+Both `libpq` and `pg-parser` are compiled on install. If you make changes, you'll need one of the following commands to recompile.
+
+```
+# Must be run from ./packages/libpq or ./packages/pg-parser
+pnpm build
+
+# Automatically rebuilds on file changes
+pnpm dev
+```
+
+**⚠️ Windows support:** The `packages/pg-parser/binding.gyp` file is currently broken for Windows builds. Any help would be appreciated!
+
 
 ## License
 
