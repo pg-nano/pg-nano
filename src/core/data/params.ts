@@ -1,8 +1,9 @@
 import { Tuple } from 'pg-native'
 import { isArray, isObject } from 'radashi'
-import type { Fields } from './fields.js'
+import { FieldMapper, type Fields, type FieldType } from './fields.js'
 
-export type Params = Fields | readonly (number | Fields)[]
+export type InParams = Fields | readonly FieldType[]
+export type OutParams = { [name: string]: Fields | FieldMapper }
 
 /**
  * The `prepareParams` function has two purposes:
@@ -12,7 +13,7 @@ export type Params = Fields | readonly (number | Fields)[]
  */
 export function prepareParams(
   input: unknown,
-  params: Params | null | undefined,
+  params: InParams,
   values?: unknown[],
 ) {
   // When all named parameters could be optional, passing `undefined` is
@@ -20,18 +21,14 @@ export function prepareParams(
   if (input === undefined) {
     return []
   }
-  if (!params) {
-    // If there are no params, the input must be an array of values.
-    return input as unknown[]
-  }
 
   let namedValues: Record<string, unknown> | undefined
   let names: string[] | undefined
-  let types: readonly (number | Fields)[]
+  let types: readonly FieldType[]
 
   // When the params are an array, the input must be an array of values.
   if (isArray(params)) {
-    types = params as readonly (number | Fields)[]
+    types = params as readonly FieldType[]
     values = input as unknown[]
   } else {
     names = Object.keys(params)
@@ -48,7 +45,6 @@ export function prepareParams(
 
   for (let i = types.length; --i >= 0; ) {
     const name = names?.[i]
-    const type = types[i]
 
     let value = namedValues
       ? Object.prototype.hasOwnProperty.call(namedValues, name!)
@@ -58,17 +54,30 @@ export function prepareParams(
         ? values[i]
         : undefined
 
-    if (isObject(type)) {
-      value &&= isArray(value)
-        ? value.map(object => {
-            // The value is an array of objects.
-            return prepareParams(
-              object as Record<string, unknown>,
-              type,
-              new Tuple(),
-            )
-          })
-        : prepareParams(value as Record<string, unknown>, type, new Tuple())
+    let type = types[i]
+    if (type instanceof FieldMapper) {
+      if (value != null && type.mapInput) {
+        value = type.mapInput(value)
+      }
+      type = type.type
+    }
+
+    if (value != null && isObject(type)) {
+      if (isArray(value)) {
+        value = value.map(value => {
+          return prepareParams(
+            value as Record<string, unknown>,
+            type,
+            new Tuple(),
+          )
+        })
+      } else {
+        value = prepareParams(
+          value as Record<string, unknown>,
+          type,
+          new Tuple(),
+        )
+      }
     }
 
     if (value !== undefined) {

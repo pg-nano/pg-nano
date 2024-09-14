@@ -3,9 +3,9 @@
   "type": "module",
   "version": "0.1.0",
   "exports": {
-    "./params": {
-      "types": "./dist/params.d.ts",
-      "default": "./dist/params.js"
+    "./field-mappers": {
+      "types": "./dist/field-mappers.d.ts",
+      "default": "./dist/field-mappers.js"
     },
     ".": {
       "types": "./dist/plugin.d.ts",
@@ -17,7 +17,7 @@
     "@pg-nano/plugin": "workspace:^"
   },
   "scripts": {
-    "dev": "rimraf dist && tsup --watch --sourcemap",
-    "build": "rimraf dist && tsup"
+    "dev": "rimraf dist && tsup-node --watch --sourcemap",
+    "build": "rimraf dist && tsup-node"
   }
 }

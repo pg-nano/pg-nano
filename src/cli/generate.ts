@@ -1,3 +1,4 @@
+import type { GenerateContext, Plugin } from '@pg-nano/plugin'
 import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -8,20 +9,20 @@ import { quoteName, SQLIdentifier, unsafelyQuotedName } from './identifier.js'
 import {
   introspectBaseTypes,
   introspectNamespaces,
+  PgParamKind,
   type PgAttribute,
+  type PgBaseType,
   type PgCompositeType,
   type PgEnumType,
+  type PgFieldContext,
   type PgObject,
   type PgTable,
+  type PgType,
 } from './introspect'
+import { jsTypesByOid } from './jsTypesByOid.js'
 import { log } from './log'
 import { parseMigrationPlan } from './parseMigrationPlan'
 import { prepareDatabase } from './prepare'
-import {
-  typeConversion,
-  typeMappings,
-  type PgTypeMapping,
-} from './typeConversion'
 import { dedent } from './util/dedent'
 import { cwdRelative } from './util/path.js'
 
@@ -36,7 +37,10 @@ export async function generate(
 ) {
   const pg = await env.client
 
-  const allObjects = await prepareDatabase(filePaths, env)
+  const [allObjects, pluginsByStatementId] = await prepareDatabase(
+    filePaths,
+    env,
+  )
 
   const allFunctionsByName = mapify(
     allObjects.filter(obj => obj.kind === 'routine'),
@@ -52,73 +56,80 @@ export async function generate(
   // Step 1: Collect type information from the database.
   const namespaces = await introspectNamespaces(pg, options.signal)
   const baseTypes = await introspectBaseTypes(pg, options.signal)
-  const baseTypeByOid = mapify(baseTypes, type => type.oid)
-  for (const baseType of baseTypes) {
-    baseTypeByOid.set(baseType.typarray, baseType)
+
+  const typesByOid = new Map<number, PgType>()
+  const typesByName = new Map<string, PgType>()
+
+  const registerType = (
+    kind: 'base' | 'enum' | 'composite' | 'table',
+    object: PgBaseType | PgEnumType | PgCompositeType | PgTable,
+    isArray: boolean,
+    jsType?: string,
+  ) => {
+    const oid = isArray ? object.typarray : object.oid
+    const suffix = isArray ? '[]' : ''
+    const type: PgType = {
+      kind: kind as any,
+      object: object as any,
+      jsType: (jsType ?? pascal(object.typname)) + suffix,
+      isArray,
+    }
+    typesByOid.set(oid, type)
+    typesByName.set(
+      (object.nspname !== 'public' && object.nspname !== 'pg_catalog'
+        ? object.nspname + '.' + object.typname
+        : object.typname) + suffix,
+      type,
+    )
   }
 
-  type PgUserType = {
-    arity: 'unit' | 'array'
-    mapping: PgTypeMapping
-  } & (
-    | { kind: 'enum'; object: PgEnumType }
-    | { kind: 'composite'; object: PgCompositeType }
-    | { kind: 'table'; object: PgTable }
-  )
-
-  const userTypes = new Map<number, PgUserType>()
-
-  const extendedTypeMappings = [...typeMappings]
-  const extendedTypeConversion = { ...typeConversion }
-
-  // Step 2: Add types to the type conversion map.
-  for (const nsp of Object.values(namespaces)) {
-    const registerTypeMapping = (
-      typeOid: number,
-      typeName: string,
-      typeSuffix = '',
-    ) => {
-      const mapping: PgTypeMapping = {
-        oid: typeOid,
-        name: typeName + typeSuffix,
-        jsType: pascal(typeName) + typeSuffix,
-        schema: nsp.name,
-      }
-      extendedTypeConversion[typeOid] = typeName + typeSuffix
-      extendedTypeMappings.push(mapping)
-      return mapping
+  for (const baseType of baseTypes) {
+    const jsType = jsTypesByOid[baseType.oid] ?? 'string'
+    registerType('base', baseType, false, jsType)
+    if (baseType.typarray) {
+      registerType('base', baseType, true, jsType)
     }
+  }
 
+  // Step 2: Register types and associate objects with plugins.
+  for (const nsp of Object.values(namespaces)) {
     for (const [kind, types] of [
       ['enum', nsp.enumTypes],
       ['composite', nsp.compositeTypes],
       ['table', nsp.tables],
     ] as const) {
       for (const type of types) {
-        userTypes.set(type.oid, {
-          kind,
-          arity: 'unit',
-          object: type,
-          mapping: registerTypeMapping(type.oid, type.typname),
-        } as PgUserType)
-
-        userTypes.set(type.typarray, {
-          kind,
-          arity: 'array',
-          object: type,
-          mapping: registerTypeMapping(type.typarray, type.typname, '[]'),
-        } as PgUserType)
+        registerType(kind, type, false)
+        if (type.typarray) {
+          registerType(kind, type, true)
+        }
+        const id = new SQLIdentifier(type.typname, type.nspname)
+        type.plugin = pluginsByStatementId.get(id.toQualifiedName())
       }
+    }
+    for (const fn of nsp.functions) {
+      const id = new SQLIdentifier(fn.proname, fn.nspname)
+      fn.plugin = pluginsByStatementId.get(id.toQualifiedName())
     }
   }
 
+  type GeneratePlugin = Plugin & { generate: Function }
+
   // Step 3: Run the `generate` hook for each plugin.
-  for (const plugin of env.config.plugins) {
-    if (plugin.generate) {
-      await plugin.generate({
-        types: extendedTypeMappings,
-        namespaces,
-      })
+  const generatePlugins = env.config.plugins.filter(
+    (p): p is GeneratePlugin => p.generate != null,
+  )
+
+  if (generatePlugins.length > 0) {
+    const generateContext: GenerateContext = {
+      types: typesByName,
+      namespaces,
+      functions: Object.values(namespaces).flatMap(nsp => nsp.functions),
+      tables: Object.values(namespaces).flatMap(nsp => nsp.tables),
+    }
+
+    for (const plugin of generatePlugins) {
+      await plugin.generate(generateContext, env.config)
     }
   }
 
@@ -199,42 +210,87 @@ export async function generate(
       }\n\n
     `
 
-  const renderFieldType = (typeOid: number) => {
-    const userType = userTypes.get(typeOid)
-    if (userType) {
-      if (userType.kind !== 'enum') {
-        return 't.' + userType.object.typname
+  type FieldMapperPlugin = Plugin & { mapField: Function }
+
+  const fieldMapperPlugns = env.config.plugins.filter(
+    (p): p is FieldMapperPlugin => p.statements != null,
+  )
+
+  const fieldMappers: {
+    [name: string]: { name: string; path: string }
+  } = {}
+
+  const renderFieldType = (
+    oid: number,
+    context: Omit<PgFieldContext, 'type'>,
+  ) => {
+    let code: string
+
+    const type = typesByOid.get(oid)
+    if (!type) {
+      code = oid + ' /* unknown */'
+    } else if (type.kind === 'base') {
+      const baseType = type.object
+      const typeName = baseType.typname + (type.isArray ? '_array' : '')
+
+      if (!renderedBaseTypes.has(oid)) {
+        renderedBaseTypes.set(oid, `export const ${typeName} = ${oid}`)
       }
 
-      const enumType = userType.object
+      code = 't.' + typeName
+    } else if (type.kind === 'enum') {
+      const enumType = type.object
       const enumName =
         (enumType.nspname !== 'public' ? `${enumType.nspname}.` : '') +
         enumType.typname
 
-      if (!renderedEnumTypes.has(typeOid)) {
-        renderedEnumTypes.set(typeOid, `export const ${enumName} = ${typeOid}`)
+      if (!renderedEnumTypes.has(oid)) {
+        renderedEnumTypes.set(oid, `export const ${enumName} = ${oid}`)
       }
 
-      return typeOid + ` /* ${enumName} */`
+      code = oid + ` /* ${enumName} */`
+    } else {
+      code = 't.' + type.object.typname
     }
 
-    const baseType = baseTypeByOid.get(typeOid)
-    if (baseType) {
-      const typeName =
-        baseType.typname + (typeOid === baseType.typarray ? '_array' : '')
-
-      if (!renderedBaseTypes.has(typeOid)) {
-        renderedBaseTypes.set(typeOid, `export const ${typeName} = ${typeOid}`)
+    for (const plugin of fieldMapperPlugns) {
+      const fieldMapper = plugin.mapField(
+        {
+          ...context,
+          type: type ?? typesByName.get('unknown')!,
+        },
+        env.config,
+      )
+      if (!fieldMapper) {
+        continue
       }
 
-      return 't.' + typeName
+      if (
+        fieldMapper.name in fieldMappers &&
+        fieldMappers[fieldMapper.name].path !== fieldMapper.path
+      ) {
+        throw new Error(
+          `Field mapper "${fieldMapper.name}" returned from plugin "${plugin.name}" has a conflicting path: ${fieldMappers[fieldMapper.name].path} !== ${fieldMapper.path}`,
+        )
+      }
+
+      fieldMappers[fieldMapper.name] = fieldMapper
+
+      code = 't.' + fieldMapper.name + '(' + code + ')'
+      break
     }
 
-    return typeOid + ' /* unknown */'
+    return code
   }
 
   const renderFields = (
-    fields: ({ attname: string; atttypid: number } | null)[],
+    fields: ({
+      attname: string
+      atttypid: number
+      attmode?: PgParamKind
+      attindex?: number
+    } | null)[],
+    context: Omit<PgFieldContext, 'field' | 'type'>,
     compact?: boolean,
   ) =>
     `{${compact ? ' ' : '\n  '}${select(fields, field => {
@@ -243,14 +299,19 @@ export async function generate(
       }
 
       const name = formatFieldName(field.attname)
-      const type = renderFieldType(field.atttypid)
+      const type = renderFieldType(field.atttypid, {
+        field: field.attname,
+        paramKind: field.attmode,
+        paramIndex: field.attindex,
+        ...context,
+      })
 
       return `${name}: ${type}`
     }).join(compact ? ', ' : ',\n  ')}${compact ? ' ' : '\n'}}`
 
-  const renderCompositeFields = (type: PgCompositeType | PgTable) =>
+  const renderCompositeFields = (object: PgCompositeType | PgTable) =>
     dedent`
-      export const ${type.typname} = ${renderFields(type.attributes)} as const
+      export const ${object.typname} = ${renderFields(object.attributes, { object })} as const
     `
 
   type TypeReferenceKind = 'return' | 'param' | 'type'
@@ -260,54 +321,61 @@ export async function generate(
    * context.
    */
   const renderTypeReference = (
-    typeOid: number,
+    oid: number,
     context: string,
-    kind: TypeReferenceKind,
+    refKind: TypeReferenceKind,
   ) => {
-    let type = extendedTypeConversion[typeOid]
+    let jsType: string
+
+    const type = typesByOid.get(oid)
     if (type) {
-      const userType = userTypes.get(typeOid)
-      if (userType) {
-        const object = userType.object
-        if (!renderedObjects.has(object)) {
-          if (userType.kind === 'enum') {
-            renderedObjects.set(object, renderEnumType(object as PgEnumType))
-          } else {
-            renderedObjects.set(
-              object,
-              userType.kind === 'composite'
-                ? renderCompositeType(userType.object)
-                : renderTableType(userType.object),
-            )
-            renderedCompositeFields.set(
-              object.oid,
-              renderCompositeFields(userType.object),
-            )
-          }
-        }
-        if (object.nspname !== context) {
-          type = addNamespacePrefix(object.typname, object.nspname, context)
-          if (userType.arity === 'array') {
-            type += '[]'
-          }
-        } else {
-          type = userType.mapping.jsType
-        }
-        if (userType.kind === 'table' && kind === 'param') {
-          type = type.replace(/(?=\[)|$/, '.InsertParams')
-        }
-      } else {
-        const match = type.match(builtinTypeRegex)
+      jsType = type.jsType
+
+      if (type.kind === 'base') {
+        const match = jsType.match(builtinTypeRegex)
         if (match) {
           imports.add('type ' + match[1])
         }
+      } else {
+        if (!renderedObjects.has(type.object)) {
+          if (type.kind === 'enum') {
+            renderedObjects.set(type.object, renderEnumType(type.object))
+          } else {
+            renderedObjects.set(
+              type.object,
+              type.kind === 'composite'
+                ? renderCompositeType(type.object)
+                : renderTableType(type.object),
+            )
+            renderedCompositeFields.set(
+              type.object.oid,
+              renderCompositeFields(type.object),
+            )
+          }
+        }
+        if (type.object.nspname !== context) {
+          jsType = addNamespacePrefix(
+            type.object.typname,
+            type.object.nspname,
+            context,
+          )
+          if (type.isArray) {
+            jsType += '[]'
+          }
+        }
+        if (type.kind === 'table' && refKind === 'param') {
+          jsType = jsType.replace(/(?=\[)|$/, '.InsertParams')
+        }
       }
     } else {
-      type = 'unknown'
-      unsupportedTypes.add(typeOid)
+      jsType = 'unknown'
+      unsupportedTypes.add(oid)
     }
-    return type
+
+    return jsType
   }
+
+  const types = Array.from(typesByName.values())
 
   // Step 4: Render type definitions for each function. This also builds up a
   // list of dependencies (e.g. imports and type definitions).
@@ -317,20 +385,18 @@ export async function generate(
 
       const argNames = fn.proargnames
         ?.slice(0, fn.proargtypes.length)
-        .map(name => formatFieldName(name.replace(/^p_/, '')))
+        .map(name => name.replace(/^p_/, ''))
 
-      const argTypes = fn.proargtypes
-        .map((typeOid, index) => {
-          if (argNames) {
-            const name = argNames[index]
-            const optionalToken =
-              index >= fn.proargtypes.length - fn.pronargdefaults ? '?' : ''
+      const argTypes = fn.proargtypes.map(typeOid =>
+        renderTypeReference(typeOid, fn.nspname, 'param'),
+      )
 
-            return `${name}${optionalToken}: ${renderTypeReference(typeOid, fn.nspname, 'param')}`
-          }
-          return renderTypeReference(typeOid, fn.nspname, 'param')
-        })
-        .join(', ')
+      const namedArgTypes = argNames?.map((name, index) => {
+        const optionalToken =
+          index >= fn.proargtypes.length - fn.pronargdefaults ? '?' : ''
+
+        return `${formatFieldName(name)}${optionalToken}: ${argTypes[index]}`
+      })
 
       let resultType: string | undefined
       let resultKind: 'row' | 'value' | undefined
@@ -343,19 +409,27 @@ export async function generate(
       } else if (fnStmt.returnType instanceof SQLIdentifier) {
         resultType = renderTypeReference(fn.prorettype, fn.nspname, 'return')
 
-        const userType = userTypes.get(fn.prorettype)
-        if (userType) {
-          if (userType.kind === 'table' && userType.arity === 'unit') {
+        const type = typesByOid.get(fn.prorettype)
+        if (type && type.kind !== 'base') {
+          if (type.kind === 'table' && !type.isArray) {
             resultKind = 'row'
           }
-          if (userType.kind !== 'enum') {
-            const compositeAttrs = userType.object.attributes.map(attr => {
-              const attrType = userTypes.get(attr.atttypid)
-              return attrType && attrType.kind !== 'enum' ? attr : null
+          if (type.kind !== 'enum') {
+            const compositeAttrs = type.object.attributes.map(attr => {
+              const attrType = typesByOid.get(attr.atttypid)
+              return attrType && 'attributes' in attrType.object ? attr : null
             })
 
             if (compositeAttrs.some(Boolean)) {
-              outParams = renderFields(compositeAttrs, true)
+              outParams = renderFields(
+                compositeAttrs,
+                {
+                  object: fn,
+                  paramKind: PgParamKind.Out,
+                  rowType: type.object,
+                },
+                true,
+              )
             }
           }
         }
@@ -365,25 +439,24 @@ export async function generate(
         resultKind = 'row'
         resultType = `{ ${fnStmt.returnType
           .map((col, index) => {
-            const mapping = extendedTypeMappings.find(
-              mapping =>
-                mapping.name === col.type.name &&
-                mapping.schema === (col.type.schema ?? fn.nspname),
+            const type = types.find(
+              type =>
+                type.object.typname === col.type.name &&
+                type.object.nspname === (col.type.schema ?? fn.nspname),
             )
 
-            const userType = mapping && userTypes.get(mapping.oid)
             compositeAttrs[index] =
-              userType && userType.kind !== 'enum'
+              type && 'attributes' in type.object
                 ? {
                     attname: col.name,
                     attnotnull: false,
-                    atttypid: mapping.oid,
+                    atttypid: type.object.oid,
                   }
                 : null
 
             const name = formatFieldName(col.name)
-            const jsType = mapping
-              ? renderTypeReference(mapping.oid, fn.nspname, 'return')
+            const jsType = type
+              ? renderTypeReference(type.object.oid, fn.nspname, 'return')
               : 'unknown'
 
             return `${name}: ${jsType}`
@@ -391,7 +464,11 @@ export async function generate(
           .join(', ')} }`
 
         if (compositeAttrs.some(Boolean)) {
-          outParams = renderFields(compositeAttrs, true)
+          outParams = renderFields(
+            compositeAttrs,
+            { object: fn, paramKind: PgParamKind.Table },
+            true,
+          )
         }
       }
 
@@ -411,10 +488,22 @@ export async function generate(
             argNames.map((name, index) => ({
               attname: name,
               atttypid: fn.proargtypes[index],
+              attmode: fn.proargmodes?.[index] ?? PgParamKind.In,
+              attindex: index,
             })),
+            { object: fn },
             true,
           )
-        : `[${fn.proargtypes.map(renderFieldType).join(', ')}]`
+        : `[${fn.proargtypes
+            .map((typeOid, index) => {
+              return renderFieldType(typeOid, {
+                field: `$${index + 1}`,
+                object: fn,
+                paramKind: fn.proargmodes?.[index] ?? PgParamKind.In,
+                paramIndex: index,
+              })
+            })
+            .join(', ')}]`
 
       const constructor =
         resultKind === 'row'
@@ -434,7 +523,7 @@ export async function generate(
 
       const fnScript = dedent`
         export declare namespace ${jsName} {
-          type Params = ${argNames ? `{ ${argTypes} }` : `[${argTypes}]`}
+          type Params = ${namedArgTypes ? `{ ${namedArgTypes.join(', ')} }` : `[${argTypes.join(', ')}]`}
           type Result = ${resultType}
         }
 
@@ -447,16 +536,25 @@ export async function generate(
 
   const { outFile } = env.config.generate
 
+  const renderedFieldMappers = Object.values(fieldMappers).map(
+    fieldMapper => `export { ${fieldMapper.name} } from "${fieldMapper.path}"`,
+  )
+
+  // Step 5: Write the "types.ts" module.
   if (
     renderedBaseTypes.size +
     renderedEnumTypes.size +
-    renderedCompositeFields.size
+    renderedCompositeFields.size +
+    renderedFieldMappers.length
   ) {
     foreignImports.add("* as t from './types.js'")
     fs.writeFileSync(
       path.resolve(outFile, '../types.ts'),
       "import * as t from './types.js'\n\n// Base types\n" +
         Array.from(renderedBaseTypes.values()).sort().join('\n') +
+        (renderedFieldMappers.length > 0
+          ? '\n\n// Field mappers\n' + renderedFieldMappers.join('\n')
+          : '') +
         (renderedEnumTypes.size > 0
           ? '\n\n// Enum types\n' +
             Array.from(renderedEnumTypes.values()).sort().join('\n')
@@ -479,7 +577,7 @@ export async function generate(
 
   code += '\n'
 
-  // Step 5: Concatenate type definitions for each namespace.
+  // Step 6: Concatenate type definitions for each namespace.
   for (const nsp of Object.values(namespaces)) {
     let nspCode = ''
 
@@ -502,10 +600,10 @@ export async function generate(
         : `export namespace ${pascal(nsp.name)} {\n${indent(nspCode)}\n}\n\n`
   }
 
-  // Step 6: Write the generated type definitions to a file.
+  // Step 7: Write the TypeScript schema to a file.
   fs.writeFileSync(outFile, code.replace(/\s+$/, '\n'))
 
-  // Step 7: Warn about any unsupported types.
+  // Step 8: Warn about any unsupported types.
   for (const typeOid of unsupportedTypes) {
     const typeName = await pg.queryValue<string>(sql`
       SELECT typname FROM pg_type WHERE oid = ${sql.val(typeOid)}
@@ -590,16 +688,16 @@ async function migrate(env: Env) {
 function pgSchemaDiff(env: Env, command: 'apply' | 'plan') {
   const applyArgs: string[] = []
   if (command === 'apply') {
-    const prePlanFile = path.join(env.untrackedDir, 'pre-plan.sql')
-    fs.writeFileSync(prePlanFile, 'SET check_function_bodies = off;')
+    // const prePlanFile = path.join(env.untrackedDir, 'pre-plan.sql')
+    // fs.writeFileSync(prePlanFile, 'SET check_function_bodies = off;')
 
     applyArgs.push(
       '--skip-confirm-prompt',
       '--allow-hazards',
       env.config.migration.allowHazards.join(','),
       '--disable-plan-validation',
-      '--pre-plan-file',
-      prePlanFile,
+      // '--pre-plan-file',
+      // prePlanFile,
     )
   }
 

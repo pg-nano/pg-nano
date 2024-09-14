@@ -2,6 +2,7 @@
   "extends": "../../tsconfig.json",
   "include": ["**/*.ts"],
   "compilerOptions": {
+    "moduleResolution": "bundler",
     "paths": {
       "pg-nano": ["../../src/core/mod.ts"],
       "pg-nano/config": ["../../src/config/config.ts"],

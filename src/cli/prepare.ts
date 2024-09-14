@@ -98,7 +98,7 @@ export async function prepareDatabase(sqlFiles: string[], env: Env) {
 
   // Plugins may add to the object list, so run them before linking the object
   // dependencies together.
-  await preparePluginStatements(env, allObjects)
+  const pluginsByStatementId = await preparePluginStatements(env, allObjects)
 
   debug('plugin statements prepared')
 
@@ -255,7 +255,7 @@ export async function prepareDatabase(sqlFiles: string[], env: Env) {
     )
   }
 
-  return allObjects
+  return [allObjects, pluginsByStatementId] as const
 }
 
 function getLineFromPosition(position: number, query: string) {
@@ -278,15 +278,16 @@ async function preparePluginStatements(
     force: true,
   })
 
-  // biome-ignore lint/complexity/noBannedTypes:
   type StatementsPlugin = Plugin & { statements: Function }
 
   const plugins = env.config.plugins.filter(
     (p): p is StatementsPlugin => p.statements != null,
   )
 
+  const pluginsByStatementId = new Map<string, StatementsPlugin>()
+
   if (plugins.length === 0) {
-    return
+    return pluginsByStatementId
   }
 
   fs.mkdirSync(env.config.generate.pluginSqlDir, { recursive: true })
@@ -294,10 +295,10 @@ async function preparePluginStatements(
   for (const plugin of plugins) {
     log('Generating SQL statements with plugin', plugin.name)
 
-    const template = await plugin.statements({
-      objects: allObjects,
-      sql,
-    })
+    const template = await plugin.statements(
+      { objects: allObjects, sql },
+      env.config,
+    )
 
     if (template) {
       const outFile = path.join(
@@ -328,7 +329,10 @@ async function preparePluginStatements(
           continue
         }
         allObjects.push(object)
+        pluginsByStatementId.set(object.id.toQualifiedName(), plugin)
       }
     }
   }
+
+  return pluginsByStatementId
 }

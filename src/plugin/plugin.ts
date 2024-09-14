@@ -1,7 +1,13 @@
 import type { sql, SQLTemplate } from 'pg-native'
-import type { PgNamespace } from '../cli/introspect'
+import type { ResolvedConfig } from '../cli/env.js'
+import type {
+  PgFieldContext,
+  PgFunction,
+  PgNamespace,
+  PgTable,
+  PgType,
+} from '../cli/introspect'
 import type { ParsedObjectStmt } from '../cli/parseObjectStatements.js'
-import type { PgTypeMapping } from '../cli/typeConversion'
 
 type Awaitable<T> = T | Promise<T>
 
@@ -11,7 +17,10 @@ export interface Plugin {
    * Optionally return a SQL template containing `CREATE` statements. Other
    * commands will be ignored.
    */
-  statements?: (ctx: StatementsContext) => Awaitable<SQLTemplate | null>
+  statements?: (
+    ctx: StatementsContext,
+    config: Readonly<ResolvedConfig>,
+  ) => Awaitable<SQLTemplate | null>
   /**
    * This hook runs during the TypeScript generation phase. Your plugin can use
    * the given context to improve type safety by modifying a `PgFunction` object
@@ -22,7 +31,31 @@ export interface Plugin {
    * type). Now you can use the `generate` hook to modify the generated
    * TypeScript to better suit the loosely-typed Postgres function.
    */
-  generate?: (ctx: GenerateContext) => Awaitable<void>
+  generate?: (
+    ctx: GenerateContext,
+    config: Readonly<ResolvedConfig>,
+  ) => Awaitable<void>
+  /**
+   * This hook can be used to apply a custom field mapper to a field. Only one
+   * plugin can modify a field, and the first such plugin "wins".
+   *
+   * To map a field, return an object with the following properties:
+   *
+   * - `name` – An identifier for the field mapper. This should be globally
+   *   unique and in snake_case. Avoid using JavaScript reserved words. To be
+   *   safe, it's recommended to append `_mapper` to the name.
+   *
+   * - `path` – An import specifier pointing to your field mapper
+   *   implementation, which is relative to the project root (not the plugin).
+   *   It may be resolved by a bundler (e.g. esbuild, rollup, vite) or a runtime
+   *   (e.g. nodejs, bun, deno). The resolved module is expected to have an
+   *   export of the same `name` with its value set to a `defineFieldMapper`
+   *   result.
+   */
+  mapField?: (
+    ctx: PgFieldContext,
+    config: Readonly<ResolvedConfig>,
+  ) => { name: string; path: string } | null | void
 }
 
 export interface StatementsContext {
@@ -34,15 +67,14 @@ export interface StatementsContext {
 }
 
 export interface GenerateContext {
-  types: readonly PgTypeMapping[]
-  namespaces: Record<string, PgNamespace>
+  types: ReadonlyMap<string, PgType>
+  namespaces: Readonly<Record<string, PgNamespace>>
+  functions: readonly PgFunction[]
+  tables: readonly PgTable[]
 }
 
-export interface TypeAlias {
-  name: string
-  type: string
-}
-
-export type * from '@pg-nano/pg-parser'
+export type { ResolvedConfig } from '../cli/env.js'
 export { SQLIdentifier } from '../cli/identifier.js'
+export type * from '../cli/introspect.js'
+export { PgParamKind } from '../cli/introspect.js'
 export type * from '../cli/parseObjectStatements.js'

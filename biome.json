@@ -6,6 +6,9 @@
   },
   "linter": {
     "rules": {
+      "complexity": {
+        "noBannedTypes": "off"
+      },
       "suspicious": {
         "noUnsafeDeclarationMerging": "off"
       }

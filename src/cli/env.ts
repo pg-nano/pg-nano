@@ -19,6 +19,7 @@ export type EnvOptions = {
 const cache = new Map<string, Promise<Env>>()
 
 export type Env = Awaited<ReturnType<typeof loadEnv>>
+export type ResolvedConfig = Env['config']
 
 export function getEnv(cwd: string, options: EnvOptions = {}) {
   const key = JSON.stringify([cwd, options.dsn])

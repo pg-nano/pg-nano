@@ -8,6 +8,26 @@ export default function (): Plugin {
       const { objects, sql } = context
       const tables = objects.filter(obj => obj.kind === 'table')
 
+      this.generate = ({ functions }) => {
+        for (const fn of functions) {
+          if (fn.plugin === this && fn.proname.startsWith('update_')) {
+            fn.proargnames = undefined!
+          }
+        }
+      }
+
+      this.mapField = ({ field, object }) => {
+        if (object.plugin !== this || !('proname' in object)) {
+          return null
+        }
+        if (object.proname.startsWith('update_') && field === '$2') {
+          return {
+            name: 'update_mapper',
+            path: '@pg-nano/plugin-crud/field-mappers',
+          }
+        }
+      }
+
       return sql`
         ${sql.join(
           sql.unsafe('\n'),
@@ -121,7 +141,7 @@ function renderTableQueries(
     $$;
 
     -- Update a row by primary key
-    CREATE FUNCTION ${fn.update}(${pkParams}, entries text[])
+    CREATE FUNCTION ${fn.update}(${pkParams}, updated_data text[])
     RETURNS ${tableId}
     LANGUAGE plpgsql
     AS $$
@@ -132,13 +152,13 @@ function renderTableQueries(
     BEGIN
       SELECT * FROM ${tableId} WHERE ${pkParamsMatch} INTO result;
 
-      FOR i IN 1..array_upper(entries, 1) BY 2 LOOP
-        entry_key := entries[i];
-        entry_value := entries[i + 1];
+      FOR i IN 1..array_upper(updated_data, 1) BY 2 LOOP
+        entry_key := updated_data[i];
+        entry_value := updated_data[i + 1];
 
         CASE entry_key
         ${table.columns.map(
-          (col, i) =>
+          col =>
             sql`WHEN ${sql.val(col.name)} THEN result.${sql.id(col.name)} := CAST(entry_value AS ${col.type.toSQL()});\n`,
         )}
         END CASE;

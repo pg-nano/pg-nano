@@ -408,7 +408,6 @@ export class Client {
     return new Proxy(this, {
       get(client, key) {
         if (key in schema) {
-          // biome-ignore lint/complexity/noBannedTypes:
           return (schema[key as keyof TSchema] as Function).bind(null, client)
         }
         return client[key as keyof Client]

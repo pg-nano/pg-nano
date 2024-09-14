@@ -6,7 +6,6 @@ export const bpchar = 1042
 export const bytea = 17
 export const date = 1082
 export const float8_array = 1022
-export const hstore = 3338215
 export const inet = 869
 export const int2 = 21
 export const int4 = 23
@@ -23,10 +22,18 @@ export const tsvector = 3614
 export const uuid = 2950
 export const varchar = 1043
 
+// Field mappers
+export { update_mapper } from "@pg-nano/plugin-crud/field-mappers"
+
 // Enum types
 export const status_type = 3338343
 
 // Composite types
+export const course = {
+  id: t.int4,
+  courseName: t.varchar
+} as const
+
 export const student = {
   id: t.int4,
   firstName: t.varchar,
@@ -38,11 +45,6 @@ export const course_enrollment = {
   courseId: t.int4,
   enrollmentDate: t.date,
   grade: t.bpchar
-} as const
-
-export const course = {
-  id: t.int4,
-  courseName: t.varchar
 } as const
 
 export const post = {
@@ -98,6 +100,6 @@ export const foo = {
   searchVector: t.tsvector,
   status: 3338343 /* status_type */,
   address: t.address_type,
-  productAttributes: t.hstore,
+  productAttributes: 3338215 /* unknown */,
   colorPreference: t.varchar
 } as const

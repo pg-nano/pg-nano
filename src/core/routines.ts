@@ -8,8 +8,7 @@ import {
 import { isArray, isObject } from 'radashi'
 import type { Client } from './client.js'
 import { parseCompositeFields } from './data/composite.js'
-import type { Fields } from './data/fields.js'
-import { prepareParams, type Params } from './data/params.js'
+import { type OutParams, prepareParams, type InParams } from './data/params.js'
 import type { Query, QueryOptions } from './query.js'
 
 export type Routine<TArgs extends object, TResult> = TArgs extends any[]
@@ -24,8 +23,8 @@ export type Routine<TArgs extends object, TResult> = TArgs extends any[]
  */
 export function bindQueryRowList<TArgs extends object, TRow extends Row>(
   name: string | string[],
-  inParams?: Params | null,
-  outParams?: { [name: string]: Fields } | null,
+  inParams: InParams,
+  outParams?: OutParams | null,
 ): Routine<TArgs, Query<TRow[]>> {
   return bindRoutine('queryRowList', name, inParams, outParams) as any
 }
@@ -36,8 +35,8 @@ export function bindQueryRowList<TArgs extends object, TRow extends Row>(
  */
 export function bindQueryValueList<TArgs extends object, TResult>(
   name: string | string[],
-  inParams?: Params | null,
-  outParams?: { [name: string]: Fields } | null,
+  inParams: InParams,
+  outParams?: OutParams | null,
 ): Routine<TArgs, Query<TResult[]>> {
   return bindRoutine('queryValueList', name, inParams, outParams) as any
 }
@@ -48,8 +47,8 @@ export function bindQueryValueList<TArgs extends object, TResult>(
  */
 export function bindQueryRow<TArgs extends object, TRow extends Row>(
   name: string | string[],
-  inParams?: Params | null,
-  outParams?: { [name: string]: Fields } | null,
+  inParams: InParams,
+  outParams?: OutParams | null,
 ): Routine<TArgs, Promise<TRow | null>> {
   return bindRoutine('queryRow', name, inParams, outParams) as any
 }
@@ -60,8 +59,8 @@ export function bindQueryRow<TArgs extends object, TRow extends Row>(
  */
 export function bindQueryValue<TArgs extends object, TResult>(
   name: string | string[],
-  inParams?: Params | null,
-  outParams?: { [name: string]: Fields } | null,
+  inParams: InParams,
+  outParams?: OutParams | null,
 ): Routine<TArgs, Promise<TResult>> {
   return bindRoutine('queryValue', name, inParams, outParams) as any
 }
@@ -69,8 +68,8 @@ export function bindQueryValue<TArgs extends object, TResult>(
 function bindRoutine(
   method: 'queryRow' | 'queryRowList' | 'queryValue' | 'queryValueList',
   name: string | string[],
-  inParams?: Params | null,
-  outParams?: { [name: string]: Fields } | null,
+  inParams: InParams,
+  outParams?: OutParams | null,
 ): Routine<any, any> {
   const id = isArray(name) ? sql.id(...name) : sql.id(name)
   const limit = method.endsWith('List') ? 0 : 1

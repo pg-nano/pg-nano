@@ -23,5 +23,11 @@ export {
   type SQLToken,
 } from 'pg-native'
 
+// Plugin APIs
+export {
+  FieldMapper,
+  defineFieldMapper,
+} from './data/fields.js'
+
 /** @internal */
 export * from './routines.js'
