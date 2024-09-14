@@ -1,13 +1,14 @@
 import type { sql, SQLTemplate } from 'pg-native'
 import type { ResolvedConfig } from '../cli/env.js'
+import type { ParsedObjectStmt } from '../cli/parseObjectStatements.js'
 import type {
   PgFieldContext,
-  PgFunction,
   PgNamespace,
+  PgRoutine,
   PgTable,
   PgType,
-} from '../cli/introspect'
-import type { ParsedObjectStmt } from '../cli/parseObjectStatements.js'
+  PgTypeContext,
+} from '../cli/pgTypes.js'
 
 type Awaitable<T> = T | Promise<T>
 
@@ -35,6 +36,15 @@ export interface Plugin {
     ctx: GenerateContext,
     config: Readonly<ResolvedConfig>,
   ) => Awaitable<void>
+  /**
+   * This hook can override is called for each field or parameter. It may return
+   * a string to override the Postgres type used when generating an equivalent
+   * TypeScript type. You may return a Postgres type or a TypeScript type.
+   */
+  mapTypeReference?: (
+    ctx: PgTypeContext,
+    config: Readonly<ResolvedConfig>,
+  ) => { type: string; lang: 'psql' | 'ts' } | null | void
   /**
    * This hook can be used to apply a custom field mapper to a field. Only one
    * plugin can modify a field, and the first such plugin "wins".
@@ -69,12 +79,17 @@ export interface StatementsContext {
 export interface GenerateContext {
   types: ReadonlyMap<string, PgType>
   namespaces: Readonly<Record<string, PgNamespace>>
-  functions: readonly PgFunction[]
+  functions: readonly PgRoutine[]
   tables: readonly PgTable[]
 }
 
 export type { ResolvedConfig } from '../cli/env.js'
 export { SQLIdentifier } from '../cli/identifier.js'
-export type * from '../cli/introspect.js'
-export { PgParamKind } from '../cli/introspect.js'
 export type * from '../cli/parseObjectStatements.js'
+export type * from '../cli/pgTypes.js'
+export {
+  PgRoutineKind as PgFunctionKind,
+  PgIdentityKind,
+  PgParamKind,
+  PgTypeKind,
+} from '../cli/pgTypes.js'

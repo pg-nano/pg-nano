@@ -57,7 +57,9 @@ export function prepareParams(
     let type = types[i]
     if (type instanceof FieldMapper) {
       if (value != null && type.mapInput) {
+        console.log('mapping input', value)
         value = type.mapInput(value)
+        console.log('mapped input ', value)
       }
       type = type.type
     }

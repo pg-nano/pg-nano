@@ -10,6 +10,40 @@ export type AddressType = {
   zipCode?: string
 }
 
+export type Post = {
+  id: number
+  title: string
+  content?: string
+  authorId?: number
+  createdAt?: Timestamp
+  updatedAt?: Timestamp
+}
+export declare namespace Post {
+  type InsertParams = {
+    id?: number
+    title: string
+    content?: string
+    authorId?: number
+    createdAt?: Timestamp
+    updatedAt?: Timestamp
+  }
+}
+
+export type CourseEnrollment = {
+  studentId: number
+  courseId: number
+  enrollmentDate: string
+  grade?: string
+}
+export declare namespace CourseEnrollment {
+  type InsertParams = {
+    studentId: number
+    courseId: number
+    enrollmentDate: string
+    grade?: string
+  }
+}
+
 export type Foo = {
   id: number
   name: string
@@ -59,40 +93,6 @@ export declare namespace Foo {
     address?: AddressType
     productAttributes?: unknown
     colorPreference?: string
-  }
-}
-
-export type Post = {
-  id: number
-  title: string
-  content?: string
-  authorId?: number
-  createdAt?: Timestamp
-  updatedAt?: Timestamp
-}
-export declare namespace Post {
-  type InsertParams = {
-    id?: number
-    title: string
-    content?: string
-    authorId?: number
-    createdAt?: Timestamp
-    updatedAt?: Timestamp
-  }
-}
-
-export type CourseEnrollment = {
-  studentId: number
-  courseId: number
-  enrollmentDate: string
-  grade?: string
-}
-export declare namespace CourseEnrollment {
-  type InsertParams = {
-    studentId: number
-    courseId: number
-    enrollmentDate: string
-    grade?: string
   }
 }
 
@@ -154,7 +154,7 @@ export declare namespace updateCourse {
   type Result = Course
 }
 
-export const updateCourse = /* @__PURE__ */ bindQueryRow<updateCourse.Params, updateCourse.Result>("update_course", [t.int4, t.update_mapper(t.text_array)])
+export const updateCourse = /* @__PURE__ */ bindQueryRow<updateCourse.Params, updateCourse.Result>("update_course", [t.int4, t.text_array])
 
 export declare namespace replaceStudent {
   type Params = { id: number, rec: Student.InsertParams }
@@ -210,14 +210,14 @@ export declare namespace updateStudent {
   type Result = Student
 }
 
-export const updateStudent = /* @__PURE__ */ bindQueryRow<updateStudent.Params, updateStudent.Result>("update_student", [t.int4, t.update_mapper(t.text_array)])
+export const updateStudent = /* @__PURE__ */ bindQueryRow<updateStudent.Params, updateStudent.Result>("update_student", [t.int4, t.text_array])
 
 export declare namespace updateAccount {
   type Params = [number, string[]]
   type Result = Account
 }
 
-export const updateAccount = /* @__PURE__ */ bindQueryRow<updateAccount.Params, updateAccount.Result>("update_account", [t.int4, t.update_mapper(t.text_array)])
+export const updateAccount = /* @__PURE__ */ bindQueryRow<updateAccount.Params, updateAccount.Result>("update_account", [t.int4, t.text_array])
 
 export declare namespace createFoo {
   type Params = [Foo.InsertParams]
@@ -273,7 +273,7 @@ export declare namespace updatePost {
   type Result = Post
 }
 
-export const updatePost = /* @__PURE__ */ bindQueryRow<updatePost.Params, updatePost.Result>("update_post", [t.int4, t.update_mapper(t.text_array)])
+export const updatePost = /* @__PURE__ */ bindQueryRow<updatePost.Params, updatePost.Result>("update_post", [t.int4, t.text_array])
 
 export declare namespace calculateGpa {
   type Params = { studentId: number }
@@ -315,7 +315,7 @@ export declare namespace replaceFoo {
   type Result = Foo
 }
 
-export const replaceFoo = /* @__PURE__ */ bindQueryRow<replaceFoo.Params, replaceFoo.Result>("replace_foo", { id: t.int4, rec: t.foo }, { address: t.address_type })
+export const replaceFoo = /* @__PURE__ */ bindQueryRow<replaceFoo.Params, replaceFoo.Result>("replace_foo", { id: t.int4, rec: t.foo }, { replace_foo: { address: t.address_type } })
 
 export declare namespace getFoo {
   type Params = { id: number }
@@ -364,7 +364,7 @@ export declare namespace upsertFoo {
   type Result = Foo
 }
 
-export const upsertFoo = /* @__PURE__ */ bindQueryRow<upsertFoo.Params, upsertFoo.Result>("upsert_foo", [t.foo], { address: t.address_type })
+export const upsertFoo = /* @__PURE__ */ bindQueryRow<upsertFoo.Params, upsertFoo.Result>("upsert_foo", [t.foo], { upsert_foo: { address: t.address_type } })
 
 export declare namespace upsertCourseEnrollment {
   type Params = [CourseEnrollment.InsertParams]
@@ -378,14 +378,14 @@ export declare namespace updateCourseEnrollment {
   type Result = CourseEnrollment
 }
 
-export const updateCourseEnrollment = /* @__PURE__ */ bindQueryRow<updateCourseEnrollment.Params, updateCourseEnrollment.Result>("update_course_enrollment", [t.int4, t.update_mapper(t.int4), t.text_array])
+export const updateCourseEnrollment = /* @__PURE__ */ bindQueryRow<updateCourseEnrollment.Params, updateCourseEnrollment.Result>("update_course_enrollment", [t.int4, t.int4, t.text_array])
 
 export declare namespace updateFoo {
   type Params = [number, string[]]
   type Result = Foo
 }
 
-export const updateFoo = /* @__PURE__ */ bindQueryRow<updateFoo.Params, updateFoo.Result>("update_foo", [t.int4, t.update_mapper(t.text_array)], { address: t.address_type })
+export const updateFoo = /* @__PURE__ */ bindQueryRow<updateFoo.Params, updateFoo.Result>("update_foo", [t.int4, t.text_array], { update_foo: { address: t.address_type } })
 
 export declare namespace getCourseEnrollment {
   type Params = { studentId: number, courseId: number }

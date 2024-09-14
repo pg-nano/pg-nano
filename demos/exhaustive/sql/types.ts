@@ -22,9 +22,6 @@ export const tsvector = 3614
 export const uuid = 2950
 export const varchar = 1043
 
-// Field mappers
-export { update_mapper } from "@pg-nano/plugin-crud/field-mappers"
-
 // Enum types
 export const status_type = 3338343
 

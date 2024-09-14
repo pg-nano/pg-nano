@@ -12,6 +12,7 @@ import type { Field } from 'pg-nano'
 import { select, tryit } from 'radashi'
 import { debug } from './debug.js'
 import { SQLIdentifier, toUniqueIdList } from './identifier'
+import type { PgBaseType } from './introspect.js'
 import { log } from './log'
 import { appendCodeFrame } from './util/codeFrame.js'
 
@@ -22,7 +23,11 @@ const dump = (value: any) => debug.enabled && debug(inspect(value))
 
 const whitespace = ' \n\t\r'
 
-export async function parseObjectStatements(content: string, file: string) {
+export async function parseObjectStatements(
+  content: string,
+  file: string,
+  baseTypes: PgBaseType[],
+) {
   const stmts = splitWithScannerSync(content)
 
   const objects: ParsedObjectStmt[] = []
@@ -161,9 +166,17 @@ export async function parseObjectStatements(content: string, file: string) {
             }
           }
 
+          const type = SQLIdentifier.fromTypeName(typeName)
+          if (
+            type.schema == null &&
+            baseTypes.some(t => t.typname === type.name)
+          ) {
+            type.schema = 'pg_catalog'
+          }
+
           columns.push({
             name: colname,
-            type: SQLIdentifier.fromTypeName(typeName),
+            type,
             refs,
           })
         } else if (NodeTag.isConstraint(elt)) {

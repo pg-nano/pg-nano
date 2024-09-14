@@ -19,7 +19,8 @@ const accountId = await client.createAccount({
 console.log('accountId =>', accountId)
 
 const updatedAccount = await client.updateAccount(accountId, {
-  dateOfBirth: '1994-05-01',
+  firstName: 'Alec',
+  lastName: 'Larson',
 })
 
 console.log('updatedAccount =>', updatedAccount)

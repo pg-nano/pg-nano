@@ -21,7 +21,7 @@ export default function (options: Options = {}): Plugin {
     generate({ namespaces }) {
       // Skip build_where_clause in the TypeScript definitions.
       namespaces.public.functions = namespaces.public.functions.filter(fn => {
-        return fn.proname !== 'build_where_clause'
+        return fn.name !== 'build_where_clause'
       })
     },
   }

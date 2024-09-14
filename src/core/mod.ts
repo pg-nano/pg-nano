@@ -10,6 +10,7 @@ export {
   PgResultError,
   Range,
   buildResult,
+  camelToSnake,
   isPgResultError,
   snakeToCamel,
   sql,

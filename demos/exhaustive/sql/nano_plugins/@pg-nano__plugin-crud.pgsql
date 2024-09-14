@@ -62,6 +62,8 @@ BEGIN
     WHEN 'id' THEN result."id" := CAST(entry_value AS int4);
     WHEN 'course_name' THEN result."course_name" := CAST(entry_value AS varchar);
 
+    ELSE
+      RAISE EXCEPTION 'Unknown column: %', entry_key;
     END CASE;
   END LOOP;
   
@@ -167,6 +169,8 @@ BEGIN
     WHEN 'enrollment_date' THEN result."enrollment_date" := CAST(entry_value AS "public"."date");
     WHEN 'grade' THEN result."grade" := CAST(entry_value AS bpchar);
 
+    ELSE
+      RAISE EXCEPTION 'Unknown column: %', entry_key;
     END CASE;
   END LOOP;
   
@@ -271,6 +275,8 @@ BEGIN
     WHEN 'first_name' THEN result."first_name" := CAST(entry_value AS varchar);
     WHEN 'last_name' THEN result."last_name" := CAST(entry_value AS varchar);
 
+    ELSE
+      RAISE EXCEPTION 'Unknown column: %', entry_key;
     END CASE;
   END LOOP;
   
@@ -395,6 +401,8 @@ BEGIN
     WHEN 'address' THEN result."address" := CAST(entry_value AS "public"."address_type");
     WHEN 'product_attributes' THEN result."product_attributes" := CAST(entry_value AS "public"."hstore");
 
+    ELSE
+      RAISE EXCEPTION 'Unknown column: %', entry_key;
     END CASE;
   END LOOP;
   
@@ -508,6 +516,8 @@ BEGIN
     WHEN 'last_login' THEN result."last_login" := CAST(entry_value AS timestamptz);
     WHEN 'is_deleted' THEN result."is_deleted" := CAST(entry_value AS bool);
 
+    ELSE
+      RAISE EXCEPTION 'Unknown column: %', entry_key;
     END CASE;
   END LOOP;
   
@@ -615,6 +625,8 @@ BEGIN
     WHEN 'created_at' THEN result."created_at" := CAST(entry_value AS timestamptz);
     WHEN 'updated_at' THEN result."updated_at" := CAST(entry_value AS timestamptz);
 
+    ELSE
+      RAISE EXCEPTION 'Unknown column: %', entry_key;
     END CASE;
   END LOOP;
   

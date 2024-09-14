@@ -1,4 +1,4 @@
-import type { Plugin } from '@pg-nano/plugin'
+import type { PgBaseType, Plugin } from '@pg-nano/plugin'
 import fs from 'node:fs'
 import path from 'node:path'
 import { PgResultError, sql } from 'pg-nano'
@@ -16,7 +16,11 @@ import {
 } from './parseObjectStatements'
 import { cwdRelative } from './util/path.js'
 
-export async function prepareDatabase(sqlFiles: string[], env: Env) {
+export async function prepareDatabase(
+  sqlFiles: string[],
+  baseTypes: PgBaseType[],
+  env: Env,
+) {
   const pg = await env.client
 
   debug('parsing SQL files')
@@ -24,7 +28,7 @@ export async function prepareDatabase(sqlFiles: string[], env: Env) {
   const parsedFiles = await map(sqlFiles, async file => {
     const content = fs.readFileSync(file, 'utf8')
     debug('parsing SQL file:', file)
-    const objects = await parseObjectStatements(content, file)
+    const objects = await parseObjectStatements(content, file, baseTypes)
     return { file, objects }
   })
 
@@ -98,7 +102,11 @@ export async function prepareDatabase(sqlFiles: string[], env: Env) {
 
   // Plugins may add to the object list, so run them before linking the object
   // dependencies together.
-  const pluginsByStatementId = await preparePluginStatements(env, allObjects)
+  const pluginsByStatementId = await preparePluginStatements(
+    env,
+    baseTypes,
+    allObjects,
+  )
 
   debug('plugin statements prepared')
 
@@ -270,6 +278,7 @@ function getLineFromPosition(position: number, query: string) {
 
 async function preparePluginStatements(
   env: Env,
+  baseTypes: PgBaseType[],
   allObjects: ParsedObjectStmt[],
 ) {
   // Ensure that removed plugins don't leave behind any SQL files.
@@ -318,7 +327,7 @@ async function preparePluginStatements(
 
       // Immediately parse the generated statements so they can be used by
       // plugins that run after this one.
-      const objects = await parseObjectStatements(content, outFile)
+      const objects = await parseObjectStatements(content, outFile, baseTypes)
       for (const object of objects) {
         if (allObjects.some(other => other.id.equals(object.id))) {
           log.warn(

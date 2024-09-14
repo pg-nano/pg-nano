@@ -10,17 +10,36 @@ export default function (): Plugin {
 
       this.generate = ({ functions }) => {
         for (const fn of functions) {
-          if (fn.plugin === this && fn.proname.startsWith('update_')) {
-            fn.proargnames = undefined!
+          if (fn.plugin === this && fn.name.startsWith('update_')) {
+            // Remove named parameters from update functions.
+            fn.paramNames = undefined!
           }
         }
       }
 
-      this.mapField = ({ field, object }) => {
-        if (object.plugin !== this || !('proname' in object)) {
+      this.mapTypeReference = ({
+        type,
+        container,
+        field,
+        fieldName,
+        paramKind,
+      }) => {
+        if (container.plugin === this && fieldName === '$2') {
+          console.log({
+            type,
+            container: container.name,
+            field,
+            fieldName,
+            paramKind,
+          })
+        }
+      }
+
+      this.mapField = ({ fieldName, container }) => {
+        if (container.plugin !== this || !('proname' in container)) {
           return null
         }
-        if (object.proname.startsWith('update_') && field === '$2') {
+        if (container.name.startsWith('update_') && fieldName === '$2') {
           return {
             name: 'update_mapper',
             path: '@pg-nano/plugin-crud/field-mappers',
@@ -157,10 +176,11 @@ function renderTableQueries(
         entry_value := updated_data[i + 1];
 
         CASE entry_key
-        ${table.columns.map(
-          col =>
-            sql`WHEN ${sql.val(col.name)} THEN result.${sql.id(col.name)} := CAST(entry_value AS ${col.type.toSQL()});\n`,
-        )}
+        ${table.columns.map(col => {
+          return sql`WHEN ${sql.val(col.name)} THEN result.${sql.id(col.name)} := CAST(entry_value AS ${col.type.toSQL()});\n`
+        })}
+        ELSE
+          RAISE EXCEPTION 'Unknown column: %', entry_key;
         END CASE;
       END LOOP;
       
