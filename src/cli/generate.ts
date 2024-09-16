@@ -1,4 +1,4 @@
-import type { GenerateContext, Plugin } from '@pg-nano/plugin'
+import type { GenerateContext, Plugin, PluginContext } from '@pg-nano/plugin'
 import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -14,6 +14,7 @@ import {
   isBaseType,
   isCompositeType,
   isEnumType,
+  isTableType,
   PgIdentityKind,
   PgObjectType,
   PgParamKind,
@@ -26,7 +27,6 @@ import {
   type PgTable,
   type PgTableField,
   type PgType,
-  type PgTypeContext,
 } from './pgTypes.js'
 import { prepareDatabase } from './prepare'
 import { dedent } from './util/dedent'
@@ -112,30 +112,29 @@ export async function generate(
         type.plugin = pluginsByStatementId.get(id.toQualifiedName())
       }
     }
-    for (const fn of nsp.functions) {
-      const id = new SQLIdentifier(fn.name, fn.schema)
-      fn.plugin = pluginsByStatementId.get(id.toQualifiedName())
+    for (const routine of nsp.routines) {
+      const id = new SQLIdentifier(routine.name, routine.schema)
+      routine.plugin = pluginsByStatementId.get(id.toQualifiedName())
     }
   }
 
-  type GeneratePlugin = Plugin & { generate: Function }
+  const generateContext: GenerateContext = Object.freeze({
+    typesByName,
+    typesByOid,
+    namespaces,
+    routines: Object.values(namespaces).flatMap(nsp => nsp.routines),
+    tables: Object.values(namespaces).flatMap(nsp => nsp.tables),
+  })
 
-  // Step 3: Run the `generate` hook for each plugin.
+  type GeneratePlugin = Plugin & { generateStart: Function }
+
   const generatePlugins = env.config.plugins.filter(
-    (p): p is GeneratePlugin => p.generate != null,
+    (p): p is GeneratePlugin => p.generateStart != null,
   )
 
-  if (generatePlugins.length > 0) {
-    const generateContext: GenerateContext = {
-      types: typesByName,
-      namespaces,
-      functions: Object.values(namespaces).flatMap(nsp => nsp.functions),
-      tables: Object.values(namespaces).flatMap(nsp => nsp.tables),
-    }
-
-    for (const plugin of generatePlugins) {
-      await plugin.generate(generateContext, env.config)
-    }
+  // Step 3: Run the `generateStart` hook for each plugin.
+  for (const plugin of generatePlugins) {
+    await plugin.generateStart(generateContext, env.config)
   }
 
   const moduleBasename = path.basename(env.config.generate.outFile) + '.js'
@@ -264,7 +263,7 @@ export async function generate(
 
   const renderFieldType = (
     oid: number,
-    context: Omit<PgFieldContext, 'fieldType'>,
+    fieldContext: Omit<PgFieldContext, 'fieldType'>,
   ) => {
     let code: string
 
@@ -298,7 +297,8 @@ export async function generate(
     for (const plugin of fieldMapperPlugins) {
       const fieldMapper = plugin.mapField(
         {
-          ...context,
+          ...generateContext,
+          ...fieldContext,
           fieldType: type ?? typesByName.get('unknown')!,
         },
         env.config,
@@ -373,21 +373,33 @@ export async function generate(
     paramIndex?: number | null,
     fieldName?: string,
     field?: PgField | PgTableField,
+    skipPlugins?: boolean,
   ) => {
     let type = typesByOid.get(oid)
 
-    if (typeReferencePlugins.length > 0) {
-      const typeContext: PgTypeContext = {
+    if (!skipPlugins && typeReferencePlugins.length > 0) {
+      const pluginContext: PluginContext['mapTypeReference'] = {
+        ...generateContext,
         type: type ?? typesByName.get('unknown')!,
         container,
         field,
         fieldName,
         paramKind,
         paramIndex,
+        renderTypeReference: (oid, newParamKind = paramKind) =>
+          renderTypeReference(
+            oid,
+            container,
+            newParamKind,
+            paramIndex,
+            fieldName,
+            field,
+            true,
+          ),
       }
 
       for (const plugin of typeReferencePlugins) {
-        const result = plugin.mapTypeReference(typeContext, env.config)
+        const result = plugin.mapTypeReference(pluginContext, env.config)
         if (result) {
           if (result.lang === 'ts') {
             return result.type
@@ -441,10 +453,7 @@ export async function generate(
             jsType += '[]'
           }
         }
-        if (
-          type.object.type === PgObjectType.Table &&
-          paramKind === PgParamKind.In
-        ) {
+        if (isTableType(type) && paramKind === PgParamKind.In) {
           jsType = jsType.replace(/(?=\[)|$/, '.InsertParams')
         }
       }
@@ -461,18 +470,18 @@ export async function generate(
   // Step 4: Render type definitions for each function. This also builds up a
   // list of dependencies (e.g. imports and type definitions).
   for (const nsp of Object.values(namespaces)) {
-    for (const fn of nsp.functions) {
-      const jsName = camel(fn.name)
+    for (const routine of nsp.routines) {
+      const jsName = camel(routine.name)
 
-      const jsArgNames = fn.paramNames
-        ?.slice(0, fn.paramTypes.length)
+      const jsArgNames = routine.paramNames
+        ?.slice(0, routine.paramTypes.length)
         .map(name => name.replace(/^p_/, ''))
 
-      const jsArgTypes = fn.paramTypes.map((typeOid, index) =>
+      const jsArgTypes = routine.paramTypes.map((typeOid, index) =>
         renderTypeReference(
           typeOid,
-          fn,
-          fn.paramKinds?.[index] ?? PgParamKind.In,
+          routine,
+          routine.paramKinds?.[index] ?? PgParamKind.In,
           index,
           jsArgNames?.[index] ?? `$${index + 1}`,
         ),
@@ -480,7 +489,9 @@ export async function generate(
 
       const jsNamedParams = jsArgNames?.map((name, index) => {
         const optionalToken =
-          index >= fn.paramTypes.length - fn.numDefaultParams ? '?' : ''
+          index >= routine.paramTypes.length - routine.numDefaultParams
+            ? '?'
+            : ''
 
         return `${formatFieldName(name)}${optionalToken}: ${jsArgTypes[index]}`
       })
@@ -496,21 +507,21 @@ export async function generate(
 
       // Find the function's CREATE statement, which contains metadata that is
       // useful for type generation.
-      const id = new SQLIdentifier(fn.name, fn.schema)
+      const id = new SQLIdentifier(routine.name, routine.schema)
       const stmt = routineStmts.get(id.toQualifiedName())!
 
       if (!stmt.returnType) {
         jsResultType = 'void'
       } else if (stmt.returnType instanceof SQLIdentifier) {
         jsResultType = renderTypeReference(
-          fn.returnTypeOid,
-          fn,
+          routine.returnTypeOid,
+          routine,
           PgParamKind.Out,
         )
 
-        const type = typesByOid.get(fn.returnTypeOid)
+        const type = typesByOid.get(routine.returnTypeOid)
         if (type && type.object.type !== PgObjectType.Base) {
-          if (type.object.type === PgObjectType.Table && !type.isArray) {
+          if (isTableType(type) && !type.isArray) {
             returnsRow = true
           }
 
@@ -526,7 +537,7 @@ export async function generate(
               resultFields = renderFields(
                 rowFields,
                 {
-                  container: fn,
+                  container: routine,
                   paramKind: PgParamKind.Out,
                   rowType: type.object,
                 },
@@ -544,7 +555,7 @@ export async function generate(
             const type = types.find(
               type =>
                 type.object.name === field.type.name &&
-                type.object.schema === (field.type.schema ?? fn.schema),
+                type.object.schema === (field.type.schema ?? routine.schema),
             )
 
             rowFields[index] =
@@ -560,7 +571,7 @@ export async function generate(
             const jsType = type
               ? renderTypeReference(
                   type.object.oid,
-                  fn,
+                  routine,
                   PgParamKind.Table,
                   null,
                   field.name,
@@ -574,19 +585,19 @@ export async function generate(
         if (rowFields.some(Boolean)) {
           resultFields = renderFields(
             rowFields,
-            { container: fn, paramKind: PgParamKind.Table },
+            { container: routine, paramKind: PgParamKind.Table },
             true,
           )
         }
       }
 
       if (resultFields) {
-        if (returnsRow && !fn.returnSet) {
+        if (returnsRow && !routine.returnSet) {
           // When a function doesn't use SETOF, TABLE(), or a table identifier
           // in its RETURNS clause, the result is a single row with a single
           // column. That column's name is the function name, because we don't
           // give it an alias.
-          resultFields = `{ ${unsafelyQuotedName(fn.name)}: ${resultFields} }`
+          resultFields = `{ ${unsafelyQuotedName(routine.name)}: ${resultFields} }`
         }
         resultFields = `, ${resultFields}`
       }
@@ -595,38 +606,38 @@ export async function generate(
         ? renderFields(
             jsArgNames.map((name, index) => ({
               name: name,
-              typeOid: fn.paramTypes[index],
-              paramKind: fn.paramKinds?.[index] ?? PgParamKind.In,
+              typeOid: routine.paramTypes[index],
+              paramKind: routine.paramKinds?.[index] ?? PgParamKind.In,
               paramIndex: index,
             })),
-            { container: fn },
+            { container: routine },
             true,
           )
-        : `[${fn.paramTypes
+        : `[${routine.paramTypes
             .map((typeOid, index) => {
               return renderFieldType(typeOid, {
                 fieldName: `$${index + 1}`,
-                container: fn,
-                paramKind: fn.paramKinds?.[index] ?? PgParamKind.In,
+                container: routine,
+                paramKind: routine.paramKinds?.[index] ?? PgParamKind.In,
                 paramIndex: index,
               })
             })
             .join(', ')}]`
 
       const constructor = returnsRow
-        ? fn.returnSet
+        ? routine.returnSet
           ? 'bindQueryRowList'
           : 'bindQueryRow'
-        : fn.returnSet
+        : routine.returnSet
           ? 'bindQueryValueList'
           : 'bindQueryValue'
 
       imports.add(constructor)
 
       const pgName =
-        fn.schema !== 'public'
-          ? `[${quoteName(fn.schema)}, ${quoteName(fn.name)}]`
-          : quoteName(fn.name)
+        routine.schema !== 'public'
+          ? `[${quoteName(routine.schema)}, ${quoteName(routine.name)}]`
+          : quoteName(routine.name)
 
       const fnScript = dedent`
         export declare namespace ${jsName} {
@@ -637,7 +648,7 @@ export async function generate(
         export const ${jsName} = /* @__PURE__ */ ${constructor}<${jsName}.Params, ${jsName}.Result>(${pgName}, ${inParams}${resultFields})\n\n
       `
 
-      renderedObjects.set(fn, fnScript)
+      renderedObjects.set(routine, fnScript)
     }
   }
 
@@ -692,7 +703,7 @@ export async function generate(
       ...nsp.enumTypes,
       ...nsp.compositeTypes,
       ...nsp.tables,
-      ...nsp.functions,
+      ...nsp.routines,
     ]) {
       if (renderedObjects.has(type)) {
         nspCode += renderedObjects.get(type)!

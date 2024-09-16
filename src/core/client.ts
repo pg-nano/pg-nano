@@ -12,7 +12,7 @@ import {
 } from 'pg-native'
 import { sleep } from 'radashi'
 import { ConnectionError, QueryError } from './error.js'
-import { Query, type QueryOptions } from './query'
+import { Query, type QueryOptions, type ResultParser } from './query.js'
 
 const debug = /** @__PURE__ */ createDebug('pg-nano')
 
@@ -89,7 +89,7 @@ export class Client {
     maxRetryDelay = 10e3,
     maxRetries = Number.POSITIVE_INFINITY,
     idleTimeout = 30e3,
-    fieldCase = 'camel',
+    fieldCase = FieldCase.camel,
   }: Partial<ClientOptions> = {}) {
     this.config = {
       minConnections,
@@ -136,10 +136,7 @@ export class Client {
     signal?: AbortSignal,
     idleTimeout = this.config.idleTimeout,
   ): Promise<Connection> {
-    const connection = new Connection(
-      FieldCase[this.config.fieldCase],
-      idleTimeout,
-    )
+    const connection = new Connection(this.config.fieldCase, idleTimeout)
 
     const connecting = this.connectWithRetry(connection, signal).then(
       () => {
@@ -254,7 +251,7 @@ export class Client {
     connection: Connection | Promise<Connection>,
     commands: SQLTemplate | QueryHook<TResult>,
     signal?: AbortSignal,
-    resultParser?: (result: Result) => void,
+    resultParser?: ResultParser,
     singleRowMode?: boolean,
   ): Promise<TResult> {
     signal?.throwIfAborted()
@@ -270,7 +267,7 @@ export class Client {
 
       const queryPromise = connection.query(
         commands,
-        resultParser,
+        resultParser && (result => resultParser(result, this)),
         singleRowMode,
       )
 

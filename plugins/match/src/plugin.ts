@@ -18,9 +18,9 @@ export default function (options: Options = {}): Plugin {
         ${tables.map(table => renderTableQueries(table, context, options))}
       `
     },
-    generate({ namespaces }) {
+    generateStart({ namespaces }) {
       // Skip build_where_clause in the TypeScript definitions.
-      namespaces.public.functions = namespaces.public.functions.filter(fn => {
+      namespaces.public.routines = namespaces.public.routines.filter(fn => {
         return fn.name !== 'build_where_clause'
       })
     },

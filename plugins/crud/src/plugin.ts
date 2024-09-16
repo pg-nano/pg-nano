@@ -1,4 +1,10 @@
-import type { PgTableStmt, Plugin, StatementsContext } from '@pg-nano/plugin'
+import {
+  PgObjectType,
+  PgParamKind,
+  type PgTableStmt,
+  type Plugin,
+  type StatementsContext,
+} from '@pg-nano/plugin'
 import { objectify } from 'radashi'
 
 export default function (): Plugin {
@@ -8,35 +14,44 @@ export default function (): Plugin {
       const { objects, sql } = context
       const tables = objects.filter(obj => obj.kind === 'table')
 
-      this.generate = ({ functions }) => {
-        for (const fn of functions) {
-          if (fn.plugin === this && fn.name.startsWith('update_')) {
-            // Remove named parameters from update functions.
-            fn.paramNames = undefined!
+      this.generateStart = ({ routines }) => {
+        for (const routine of routines) {
+          if (routine.plugin === this && routine.name.startsWith('update_')) {
+            // Remove named parameters from update routines.
+            routine.paramNames = null
           }
         }
       }
 
       this.mapTypeReference = ({
-        type,
         container,
-        field,
-        fieldName,
+        paramIndex,
         paramKind,
+        renderTypeReference,
       }) => {
-        if (container.plugin === this && fieldName === '$2') {
-          console.log({
-            type,
-            container: container.name,
-            field,
-            fieldName,
-            paramKind,
-          })
+        if (
+          container.plugin !== this ||
+          container.type !== PgObjectType.Routine ||
+          !container.name.startsWith('update_')
+        ) {
+          return null
+        }
+        if (
+          paramKind === PgParamKind.In &&
+          paramIndex === container.paramTypes.length - 1
+        ) {
+          return {
+            lang: 'ts',
+            type: `Partial<${renderTypeReference(container.returnTypeOid, PgParamKind.Out)}>`,
+          }
         }
       }
 
       this.mapField = ({ fieldName, container }) => {
-        if (container.plugin !== this || !('proname' in container)) {
+        if (
+          container.plugin !== this ||
+          container.type !== PgObjectType.Routine
+        ) {
           return null
         }
         if (container.name.startsWith('update_') && fieldName === '$2') {

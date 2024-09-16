@@ -1,5 +1,6 @@
 import { Tuple } from 'pg-native'
 import { isArray, isObject } from 'radashi'
+import type { Client } from '../client.js'
 import { FieldMapper, type Fields, type FieldType } from './fields.js'
 
 export type InParams = Fields | readonly FieldType[]
@@ -12,6 +13,7 @@ export type OutParams = { [name: string]: Fields | FieldMapper }
  *   2. Prepare composite types for query execution.
  */
 export function prepareParams(
+  client: Client,
   input: unknown,
   params: InParams,
   values?: unknown[],
@@ -57,9 +59,7 @@ export function prepareParams(
     let type = types[i]
     if (type instanceof FieldMapper) {
       if (value != null && type.mapInput) {
-        console.log('mapping input', value)
-        value = type.mapInput(value)
-        console.log('mapped input ', value)
+        value = type.mapInput(value, client)
       }
       type = type.type
     }
@@ -68,6 +68,7 @@ export function prepareParams(
       if (isArray(value)) {
         value = value.map(value => {
           return prepareParams(
+            client,
             value as Record<string, unknown>,
             type,
             new Tuple(),
@@ -75,6 +76,7 @@ export function prepareParams(
         })
       } else {
         value = prepareParams(
+          client,
           value as Record<string, unknown>,
           type,
           new Tuple(),

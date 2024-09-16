@@ -33,7 +33,7 @@ export async function introspectNamespaces(
   const getNamespace = (schema: string) =>
     (namespaces[schema] ??= {
       schema,
-      functions: [],
+      routines: [],
       compositeTypes: [],
       enumTypes: [],
       tables: [],

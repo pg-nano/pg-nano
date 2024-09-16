@@ -1,9 +1,14 @@
 /// <reference types="@pg-nano/plugin" />
 import type { UserConfig } from '@pg-nano/config'
-import { bundleRequire } from 'bundle-require'
+import {
+  bundleRequire,
+  type Options as BundleRequireOptions,
+} from 'bundle-require'
 import { watch } from 'chokidar'
+import mri from 'mri'
 import path from 'node:path'
 import { Client, sql } from 'pg-nano'
+import { camel, mapKeys } from 'radashi'
 import { allMigrationHazardTypes } from '../config/hazards'
 import { findConfigFile } from './findConfigFile'
 import { log } from './log'
@@ -47,8 +52,20 @@ async function loadEnv(cwd: string, options: EnvOptions) {
   let userConfigDependencies: string[] = []
 
   if (configFilePath) {
+    const options: Partial<BundleRequireOptions> = {}
+    if (process.env.BUNDLE_REQUIRE_OPTIONS) {
+      const { default: stringArgv } = await import('string-argv')
+      const rawOptions = stringArgv(process.env.BUNDLE_REQUIRE_OPTIONS)
+      const { '': _, ...parsedOptions } = mapKeys(mri(rawOptions), key =>
+        camel(key),
+      )
+
+      log('Using BUNDLE_REQUIRE_OPTIONS →', parsedOptions)
+      Object.assign(options, parsedOptions)
+    }
     log('Loading config file', configFilePath)
     const result = await bundleRequire({
+      ...options,
       filepath: configFilePath,
     })
     userConfig = result.mod.default

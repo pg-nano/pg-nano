@@ -1,33 +1,41 @@
-lockfileVersion: '6.0'
+lockfileVersion: '9.0'
 
 settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
-devDependencies:
-  '@pg-nano/plugin':
-    specifier: workspace:^
-    version: link:../plugin
-  '@types/node':
-    specifier: ^22.5.1
-    version: 22.5.1
-  radashi:
-    specifier: 12.2.0-beta.af825f4
-    version: 12.2.0-beta.af825f4
+importers:
+
+  .:
+    devDependencies:
+      '@pg-nano/plugin':
+        specifier: workspace:^
+        version: link:../plugin
+      '@types/node':
+        specifier: ^22.5.1
+        version: 22.5.1
+      radashi:
+        specifier: 12.2.0-beta.af825f4
+        version: 12.2.0-beta.af825f4
 
 packages:
 
-  /@types/node@22.5.1:
+  '@types/node@22.5.1':
     resolution: {integrity: sha512-KkHsxej0j9IW1KKOOAA/XBA0z08UFSrRQHErzEfA3Vgq57eXIMYboIlHJuYIfd+lwCQjtKqUu3UnmKbtUc9yRw==}
-    dependencies:
-      undici-types: 6.19.8
-    dev: true
 
-  /radashi@12.2.0-beta.af825f4:
+  radashi@12.2.0-beta.af825f4:
     resolution: {integrity: sha512-qgHft4yu2ZPoHGEYEfqfsq1NMGoPq2Eo/r3QkbrJimNJ+63m8sDgISsQnTFjayC3pRCBr+FO2YIsORPs8pIiJA==}
     engines: {node: '>=16.0.0'}
-    dev: true
 
-  /undici-types@6.19.8:
+  undici-types@6.19.8:
     resolution: {integrity: sha512-ve2KP6f/JnbPBFyobGHuerC9g1FYGn/F8n1LWTwNxCEzd6IfqTwUQcNXgEtmmQ6DlRrC1hrSrBnCZPokRrDHjw==}
-    dev: true
+
+snapshots:
+
+  '@types/node@22.5.1':
+    dependencies:
+      undici-types: 6.19.8
+
+  radashi@12.2.0-beta.af825f4: {}
+
+  undici-types@6.19.8: {}

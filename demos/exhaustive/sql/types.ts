@@ -22,28 +22,13 @@ export const tsvector = 3614
 export const uuid = 2950
 export const varchar = 1043
 
+// Field mappers
+export { update_mapper } from "@pg-nano/plugin-crud/field-mappers"
+
 // Enum types
 export const status_type = 3338343
 
 // Composite types
-export const course = {
-  id: t.int4,
-  courseName: t.varchar
-} as const
-
-export const student = {
-  id: t.int4,
-  firstName: t.varchar,
-  lastName: t.varchar
-} as const
-
-export const course_enrollment = {
-  studentId: t.int4,
-  courseId: t.int4,
-  enrollmentDate: t.date,
-  grade: t.bpchar
-} as const
-
 export const post = {
   id: t.int4,
   title: t.varchar,
@@ -51,21 +36,6 @@ export const post = {
   authorId: t.int4,
   createdAt: t.timestamptz,
   updatedAt: t.timestamptz
-} as const
-
-export const account = {
-  id: t.int4,
-  username: t.varchar,
-  email: t.varchar,
-  passwordHash: t.varchar,
-  firstName: t.varchar,
-  lastName: t.varchar,
-  dateOfBirth: t.date,
-  createdAt: t.timestamptz,
-  updatedAt: t.timestamptz,
-  lastLogin: t.timestamptz,
-  isDeleted: t.bool,
-  postsCount: t.int4
 } as const
 
 export const address_type = {
@@ -99,4 +69,37 @@ export const foo = {
   address: t.address_type,
   productAttributes: 3338215 /* unknown */,
   colorPreference: t.varchar
+} as const
+
+export const account = {
+  id: t.int4,
+  username: t.varchar,
+  email: t.varchar,
+  passwordHash: t.varchar,
+  postsCount: t.int4,
+  firstName: t.varchar,
+  lastName: t.varchar,
+  dateOfBirth: t.date,
+  createdAt: t.timestamptz,
+  updatedAt: t.timestamptz,
+  lastLogin: t.timestamptz,
+  isDeleted: t.bool
+} as const
+
+export const course = {
+  id: t.int4,
+  courseName: t.varchar
+} as const
+
+export const student = {
+  id: t.int4,
+  firstName: t.varchar,
+  lastName: t.varchar
+} as const
+
+export const course_enrollment = {
+  studentId: t.int4,
+  courseId: t.int4,
+  enrollmentDate: t.date,
+  grade: t.bpchar
 } as const

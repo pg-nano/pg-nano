@@ -9,6 +9,6 @@
     "@alloc/codegentool": "^1.3.2"
   },
   "scripts": {
-    "dev": "NODE_OPTIONS='--enable-source-maps' pg-nano dev"
+    "dev": "NODE_OPTIONS='--enable-source-maps' BUNDLE_REQUIRE_OPTIONS='--not-external @pg-nano/plugin --not-external radashi' pg-nano dev"
   }
 }

@@ -102,7 +102,7 @@ export type PgRoutine = {
 
 export type PgNamespace = {
   schema: string
-  functions: PgRoutine[]
+  routines: PgRoutine[]
   compositeTypes: PgCompositeType[]
   enumTypes: PgEnumType[]
   tables: PgTable[]

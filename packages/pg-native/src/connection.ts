@@ -99,6 +99,7 @@ export class Connection extends ConnectionEmitter {
   close() {
     if (this.pq) {
       stopReading(unprotect(this), ConnectionStatus.CLOSED)
+      debug('closing connection')
       this.pq.finish()
       this.pq = null!
       this.emit('close')

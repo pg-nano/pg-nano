@@ -1,3 +1,5 @@
+import type { Client } from '../client.js'
+
 /**
  * A runtime map of field names to their type OIDs. Currently, this data is only
  * used for parsing/serializing composite types.
@@ -9,8 +11,8 @@ export type FieldType = number | Fields | FieldMapper<any, any>
 export class FieldMapper<JsType = unknown, PgType = unknown> {
   private constructor(
     readonly type: number | Fields,
-    readonly mapInput: ((value: JsType) => PgType) | null,
-    readonly mapOutput: ((value: PgType) => JsType) | null,
+    readonly mapInput: ((value: JsType, client: Client) => PgType) | null,
+    readonly mapOutput: ((value: PgType, client: Client) => JsType) | null,
   ) {}
 }
 
@@ -28,23 +30,23 @@ type NoInfer<T> = [T][T extends any ? 0 : never]
  * because the plugin knows better.
  */
 export function defineFieldMapper<JsType = unknown, PgType = unknown>(
-  mapInput: (value: JsType) => PgType,
+  mapInput: (value: JsType, client: Client) => PgType,
   mapOutput: null,
 ): (type: number | Fields) => FieldMapper<JsType, PgType>
 
 export function defineFieldMapper<JsType = unknown, PgType = unknown>(
   mapInput: null,
-  mapOutput: (value: PgType) => JsType,
+  mapOutput: (value: PgType, client: Client) => JsType,
 ): (type: number | Fields) => FieldMapper<JsType, PgType>
 
 export function defineFieldMapper<JsType = unknown, PgType = unknown>(
-  mapInput: (value: JsType) => NoInfer<PgType>,
-  mapOutput: (value: PgType) => NoInfer<JsType>,
+  mapInput: (value: JsType, client: Client) => NoInfer<PgType>,
+  mapOutput: (value: PgType, client: Client) => NoInfer<JsType>,
 ): (type: number | Fields) => FieldMapper<JsType, PgType>
 
 export function defineFieldMapper<JsType = unknown, PgType = unknown>(
-  mapInput: ((value: JsType) => PgType) | null,
-  mapOutput: ((value: PgType) => JsType) | null,
+  mapInput: ((value: JsType, client: Client) => PgType) | null,
+  mapOutput: ((value: PgType, client: Client) => JsType) | null,
 ): (type: number | Fields) => FieldMapper<JsType, PgType> {
   return type => new (FieldMapper as any)(type, mapInput, mapOutput)
 }

@@ -4,6 +4,7 @@ import type { ParsedObjectStmt } from '../cli/parseObjectStatements.js'
 import type {
   PgFieldContext,
   PgNamespace,
+  PgParamKind,
   PgRoutine,
   PgTable,
   PgType,
@@ -19,21 +20,17 @@ export interface Plugin {
    * commands will be ignored.
    */
   statements?: (
-    ctx: StatementsContext,
+    ctx: PluginContext['statements'],
     config: Readonly<ResolvedConfig>,
   ) => Awaitable<SQLTemplate | null>
   /**
-   * This hook runs during the TypeScript generation phase. Your plugin can use
-   * the given context to improve type safety by modifying a `PgFunction` object
-   * before it's used to generate the TypeScript.
-   *
-   * This is most useful when your plugin has generated a Postgres function (via
-   * the `queries` hook) that depends on polymorphic parameters (like a `JSON`
-   * type). Now you can use the `generate` hook to modify the generated
-   * TypeScript to better suit the loosely-typed Postgres function.
+   * This hook runs before the TypeScript generation phase. In its context
+   * object, you'll find every object loaded from the database using
+   * introspection. Mutating objects within this hook is not recommended, but
+   * may be useful in rare cases.
    */
-  generate?: (
-    ctx: GenerateContext,
+  generateStart?: (
+    ctx: PluginContext['generateStart'],
     config: Readonly<ResolvedConfig>,
   ) => Awaitable<void>
   /**
@@ -42,7 +39,7 @@ export interface Plugin {
    * TypeScript type. You may return a Postgres type or a TypeScript type.
    */
   mapTypeReference?: (
-    ctx: PgTypeContext,
+    ctx: PluginContext['mapTypeReference'],
     config: Readonly<ResolvedConfig>,
   ) => { type: string; lang: 'psql' | 'ts' } | null | void
   /**
@@ -63,33 +60,57 @@ export interface Plugin {
    *   result.
    */
   mapField?: (
-    ctx: PgFieldContext,
+    ctx: PluginContext['mapField'],
     config: Readonly<ResolvedConfig>,
   ) => { name: string; path: string } | null | void
 }
 
-export interface StatementsContext {
-  objects: readonly Readonly<ParsedObjectStmt>[]
-  /**
-   * Use this to create SQL templates.
-   */
-  sql: typeof sql
-}
-
 export interface GenerateContext {
-  types: ReadonlyMap<string, PgType>
+  typesByName: ReadonlyMap<string, PgType>
+  typesByOid: ReadonlyMap<number, PgType>
   namespaces: Readonly<Record<string, PgNamespace>>
-  functions: readonly PgRoutine[]
+  routines: readonly PgRoutine[]
   tables: readonly PgTable[]
 }
 
+export interface PluginContext {
+  statements: {
+    /**
+     * The objects parsed from the input SQL files.
+     */
+    objects: readonly Readonly<ParsedObjectStmt>[]
+    /**
+     * A tagged template literal for creating SQL templates.
+     */
+    sql: typeof sql
+  }
+  generateStart: GenerateContext
+  mapTypeReference: PgTypeContext &
+    GenerateContext & {
+      /**
+       * Render a Postgres type to its TypeScript-equivalent type syntax, which
+       * is typically an identifier.
+       */
+      renderTypeReference: (
+        oid: number,
+        paramKind?: PgParamKind | null,
+      ) => string
+    }
+  mapField: PgFieldContext & GenerateContext
+}
+
+export * from '@pg-nano/pg-parser'
 export type { ResolvedConfig } from '../cli/env.js'
 export { SQLIdentifier } from '../cli/identifier.js'
 export type * from '../cli/parseObjectStatements.js'
 export type * from '../cli/pgTypes.js'
 export {
-  PgRoutineKind as PgFunctionKind,
+  isBaseType,
+  isCompositeType,
+  isEnumType,
+  isTableType,
   PgIdentityKind,
+  PgObjectType,
   PgParamKind,
-  PgTypeKind,
+  PgRoutineKind,
 } from '../cli/pgTypes.js'

@@ -9,6 +9,8 @@ import { streamResults } from './stream.js'
 
 type UnwrapArray<T> = T extends readonly (infer U)[] ? U : T
 
+export type ResultParser = (result: Result, client: Client) => void
+
 export interface QueryOptions {
   /**
    * Cancel the query early when this signal is aborted.
@@ -19,7 +21,7 @@ export interface QueryOptions {
    * Useful for handling custom field types.
    * @internal
    */
-  resultParser?: (result: Result) => void
+  resultParser?: ResultParser
   /**
    * Transform the resolved value of the promise.
    * @internal
