@@ -1,9 +1,9 @@
 import {
   PgObjectType,
   PgParamKind,
+  type PluginContext,
   type PgTableStmt,
   type Plugin,
-  type StatementsContext,
 } from '@pg-nano/plugin'
 import { objectify } from 'radashi'
 
@@ -74,7 +74,7 @@ export default function (): Plugin {
 
 function renderTableQueries(
   table: Readonly<PgTableStmt>,
-  { sql }: StatementsContext,
+  { sql }: PluginContext['statements'],
 ) {
   if (!table.primaryKeyColumns.length) {
     console.warn(
