@@ -7,10 +7,12 @@ Try `pg-nano` out for yourself with this exhaustive demo.
 git clone https://github.com/pg-nano/pg-nano.git
 cd pg-nano/demos/exhaustive
 
-# Setup project dependencies, initialize the database, and
-# enable instant schema updates and code generation.
+# Install project dependencies, initialize the database, and
+# enable reactive schema updates and code generation.
 pnpm start
 
 # Run "test.ts" then watch it re-run as you edit the code.
 pnpm test
 ```
+
+If you also plan to edit pg-nano itself, avoid using `pnpm start` as it will install directly from NPM. Instead, run `pnpm install` to install dependencies for the whole monorepo, then `pnpm dev` to enable reactive schema updates and code generation.
