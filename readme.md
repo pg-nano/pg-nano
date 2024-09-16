@@ -1,4 +1,4 @@
-⚠️ This project is currently in the early stages of development and is not yet ready for production use.
+⚠️ **This project is currently in the early stages of development and is not yet ready for production use.** Give the [demos/exhaustive](https://github.com/pg-nano/pg-nano/tree/master/demos/exhaustive) project a try if you'd like to see a preview of what's possible.
 
 # pg-nano
 
