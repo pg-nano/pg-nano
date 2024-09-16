@@ -8,7 +8,7 @@ import {
 import { isArray, isObject } from 'radashi'
 import type { Client } from './client.js'
 import { parseCompositeFields } from './data/composite.js'
-import { type OutParams, prepareParams, type InParams } from './data/params.js'
+import { prepareParams, type InParams, type OutParams } from './data/params.js'
 import type { Query, QueryOptions } from './query.js'
 
 export type Routine<TArgs extends object, TResult> = TArgs extends any[]
@@ -73,19 +73,28 @@ function bindRoutine(
 ): Routine<any, any> {
   const id = isArray(name) ? sql.id(...name) : sql.id(name)
   const limit = method.endsWith('List') ? 0 : 1
-  const options: QueryOptions | undefined = outParams
-    ? { resultParser: result => parseCompositeFields(result, outParams) }
-    : undefined
+
+  let options: QueryOptions | undefined
+  if (outParams) {
+    options = {
+      resultParser: (result, client) =>
+        parseCompositeFields(client, result, outParams),
+    }
+  }
 
   return isObject(inParams)
     ? (client: Client, namedValues?: unknown) =>
         client[method as 'queryRow'](
-          sqlRoutineCall(id, prepareParams(namedValues, inParams), limit),
+          sqlRoutineCall(
+            id,
+            prepareParams(client, namedValues, inParams),
+            limit,
+          ),
           options,
         )
     : (client: Client, ...values: any[]) =>
         client[method as 'queryRow'](
-          sqlRoutineCall(id, prepareParams(values, inParams), limit),
+          sqlRoutineCall(id, prepareParams(client, values, inParams), limit),
           options,
         )
 }
