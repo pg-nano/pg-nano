@@ -85,6 +85,7 @@ export function introspectRoutines(pg: Client, signal?: AbortSignal) {
       AND n.nspname NOT IN ('pg_catalog', 'information_schema')
       AND e.oid IS NULL
       AND p.prorettype != 2279 -- trigger
+    ORDER BY n.nspname, p.proname
   `
 
   return pg.queryRowList<PgRoutine>(query, { signal })

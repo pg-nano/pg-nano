@@ -29,13 +29,16 @@ export { update_mapper } from "@pg-nano/plugin-crud/field-mappers"
 export const status_type = 3338343
 
 // Composite types
-export const post = {
+export const course = {
   id: t.int4,
-  title: t.varchar,
-  content: t.text,
-  authorId: t.int4,
-  createdAt: t.timestamptz,
-  updatedAt: t.timestamptz
+  courseName: t.varchar
+} as const
+
+export const course_enrollment = {
+  studentId: t.int4,
+  courseId: t.int4,
+  enrollmentDate: t.date,
+  grade: t.bpchar
 } as const
 
 export const address_type = {
@@ -71,6 +74,12 @@ export const foo = {
   colorPreference: t.varchar
 } as const
 
+export const student = {
+  id: t.int4,
+  firstName: t.varchar,
+  lastName: t.varchar
+} as const
+
 export const account = {
   id: t.int4,
   username: t.varchar,
@@ -86,20 +95,11 @@ export const account = {
   isDeleted: t.bool
 } as const
 
-export const course = {
+export const post = {
   id: t.int4,
-  courseName: t.varchar
-} as const
-
-export const student = {
-  id: t.int4,
-  firstName: t.varchar,
-  lastName: t.varchar
-} as const
-
-export const course_enrollment = {
-  studentId: t.int4,
-  courseId: t.int4,
-  enrollmentDate: t.date,
-  grade: t.bpchar
+  title: t.varchar,
+  content: t.text,
+  authorId: t.int4,
+  createdAt: t.timestamptz,
+  updatedAt: t.timestamptz
 } as const
