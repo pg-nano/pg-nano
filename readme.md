@@ -38,10 +38,6 @@ The `pg-nano` package includes a Postgres driver and a CLI.
 pnpm add pg-nano
 ```
 
-Here's a list of actively maintained plugins:
-- [@pg-nano/plugin-crud](https://github.com/pg-nano/pg-nano/tree/master/plugins/crud)
-- *If you write a plugin, please submit a PR to add it to the list!*
-
 ### Project structure
 
 1. Create a `sql` directory for your project. Put your SQL files in here. They can be named anything you want, but they must have one of these extensions: `.sql`, `.pgsql`, or `.psql`.
@@ -52,6 +48,14 @@ Here's a list of actively maintained plugins:
 2. Run `pnpm pg-nano init` to initialize your project. This will create a `pg-nano.ts` file in the current directory.
 
 Now you're ready to start using pg-nano.
+
+### Plugins
+
+Here's a list of actively maintained plugins:
+- [@pg-nano/plugin-crud](https://github.com/pg-nano/pg-nano/tree/master/plugins/crud)
+- *If you write a plugin, please submit a PR adding it here!*
+
+Currently, plugins are undocumented, but you can check out the [type definitions](https://github.com/pg-nano/pg-nano/blob/master/src/plugin/plugin.ts) used by each plugin to get an idea of how they work.
 
 ## Command-line usage
 
