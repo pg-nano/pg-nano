@@ -41,7 +41,7 @@ export async function introspectNamespaces(
     })
 
   for (const [objects, collection] of [
-    [routines, 'functions'],
+    [routines, 'routines'],
     [compositeTypes, 'compositeTypes'],
     [enumTypes, 'enumTypes'],
     [tables, 'tables'],

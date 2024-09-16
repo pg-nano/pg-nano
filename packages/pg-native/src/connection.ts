@@ -3,7 +3,7 @@ import { EventEmitter } from 'node:events'
 import util from 'node:util'
 import { isFunction, uid } from 'radashi'
 import type { StrictEventEmitter } from 'strict-event-emitter-types'
-import { debug } from './debug'
+import { debug, debugConnection, debugQuery } from './debug'
 import { PgNativeError, PgResultError } from './error'
 import { buildResult, type FieldCase, type Result } from './result'
 import { stringifyTemplate } from './stringify'
@@ -99,7 +99,7 @@ export class Connection extends ConnectionEmitter {
   close() {
     if (this.pq) {
       stopReading(unprotect(this), ConnectionStatus.CLOSED)
-      debug('closing connection')
+      debugConnection('closing connection')
       this.pq.finish()
       this.pq = null!
       this.emit('close')
@@ -131,7 +131,7 @@ function setStatus(conn: IConnection, newStatus: ConnectionStatus): void {
   if (conn.status !== newStatus) {
     conn.status = newStatus
     if (process.env.NODE_ENV !== 'production' && debug.enabled) {
-      debug(`connection status: ${ConnectionStatus[newStatus]}`)
+      debugConnection(`connection status: ${ConnectionStatus[newStatus]}`)
     }
   }
 }
@@ -177,16 +177,16 @@ async function sendQuery<TResult = Result[]>(
   stopReading(conn, ConnectionStatus.QUERY_WRITING)
 
   let debugId: string | undefined
-  if (process.env.NODE_ENV !== 'production' && debug.enabled) {
+  if (process.env.NODE_ENV !== 'production' && debugQuery.enabled) {
     debugId = uid(8)
     conn.promise.then(
       results => {
-        debug(
+        debugQuery(
           `query:${debugId} results\n  ${util.inspect(results, { depth: null }).replace(/\n/g, '\n  ')}`,
         )
       },
       error => {
-        debug(
+        debugQuery(
           `query:${debugId} error\n  ${util.inspect(error, { depth: null }).replace(/\n/g, '\n  ')}`,
         )
       },
@@ -207,9 +207,9 @@ async function sendQuery<TResult = Result[]>(
   } else {
     const query = (command.ddl = stringifyTemplate(command, conn.pq))
 
-    if (process.env.NODE_ENV !== 'production' && debug.enabled) {
+    if (process.env.NODE_ENV !== 'production' && debugQuery.enabled) {
       const indentedQuery = query.replace(/^|\n/g, '$&  ')
-      debug(`query:${debugId} writing\n${indentedQuery}`)
+      debugQuery(`query:${debugId} writing\n${indentedQuery}`)
     }
 
     sent = conn.pq.sendQuery(query)
