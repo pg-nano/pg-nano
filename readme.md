@@ -1,4 +1,4 @@
-⚠️ **This project is currently in the early stages of development and is not yet ready for production use.** Give the [demos/exhaustive](https://github.com/pg-nano/pg-nano/tree/master/demos/exhaustive) project a try if you'd like to see a preview of what's possible.
+⚠️ **This project is currently in the early stages of development and is not yet ready for production use.**
 
 # pg-nano
 
@@ -25,6 +25,8 @@ Here's what you can do with pg-nano:
 **Still have questions?** Check out the [FAQ](#faq) below.
 
 **Join the community:** Your perspective matters! [Open an issue](https://github.com/pg-nano/pg-nano/issues) or [submit a PR](https://github.com/pg-nano/pg-nano/pulls). You can also DM me on Discord (@aleclarson) if you'd like to chat.
+
+**Try our demo:** Clone pg-nano and run the [exhaustive demo](https://github.com/pg-nano/pg-nano/tree/master/demos/exhaustive) to see how it works.
 
 ## Getting started
 
