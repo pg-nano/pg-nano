@@ -1,11 +1,12 @@
 import copy from 'esbuild-plugin-copy'
 import licenses from 'esbuild-plugin-license'
-import { readFileSync } from 'fs'
+import { readFileSync } from 'node:fs'
 import { defineConfig, type Options } from 'tsup'
 
 const commonOptions = {
   format: ['esm'],
   external: ['pg-native', 'pg-nano', 'debug'],
+  noExternal: ['postgres-composite'],
   treeshake: 'smallest',
   minifySyntax: !process.env.DEV,
   dts: !process.env.DEV && {
