@@ -1,5 +1,5 @@
 {
-  "include": ["src", "plugins", "packages/pg-native/src/casing.ts"],
+  "include": ["src", "plugins"],
   "compilerOptions": {
     "declaration": true,
     "emitDeclarationOnly": true,
@@ -10,6 +10,14 @@
     "module": "esnext",
     "moduleResolution": "node",
     "target": "esnext",
-    "lib": ["esnext"]
+    "lib": ["esnext"],
+    "baseUrl": "./",
+    "paths": {
+      "pg-nano": ["./src/core/mod.ts"],
+      "pg-nano/config": ["./src/config/config.ts"],
+      "pg-nano/plugin": ["./src/plugin/plugin.ts"],
+      "@pg-nano/plugin-crud": ["./plugins/crud/src/crud.ts"],
+      "@pg-nano/plugin-crud/*": ["./plugins/crud/src/*.ts"]
+    }
   }
 }

@@ -1,5 +1,5 @@
 import type { QualifiedName, TypeName } from '@pg-nano/pg-parser'
-import { sql } from 'pg-nano'
+import { sql } from 'pg-native'
 import { unique } from 'radashi'
 
 export class SQLIdentifier {

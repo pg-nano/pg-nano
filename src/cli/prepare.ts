@@ -1,7 +1,7 @@
-import type { PgBaseType, Plugin } from '@pg-nano/plugin'
 import fs from 'node:fs'
 import path from 'node:path'
 import { PgResultError, sql } from 'pg-nano'
+import type { PgBaseType, Plugin } from 'pg-nano/plugin'
 import { capitalize, map, memo, sift } from 'radashi'
 import { debug } from './debug.js'
 import { hasCompositeTypeChanged, hasRoutineSignatureChanged } from './diff'

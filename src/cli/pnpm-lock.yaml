@@ -26,6 +26,9 @@ importers:
       pg-nano:
         specifier: workspace:@pg-nano/core@^
         version: link:../core
+      pg-native:
+        specifier: workspace:^
+        version: link:../../packages/pg-native
       radashi:
         specifier: 12.2.0-beta.af825f4
         version: 12.2.0-beta.af825f4

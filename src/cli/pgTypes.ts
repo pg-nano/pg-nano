@@ -1,4 +1,4 @@
-import type { Plugin } from '@pg-nano/plugin'
+import type { Plugin } from 'pg-nano/plugin'
 
 export type PgField = {
   name: string

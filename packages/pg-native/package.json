@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "main": "index.js",
+  "sideEffects": false,
   "dependencies": {
     "postgres-array": "workspace:^",
     "postgres-bytea": "workspace:^",

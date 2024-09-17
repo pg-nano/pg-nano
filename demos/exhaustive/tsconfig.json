@@ -1,15 +1,7 @@
 {
   "extends": "../../tsconfig.json",
-  "include": ["**/*.ts"],
+  "include": ["./"],
   "compilerOptions": {
-    "moduleResolution": "bundler",
-    "paths": {
-      "pg-nano": ["../../src/core/mod.ts"],
-      "pg-nano/config": ["../../src/config/config.ts"],
-      "@pg-nano/plugin-crud": ["../../plugins/crud/src/crud.ts"],
-      "@pg-nano/plugin-crud/field-mappers": [
-        "../../plugins/crud/src/field-mappers.ts"
-      ]
-    }
+    "moduleResolution": "bundler"
   }
 }

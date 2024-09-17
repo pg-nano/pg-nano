@@ -1,4 +1,4 @@
-import type { Plugin } from '@pg-nano/plugin'
+import type { Plugin } from 'pg-nano/plugin'
 import type { MigrationHazardType } from './hazards'
 
 export interface UserConfig {
@@ -74,3 +74,5 @@ export interface UserConfig {
 export function defineConfig(config: UserConfig) {
   return config
 }
+
+export * from './configResolver'

@@ -2,13 +2,12 @@ import {
   $,
   ConstrType,
   FunctionParameterMode,
-  NodeTag,
   parseQuery,
   splitWithScannerSync,
   walk,
 } from '@pg-nano/pg-parser'
 import util from 'node:util'
-import type { Field } from 'pg-nano'
+import type { Field } from 'pg-native'
 import { select, tryit } from 'radashi'
 import { debug } from './debug.js'
 import { SQLIdentifier, toUniqueIdList } from './identifier.js'
@@ -78,7 +77,7 @@ export async function parseObjectStatements(
       dependents: new Set(),
     }
 
-    if (NodeTag.isCreateFunctionStmt(node)) {
+    if ($.isCreateFunctionStmt(node)) {
       const fn = node.CreateFunctionStmt
       const id = SQLIdentifier.fromQualifiedName(fn.funcname)
 
@@ -126,7 +125,7 @@ export async function parseObjectStatements(
         isProcedure: fn.is_procedure ?? false,
         ...stmt,
       })
-    } else if (NodeTag.isCreateStmt(node)) {
+    } else if ($.isCreateStmt(node)) {
       const { relation, tableElts } = $(node)
       if (!tableElts) {
         continue
@@ -137,7 +136,7 @@ export async function parseObjectStatements(
       const primaryKeyColumns: string[] = []
 
       for (const elt of tableElts) {
-        if (NodeTag.isColumnDef(elt)) {
+        if ($.isColumnDef(elt)) {
           const { colname, typeName, constraints } = $(elt)
           if (!colname || !typeName) {
             log.warn(
@@ -179,7 +178,7 @@ export async function parseObjectStatements(
             type,
             refs,
           })
-        } else if (NodeTag.isConstraint(elt)) {
+        } else if ($.isConstraint(elt)) {
           const { contype } = $(elt)
           if (contype === ConstrType.CONSTR_PRIMARY) {
             for (const key of $(elt).keys!) {
@@ -196,7 +195,7 @@ export async function parseObjectStatements(
         primaryKeyColumns,
         ...stmt,
       })
-    } else if (NodeTag.isCompositeTypeStmt(node)) {
+    } else if ($.isCompositeTypeStmt(node)) {
       const { typevar, coldeflist } = $(node)
 
       const id = new SQLIdentifier(typevar.relname, typevar.schemaname)
@@ -223,7 +222,7 @@ export async function parseObjectStatements(
         columns,
         ...stmt,
       })
-    } else if (NodeTag.isCreateEnumStmt(node)) {
+    } else if ($.isCreateEnumStmt(node)) {
       const { typeName, vals } = $(node)
 
       const id = SQLIdentifier.fromQualifiedName(typeName)
@@ -236,7 +235,7 @@ export async function parseObjectStatements(
         labels,
         ...stmt,
       })
-    } else if (NodeTag.isViewStmt(node)) {
+    } else if ($.isViewStmt(node)) {
       const { view, query } = $(node)
 
       const id = new SQLIdentifier(view.relname, view.schemaname)
@@ -270,7 +269,7 @@ export async function parseObjectStatements(
         fields: null,
         ...stmt,
       })
-    } else if (NodeTag.isCreateExtensionStmt(node)) {
+    } else if ($.isCreateExtensionStmt(node)) {
       const { extname } = $(node)
       const id = new SQLIdentifier(extname)
 
@@ -282,9 +281,9 @@ export async function parseObjectStatements(
     } else {
       // These are handled by pg-schema-diff.
       if (
-        NodeTag.isIndexStmt(node) ||
-        NodeTag.isCreateTrigStmt(node) ||
-        NodeTag.isCreateSeqStmt(node)
+        $.isIndexStmt(node) ||
+        $.isCreateTrigStmt(node) ||
+        $.isCreateSeqStmt(node)
       ) {
         continue
       }

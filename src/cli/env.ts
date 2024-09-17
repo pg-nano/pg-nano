@@ -1,5 +1,3 @@
-/// <reference types="@pg-nano/plugin" />
-import type { UserConfig } from '@pg-nano/config'
 import {
   bundleRequire,
   type Options as BundleRequireOptions,
@@ -7,7 +5,9 @@ import {
 import { watch } from 'chokidar'
 import mri from 'mri'
 import path from 'node:path'
-import { Client, sql } from 'pg-nano'
+import { Client } from 'pg-nano'
+import { resolveConfig, type UserConfig } from 'pg-nano/config'
+import { sql } from 'pg-native'
 import { camel, mapKeys } from 'radashi'
 import { allMigrationHazardTypes } from '../config/hazards'
 import { findConfigFile } from './findConfigFile'
@@ -24,7 +24,6 @@ export type EnvOptions = {
 const cache = new Map<string, Promise<Env>>()
 
 export type Env = Awaited<ReturnType<typeof loadEnv>>
-export type ResolvedConfig = Env['config']
 
 export function getEnv(cwd: string, options: EnvOptions = {}) {
   const key = JSON.stringify([cwd, options.dsn])
@@ -72,38 +71,7 @@ async function loadEnv(cwd: string, options: EnvOptions) {
     userConfigDependencies = result.dependencies.map(dep => path.resolve(dep))
   }
 
-  const config = {
-    ...userConfig,
-    plugins: userConfig?.plugins ?? [],
-    dev: {
-      ...userConfig?.dev,
-      connectionString:
-        options.dsn ??
-        userConfig?.dev?.connectionString ??
-        'postgres://postgres:postgres@localhost:5432/postgres',
-    },
-    schema: {
-      ...userConfig?.schema,
-      include: userConfig?.schema?.include ?? ['**/*.pgsql'],
-      exclude: userConfig?.schema?.exclude ?? ['**/node_modules'],
-    },
-    migration: {
-      ...userConfig?.migration,
-      allowHazards: userConfig?.migration?.allowHazards ?? [],
-    },
-    generate: {
-      ...userConfig?.generate,
-      outFile: path.resolve(
-        root,
-        userConfig?.generate?.outFile ?? 'sql/schema.ts',
-      ),
-      fieldCase: userConfig?.generate?.fieldCase ?? 'camel',
-      pluginSqlDir: path.resolve(
-        root,
-        userConfig?.generate?.pluginSqlDir ?? 'sql/nano_plugins',
-      ),
-    },
-  }
+  const config = resolveConfig(root, userConfig, options)
 
   // https://github.com/stripe/pg-schema-diff/issues/129
   config.migration.allowHazards.push('HAS_UNTRACKABLE_DEPENDENCIES' as any)

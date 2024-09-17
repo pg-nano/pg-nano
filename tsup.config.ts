@@ -1,12 +1,19 @@
 import copy from 'esbuild-plugin-copy'
 import licenses from 'esbuild-plugin-license'
+import { readFileSync } from 'fs'
 import { defineConfig, type Options } from 'tsup'
 
 const commonOptions = {
   format: ['esm'],
   external: ['pg-native', 'pg-nano', 'debug'],
+  treeshake: 'smallest',
   minifySyntax: !process.env.DEV,
-  dts: !process.env.DEV,
+  dts: !process.env.DEV && {
+    compilerOptions: {
+      paths: JSON.parse(readFileSync('tsconfig.json', 'utf-8')).compilerOptions
+        .paths,
+    },
+  },
 } satisfies Options
 
 export default defineConfig([
@@ -14,9 +21,7 @@ export default defineConfig([
     ...commonOptions,
     entry: {
       'pg-nano': 'src/core/mod.ts',
-      'pg-nano/config': 'src/config/config.ts',
     },
-    splitting: false,
     esbuildPlugins: [
       copy({
         assets: {
@@ -28,13 +33,15 @@ export default defineConfig([
   },
   {
     ...commonOptions,
-    entry: { plugin: 'src/plugin/plugin.ts' },
-    outDir: 'dist/node_modules/@pg-nano/plugin',
+    entry: {
+      'pg-nano/config': 'src/config/config.ts',
+      'node_modules/@pg-nano/plugin/plugin': 'src/plugin/plugin.ts',
+    },
     esbuildPlugins: [
       copy({
         assets: {
           from: 'src/plugin/package.json',
-          to: '.',
+          to: 'node_modules/@pg-nano/plugin',
         },
       }),
     ],

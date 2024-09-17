@@ -1,5 +1,5 @@
+import type { ResolvedConfig } from 'pg-nano/config'
 import type { sql, SQLTemplate } from 'pg-native'
-import type { ResolvedConfig } from '../cli/env.js'
 import type { ParsedObjectStmt } from '../cli/parseObjectStatements.js'
 import type {
   PgFieldContext,
@@ -101,8 +101,8 @@ export interface PluginContext {
 
 export type * from '@pg-nano/pg-parser'
 export { $, select, walk } from '@pg-nano/pg-parser'
-export type { ResolvedConfig } from '../cli/env.js'
-export { SQLIdentifier } from '../cli/identifier.js'
+export type { ResolvedConfig } from 'pg-nano/config'
+export type { SQLIdentifier } from '../cli/identifier.js'
 export type * from '../cli/parseObjectStatements.js'
 export type * from '../cli/pgTypes.js'
 export {

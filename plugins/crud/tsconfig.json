@@ -1,9 +1,7 @@
 {
   "extends": "../../tsconfig.json",
-  "include": ["**/*.ts"],
+  "include": ["./"],
   "compilerOptions": {
-    "paths": {
-      "pg-nano/plugin": ["../../src/plugin/plugin.ts"]
-    }
+    "outDir": "./dist/tmp"
   }
 }

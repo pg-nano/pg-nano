@@ -1,4 +1,4 @@
-import type { PgTableStmt, Plugin, StatementsContext } from '@pg-nano/plugin'
+import type { PgTableStmt, Plugin, StatementsContext } from 'pg-nano/plugin'
 import { objectify } from 'radashi'
 import irregularPlurals from './irregular-plurals'
 
