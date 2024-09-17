@@ -297,7 +297,15 @@ I'm an independent developer without big sponsors, so I only develop what I need
 
 ## Development
 
-First, set up the local workspace.
+### Pre-requisites
+
+- [pnpm](https://pnpm.io/installation)
+- [postgres](https://www.postgresql.org/download/)
+- [go](https://golang.org/dl/) (to compile `pg-schema-diff`)
+
+### Setup
+
+Set up the local workspace.
 
 ```sh
 git clone https://github.com/pg-nano/pg-nano.git
