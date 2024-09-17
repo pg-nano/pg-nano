@@ -166,7 +166,7 @@ BEGIN
     CASE entry_key
     WHEN 'student_id' THEN result."student_id" := CAST(entry_value AS int4);
     WHEN 'course_id' THEN result."course_id" := CAST(entry_value AS int4);
-    WHEN 'enrollment_date' THEN result."enrollment_date" := CAST(entry_value AS "public"."date");
+    WHEN 'enrollment_date' THEN result."enrollment_date" := CAST(entry_value AS date);
     WHEN 'grade' THEN result."grade" := CAST(entry_value AS bpchar);
 
     ELSE
@@ -379,24 +379,24 @@ BEGIN
     CASE entry_key
     WHEN 'id' THEN result."id" := CAST(entry_value AS int4);
     WHEN 'name' THEN result."name" := CAST(entry_value AS varchar);
-    WHEN 'description' THEN result."description" := CAST(entry_value AS "public"."text");
+    WHEN 'description' THEN result."description" := CAST(entry_value AS text);
     WHEN 'created_at' THEN result."created_at" := CAST(entry_value AS timestamptz);
     WHEN 'updated_at' THEN result."updated_at" := CAST(entry_value AS timestamptz);
     WHEN 'is_active' THEN result."is_active" := CAST(entry_value AS bool);
     WHEN 'score' THEN result."score" := CAST(entry_value AS numeric);
-    WHEN 'tags' THEN result."tags" := CAST(entry_value AS "public"."text");
+    WHEN 'tags' THEN result."tags" := CAST(entry_value AS text);
     WHEN 'matrix' THEN result."matrix" := CAST(entry_value AS float8);
-    WHEN 'metadata' THEN result."metadata" := CAST(entry_value AS "public"."jsonb");
+    WHEN 'metadata' THEN result."metadata" := CAST(entry_value AS jsonb);
     WHEN 'color_preference' THEN result."color_preference" := CAST(entry_value AS varchar);
-    WHEN 'binary_data' THEN result."binary_data" := CAST(entry_value AS "public"."bytea");
-    WHEN 'coordinates' THEN result."coordinates" := CAST(entry_value AS "public"."point");
-    WHEN 'ip_address' THEN result."ip_address" := CAST(entry_value AS "public"."inet");
-    WHEN 'mac_address' THEN result."mac_address" := CAST(entry_value AS "public"."macaddr");
-    WHEN 'price_range' THEN result."price_range" := CAST(entry_value AS "public"."int4range");
-    WHEN 'schedule' THEN result."schedule" := CAST(entry_value AS "public"."tstzrange");
+    WHEN 'binary_data' THEN result."binary_data" := CAST(entry_value AS bytea);
+    WHEN 'coordinates' THEN result."coordinates" := CAST(entry_value AS point);
+    WHEN 'ip_address' THEN result."ip_address" := CAST(entry_value AS inet);
+    WHEN 'mac_address' THEN result."mac_address" := CAST(entry_value AS macaddr);
+    WHEN 'price_range' THEN result."price_range" := CAST(entry_value AS int4range);
+    WHEN 'schedule' THEN result."schedule" := CAST(entry_value AS tstzrange);
     WHEN 'priority' THEN result."priority" := CAST(entry_value AS int2);
-    WHEN 'uuid' THEN result."uuid" := CAST(entry_value AS "public"."uuid");
-    WHEN 'search_vector' THEN result."search_vector" := CAST(entry_value AS "public"."tsvector");
+    WHEN 'uuid' THEN result."uuid" := CAST(entry_value AS uuid);
+    WHEN 'search_vector' THEN result."search_vector" := CAST(entry_value AS tsvector);
     WHEN 'status' THEN result."status" := CAST(entry_value AS "public"."status_type");
     WHEN 'address' THEN result."address" := CAST(entry_value AS "public"."address_type");
     WHEN 'product_attributes' THEN result."product_attributes" := CAST(entry_value AS "public"."hstore");
@@ -510,7 +510,7 @@ BEGIN
     WHEN 'posts_count' THEN result."posts_count" := CAST(entry_value AS int4);
     WHEN 'first_name' THEN result."first_name" := CAST(entry_value AS varchar);
     WHEN 'last_name' THEN result."last_name" := CAST(entry_value AS varchar);
-    WHEN 'date_of_birth' THEN result."date_of_birth" := CAST(entry_value AS "public"."date");
+    WHEN 'date_of_birth' THEN result."date_of_birth" := CAST(entry_value AS date);
     WHEN 'created_at' THEN result."created_at" := CAST(entry_value AS timestamptz);
     WHEN 'updated_at' THEN result."updated_at" := CAST(entry_value AS timestamptz);
     WHEN 'last_login' THEN result."last_login" := CAST(entry_value AS timestamptz);
@@ -620,7 +620,7 @@ BEGIN
     CASE entry_key
     WHEN 'id' THEN result."id" := CAST(entry_value AS "public"."serial");
     WHEN 'title' THEN result."title" := CAST(entry_value AS varchar);
-    WHEN 'content' THEN result."content" := CAST(entry_value AS "public"."text");
+    WHEN 'content' THEN result."content" := CAST(entry_value AS text);
     WHEN 'author_id' THEN result."author_id" := CAST(entry_value AS int4);
     WHEN 'created_at' THEN result."created_at" := CAST(entry_value AS timestamptz);
     WHEN 'updated_at' THEN result."updated_at" := CAST(entry_value AS timestamptz);

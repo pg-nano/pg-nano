@@ -10,6 +10,62 @@ export type AddressType = {
   zipCode?: string
 }
 
+export type Account = {
+  id: number
+  username: string
+  email: string
+  passwordHash: string
+  postsCount: number
+  firstName?: string
+  lastName?: string
+  dateOfBirth?: string
+  createdAt: Timestamp
+  updatedAt: Timestamp
+  lastLogin?: Timestamp
+  isDeleted?: boolean
+}
+export declare namespace Account {
+  type InsertParams = {
+    id?: number
+    username: string
+    email: string
+    passwordHash: string
+    postsCount?: number
+    firstName?: string
+    lastName?: string
+    dateOfBirth?: string
+    createdAt?: Timestamp
+    updatedAt?: Timestamp
+    lastLogin?: Timestamp
+    isDeleted?: boolean
+  }
+}
+
+export type Course = {
+  id: number
+  courseName: string
+}
+export declare namespace Course {
+  type InsertParams = {
+    courseName: string
+  }
+}
+
+export type CourseEnrollment = {
+  studentId: number
+  courseId: number
+  enrollmentDate: string
+  grade?: string
+}
+export declare namespace CourseEnrollment {
+  type InsertParams = {
+    studentId: number
+    courseId: number
+    enrollmentDate: string
+    grade?: string
+  }
+}
+
 export type Foo = {
   id: number
   name: string
@@ -81,21 +137,6 @@ export declare namespace Post {
   }
 }
 
-export type CourseEnrollment = {
-  studentId: number
-  courseId: number
-  enrollmentDate: string
-  grade?: string
-}
-export declare namespace CourseEnrollment {
-  type InsertParams = {
-    studentId: number
-    courseId: number
-    enrollmentDate: string
-    grade?: string
-  }
-}
-
 export type Student = {
   id: number
   firstName: string
@@ -105,47 +146,6 @@ export declare namespace Student {
   type InsertParams = {
     firstName: string
     lastName: string
-  }
-}
-
-export type Account = {
-  id: number
-  username: string
-  email: string
-  passwordHash: string
-  postsCount: number
-  firstName?: string
-  lastName?: string
-  dateOfBirth?: string
-  createdAt: Timestamp
-  updatedAt: Timestamp
-  lastLogin?: Timestamp
-  isDeleted?: boolean
-}
-export declare namespace Account {
-  type InsertParams = {
-    id?: number
-    username: string
-    email: string
-    passwordHash: string
-    postsCount?: number
-    firstName?: string
-    lastName?: string
-    dateOfBirth?: string
-    createdAt?: Timestamp
-    updatedAt?: Timestamp
-    lastLogin?: Timestamp
-    isDeleted?: boolean
-  }
-}
-
-export type Course = {
-  id: number
-  courseName: string
-}
-export declare namespace Course {
-  type InsertParams = {
-    courseName: string
   }
 }
 
@@ -350,7 +350,7 @@ export declare namespace updateCourseEnrollment {
   type Result = CourseEnrollment
 }
 
-export const updateCourseEnrollment = /* @__PURE__ */ bindQueryRow<updateCourseEnrollment.Params, updateCourseEnrollment.Result>("update_course_enrollment", [t.int4, t.update_mapper(t.int4), t.text_array])
+export const updateCourseEnrollment = /* @__PURE__ */ bindQueryRow<updateCourseEnrollment.Params, updateCourseEnrollment.Result>("update_course_enrollment", [t.int4, t.int4, t.update_mapper(t.text_array)])
 
 export declare namespace updateFoo {
   type Params = [number, Partial<Foo>]
