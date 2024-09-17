@@ -688,15 +688,18 @@ export async function generate(
 
   code += '\n'
 
+  const nameSort = (a: { name: string }, b: { name: string }) =>
+    a.name.localeCompare(b.name)
+
   // Step 6: Concatenate type definitions for each namespace.
   for (const nsp of Object.values(namespaces)) {
     let nspCode = ''
 
     for (const type of [
-      ...nsp.enumTypes,
-      ...nsp.compositeTypes,
-      ...nsp.tables,
-      ...nsp.routines,
+      ...nsp.enumTypes.sort(nameSort),
+      ...nsp.compositeTypes.sort(nameSort),
+      ...nsp.tables.sort(nameSort),
+      ...nsp.routines.sort(nameSort),
     ]) {
       if (renderedObjects.has(type)) {
         nspCode += renderedObjects.get(type)!
