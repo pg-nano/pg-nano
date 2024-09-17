@@ -24,6 +24,7 @@ export default defineConfig([
       'pg-nano': 'src/core/mod.ts',
     },
     esbuildPlugins: [
+      licenses(),
       copy({
         assets: {
           from: 'packages/pg-native/package.json',
@@ -36,16 +37,8 @@ export default defineConfig([
     ...commonOptions,
     entry: {
       'pg-nano/config': 'src/config/config.ts',
-      'node_modules/@pg-nano/plugin/plugin': 'src/plugin/plugin.ts',
+      'pg-nano/plugin': 'src/plugin/plugin.ts',
     },
-    esbuildPlugins: [
-      copy({
-        assets: {
-          from: 'src/plugin/package.json',
-          to: 'node_modules/@pg-nano/plugin',
-        },
-      }),
-    ],
   },
   {
     ...commonOptions,
