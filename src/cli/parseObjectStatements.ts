@@ -11,9 +11,9 @@ import util from 'node:util'
 import type { Field } from 'pg-nano'
 import { select, tryit } from 'radashi'
 import { debug } from './debug.js'
-import { SQLIdentifier, toUniqueIdList } from './identifier'
-import type { PgBaseType } from './introspect.js'
-import { log } from './log'
+import { SQLIdentifier, toUniqueIdList } from './identifier.js'
+import { log } from './log.js'
+import type { PgBaseType } from './pgTypes.js'
 import { appendCodeFrame } from './util/codeFrame.js'
 
 const inspect = (value: any) =>
@@ -169,7 +169,7 @@ export async function parseObjectStatements(
           const type = SQLIdentifier.fromTypeName(typeName)
           if (
             type.schema == null &&
-            baseTypes.some(t => t.typname === type.name)
+            baseTypes.some(t => t.name === type.name)
           ) {
             type.schema = 'pg_catalog'
           }

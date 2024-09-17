@@ -152,25 +152,18 @@ export async function generate(
       ? unsafelyQuotedName(snakeToCamel(name), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ')
       : unsafelyQuotedName(name)
 
-  const addNamespacePrefix = (
-    typname: string,
-    nspname: string,
-    context: string,
-  ) => {
-    if (nspname !== context) {
-      let nspPrefix: string
-      if (nspname === 'public' && namespaces[context].names.includes(typname)) {
-        // When a type in the current namespace conflicts with a type in the
-        // public namespace, we need to import the public type (rather than
-        // use `public.foo`), because types in the public namespace are not
-        // actually wrapped with `namespace` syntax.
-        nspPrefix = `import('./${moduleBasename}')`
-      } else {
-        nspPrefix = pascal(nspname)
-      }
-      return nspPrefix + '.' + pascal(typname)
+  const addSchemaPrefix = (name: string, schema: string, context: string) => {
+    let prefix: string
+    if (schema === 'public' && namespaces[context].names.includes(name)) {
+      // When a type in the current namespace conflicts with a type in the
+      // public namespace, we need to import the public type (rather than use
+      // `public.foo`), because types in the public namespace are not actually
+      // wrapped with `namespace` syntax.
+      prefix = `import('./${moduleBasename}')`
+    } else {
+      prefix = pascal(schema)
     }
-    return pascal(typname)
+    return prefix + '.' + pascal(name)
   }
 
   const renderEnumType = (type: PgEnumType) =>
@@ -444,7 +437,7 @@ export async function generate(
           }
         }
         if (type.object.schema !== container.schema) {
-          jsType = addNamespacePrefix(
+          jsType = addSchemaPrefix(
             type.object.name,
             type.object.schema,
             container.schema,

@@ -1,10 +1,10 @@
 import {
   PgObjectType,
   PgParamKind,
-  type PluginContext,
   type PgTableStmt,
   type Plugin,
-} from '@pg-nano/plugin'
+  type PluginContext,
+} from 'pg-nano/plugin'
 import { objectify } from 'radashi'
 
 export default function (): Plugin {

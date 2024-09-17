@@ -1,7 +1,8 @@
 {
   "name": "@pg-nano/plugin-crud",
   "type": "module",
-  "version": "0.1.0",
+  "version": "0.0.0",
+  "sideEffects": false,
   "exports": {
     "./field-mappers": {
       "types": "./dist/field-mappers.d.ts",
@@ -13,11 +14,16 @@
     }
   },
   "devDependencies": {
-    "pg-nano": "workspace:@pg-nano/core@^",
-    "@pg-nano/plugin": "workspace:^"
+    "pg-nano": "workspace:@pg-nano/core@^"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pg-nano/pg-nano.git",
+    "directory": "plugins/crud"
+  },
+  "files": ["dist"],
   "scripts": {
-    "dev": "rimraf dist && tsup-node --watch --sourcemap",
-    "build": "rimraf dist && tsup-node"
+    "dev": "rimraf dist && tsup --watch --sourcemap",
+    "build": "rimraf dist && tsup"
   }
 }

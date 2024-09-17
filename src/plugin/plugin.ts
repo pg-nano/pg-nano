@@ -99,7 +99,8 @@ export interface PluginContext {
   mapField: PgFieldContext & GenerateContext
 }
 
-export * from '@pg-nano/pg-parser'
+export type * from '@pg-nano/pg-parser'
+export { $, select, walk } from '@pg-nano/pg-parser'
 export type { ResolvedConfig } from '../cli/env.js'
 export { SQLIdentifier } from '../cli/identifier.js'
 export type * from '../cli/parseObjectStatements.js'

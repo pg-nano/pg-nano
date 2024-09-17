@@ -3,7 +3,7 @@
   "include": ["**/*.ts"],
   "compilerOptions": {
     "paths": {
-      "@pg-nano/plugin": ["../../src/plugin/plugin.ts"]
+      "pg-nano/plugin": ["../../src/plugin/plugin.ts"]
     }
   }
 }

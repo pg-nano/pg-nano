@@ -13,4 +13,4 @@ export const allMigrationHazardTypes = [
   'INDEX_DROPPED',
   'IS_USER_GENERATED',
   'UPGRADING_EXTENSION_VERSION',
-]
+] as const

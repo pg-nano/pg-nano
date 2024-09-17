@@ -4,7 +4,8 @@ import type { MigrationHazardType } from './hazards'
 export interface UserConfig {
   dev?: {
     /**
-     * The connection string to use when connecting to the database.
+     * The connection string to use when connecting to the database. The user
+     * must be a superuser.
      *
      * Defaults to `postgres://postgres:postgres@localhost:5432/postgres`.
      */
@@ -30,6 +31,11 @@ export interface UserConfig {
     exclude?: string[]
   }
   migration?: {
+    /**
+     * Allow certain migration hazards that are usually disabled for safety. By
+     * default, when connecting to a local Postgres instance, all hazards are
+     * allowed.
+     */
     allowHazards?: MigrationHazardType[]
   }
   generate?: {

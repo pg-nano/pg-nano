@@ -299,14 +299,14 @@ I'm an independent developer without big sponsors, so I only develop what I need
 
 When making changes to pg-nano, first install the dependencies and start the dev server.
 
-```
+```sh
 pnpm install
 pnpm dev
 ```
 
 You can play with your changes in the `./demos/exhaustive` directory.
 
-```
+```sh
 cd demos/exhaustive
 pnpm dev
 ```
@@ -315,13 +315,13 @@ pnpm dev
 
 If you're editing C++ code in either `packages/libpq` or `packages/pg-parser`, you'll want to have [compiledb](https://github.com/nickdiego/compiledb) installed and the [clangd extension](https://marketplace.visualstudio.com/items?itemName=llvm-vs-code-extensions.vscode-clangd) in VSCode. This enables the `clangd` language server for features like autocomplete, static analysis, and code navigation.
 
-```
+```sh
 brew install compiledb
 ```
 
 Both `libpq` and `pg-parser` are compiled on install. If you make changes, you'll need one of the following commands to recompile.
 
-```
+```sh
 # Must be run from ./packages/libpq or ./packages/pg-parser
 pnpm build
 
