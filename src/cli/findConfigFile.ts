@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs'
 import path from 'node:path'
 
-const configFileName = 'pg-nano.ts'
+const configFileName = 'pg-nano.config.ts'
 
 export function findConfigFile(cwd: string): string | null {
   let currentDir = cwd
