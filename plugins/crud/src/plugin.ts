@@ -47,14 +47,18 @@ export default function (): Plugin {
         }
       }
 
-      this.mapField = ({ fieldName, container }) => {
+      this.mapField = ({ paramKind, paramIndex = -1, container }) => {
         if (
           container.plugin !== this ||
-          container.type !== PgObjectType.Routine
+          container.type !== PgObjectType.Routine ||
+          !container.name.startsWith('update_')
         ) {
           return null
         }
-        if (container.name.startsWith('update_') && fieldName === '$2') {
+        if (
+          paramKind === PgParamKind.In &&
+          paramIndex === container.paramTypes.length - 1
+        ) {
           return {
             name: 'update_mapper',
             path: '@pg-nano/plugin-crud/field-mappers',
