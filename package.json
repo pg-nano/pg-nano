@@ -42,7 +42,7 @@
     "vitest": "^2.0.5"
   },
   "scripts": {
-    "prepare": "pnpm -s build",
+    "prepublishOnly": "pnpm -s build:core",
     "build": "tinyrun --names core,plugins 'pnpm -s build:core' 'pnpm --stream --filter=@pg-nano/plugin-* build'",
     "build:core": "rimraf dist && tsup",
     "dev": "tinyrun --names pg-nano,plugins 'pnpm -s dev:core' 'pnpm --stream --filter=@pg-nano/plugin-* dev'",
@@ -50,9 +50,7 @@
     "format": "biome check --fix --unsafe src generators package.json",
     "lint": "tinyrun --names pg-nano,pg-native,biome 'tsc -p .' 'tsc -p src/pg-native' 'biome lint src generators'"
   },
-  "files": [
-    "dist"
-  ],
+  "files": ["dist"],
   "dependencies": {
     "@pg-nano/libpq": "workspace:^",
     "@pg-nano/pg-parser": "workspace:^",
