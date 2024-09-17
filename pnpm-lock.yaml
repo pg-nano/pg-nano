@@ -29,9 +29,6 @@ importers:
       esbuild:
         specifier: ^0.23.1
         version: 0.23.1
-      jiti:
-        specifier: ^1.21.6
-        version: 1.21.6
       postgres-composite:
         specifier: workspace:^
         version: link:packages/postgres-composite
@@ -2036,7 +2033,8 @@ snapshots:
     optionalDependencies:
       '@pkgjs/parseargs': 0.11.0
 
-  jiti@1.21.6: {}
+  jiti@1.21.6:
+    optional: true
 
   joycon@3.1.1: {}
 
