@@ -52,6 +52,10 @@
     "format": "biome check --fix --unsafe src package.json",
     "lint": "tinyrun --names pg-nano,pg-native,biome 'tsc -p .' 'tsc -p src/pg-native' 'biome lint src generators'"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pg-nano/pg-nano.git"
+  },
   "files": ["dist"],
   "dependencies": {
     "@pg-nano/libpq": "workspace:^",
