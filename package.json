@@ -10,8 +10,8 @@
       "default": "./dist/pg-nano/config.js"
     },
     "./plugin": {
-      "types": "./dist/node-modules/@pg-nano/plugin/plugin.d.ts",
-      "default": "./dist/node-modules/@pg-nano/plugin/plugin.js"
+      "types": "./dist/pg-nano/plugin.d.ts",
+      "default": "./dist/pg-nano/plugin.js"
     },
     ".": {
       "types": "./dist/pg-nano.d.ts",
