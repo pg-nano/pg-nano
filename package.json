@@ -1,7 +1,7 @@
 {
   "name": "pg-nano",
   "type": "module",
-  "version": "0.1.0-beta.1",
+  "version": "0.1.0-beta.2",
   "sideEffects": false,
   "bin": "dist/pg-nano/cli/main.js",
   "exports": {
@@ -56,7 +56,9 @@
     "type": "git",
     "url": "https://github.com/pg-nano/pg-nano.git"
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "dependencies": {
     "@pg-nano/libpq": "workspace:^",
     "@pg-nano/pg-parser": "workspace:^",
