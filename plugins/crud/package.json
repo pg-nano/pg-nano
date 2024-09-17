@@ -29,6 +29,7 @@
   ],
   "scripts": {
     "dev": "rimraf dist && tsup --watch --sourcemap",
-    "build": "rimraf dist && tsup"
+    "build": "rimraf dist && tsup",
+    "prepublishOnly": "pnpm -s build"
   }
 }
