@@ -44,9 +44,10 @@
   },
   "scripts": {
     "prepublishOnly": "pnpm -s build:core",
-    "build": "tinyrun --names core,plugins 'pnpm -s build:core' 'pnpm --stream --filter=@pg-nano/plugin-* build'",
+    "build": "pnpm -s build:native && tinyrun --names core,plugins 'pnpm -s build:core' 'pnpm --stream --filter=@pg-nano/plugin-* build'",
     "build:core": "rimraf dist && tsup",
-    "dev": "tinyrun --names pg-nano,plugins 'pnpm -s dev:core' 'pnpm --stream --filter=@pg-nano/plugin-* dev'",
+    "build:native": "pnpm --stream --filter=@pg-nano/libpq --filter=@pg-nano/pg-parser --filter=@pg-nano/pg-schema-diff build",
+    "dev": "tinyrun --names core,plugins 'pnpm -s dev:core' 'pnpm --stream --filter=@pg-nano/plugin-* dev'",
     "dev:core": "rimraf dist && DEV=1 tsup --watch --sourcemap",
     "format": "biome check --fix --unsafe src package.json",
     "lint": "tinyrun --names pg-nano,pg-native,biome 'tsc -p .' 'tsc -p src/pg-native' 'biome lint src generators'"
