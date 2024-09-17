@@ -297,12 +297,23 @@ I'm an independent developer without big sponsors, so I only develop what I need
 
 ## Development
 
-When making changes to pg-nano, first install the dependencies and start the dev server.
+First, set up the local workspace.
 
 ```sh
+git clone https://github.com/pg-nano/pg-nano.git
+cd pg-nano
+git submodule update --init --recursive
 pnpm install
+pnpm build
+```
+
+The `dev` command compiles the TypeScript modules of the `pg-nano` and `@pg-nano/plugin-*` packages. It re-compiles on file changes.
+
+```sh
 pnpm dev
 ```
+
+### Playground
 
 You can play with your changes in the `./demos/exhaustive` directory.
 
