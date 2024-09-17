@@ -1,11 +1,11 @@
+import type { Client } from 'pg-nano'
 import {
-  buildResult,
-  sql,
-  type Client,
   type QueryHook,
   type Result,
   type SQLTemplate,
-} from 'pg-nano'
+  buildResult,
+  sql,
+} from 'pg-native'
 import { uid } from 'radashi'
 import type { PgViewStmt } from './parseObjectStatements.js'
 import { parseViewSubquery } from './parseViewSubquery.js'
