@@ -19,6 +19,7 @@ Here's what you can do with pg-nano:
 - Our Postgres driver integrates with [libpq](https://www.postgresql.org/docs/9.5/libpq.html), the official Postgres C library, so it's fast and reliable.
 - Query streaming, SQL templating, connection pooling, and “reconnect with backoff” come built-in. “Pipeline mode” is planned for the future (subscribe to [#1](https://github.com/pg-nano/pg-nano/issues/1) for updates).
 - [Composite types](https://www.postgresql.org/docs/current/rowtypes.html) are automatically parsed and come with type definitions. Other NPM packages either give you a string and/or require custom parsing logic.
+- Field name conversion is supported out of the box. Want camel case in your TypeScript but snake case in your database? No problem. Don't want that? Disable it with `fieldCase: FieldCase.preserve`.
 - Customize the generated TypeScript definitions, generate SQL statements, and extend the client's data type handling with pg-nano's compile-time plugin system, inspired by Vite. See [@pg-nano/plugin-crud](https://github.com/pg-nano/pg-nano/tree/master/plugins/crud) for an example.
 - With stored procedures, query performance is improved (thanks to “execution plan” caching, reduced data transfer, minimized round-trips, and efficient complex data processing closer to the data source). This is especially true for frequently executed complex queries and high-volume data operations.
 
