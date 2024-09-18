@@ -10,6 +10,8 @@
 
 You like TypeScript. You like Postgres. You like the idea of combining the two seamlessly. You dislike being restricted by ORMs. You dislike writing trivial migrations by hand. You're ready to embrace plain SQL or a procedural language like PL/pgSQL. If these statements describe you, then pg-nano is for you.
 
+pg-nano is a native Postgres driver for TypeScript, a TypeScript code generator, and a Postgres migration tool.
+
 Here's what you can do with pg-nano:
 
 - Generate fully-typed TypeScript bindings that make calling your Postgres functions from your application server a breeze.
