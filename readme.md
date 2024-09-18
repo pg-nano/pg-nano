@@ -56,7 +56,7 @@ Here's a list of actively maintained plugins:
 - [@pg-nano/plugin-crud](https://github.com/pg-nano/pg-nano/tree/master/plugins/crud)
 - *If you write a plugin, please submit a PR adding it here!*
 
-Currently, plugins are undocumented, but you can check out the [type definitions](https://github.com/pg-nano/pg-nano/blob/master/src/plugin/plugin.ts) used by each plugin to get an idea of how they work.
+Currently, the plugin API is undocumented, but you can check out the [type definitions](https://github.com/pg-nano/pg-nano/blob/master/src/plugin/plugin.ts) to get an idea of how they work.
 
 ## Command-line usage
 
