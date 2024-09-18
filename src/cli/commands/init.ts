@@ -14,7 +14,7 @@ const configTemplate = dedent`
     schema: {
       include: ['**/*.pgsql'],
     },
-    typescript: {
+    generate: {
       outFile: 'sql/schema.ts',
     },
   })
