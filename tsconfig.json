@@ -15,9 +15,7 @@
     "paths": {
       "pg-nano": ["./src/core/mod.ts"],
       "pg-nano/config": ["./src/config/config.ts"],
-      "pg-nano/plugin": ["./src/plugin/plugin.ts"],
-      "@pg-nano/plugin-crud": ["./plugins/crud/src/crud.ts"],
-      "@pg-nano/plugin-crud/*": ["./plugins/crud/src/*.ts"]
+      "pg-nano/plugin": ["./src/plugin/plugin.ts"]
     }
   }
 }
