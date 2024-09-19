@@ -1,4 +1,4 @@
-import * as t from './types.js'
+import * as t from './typeData.js'
 
 // Base types
 export const bool = 16
@@ -23,7 +23,7 @@ export const uuid = 2950
 export const varchar = 1043
 
 // Field mappers
-export { update_mapper } from "@pg-nano/plugin-crud/field-mappers"
+export { update_mapper } from '@pg-nano/plugin-crud/field-mappers'
 
 // Enum types
 export const status_type = 3338343
@@ -31,21 +31,21 @@ export const status_type = 3338343
 // Composite types
 export const course = {
   id: t.int4,
-  courseName: t.varchar
+  courseName: t.varchar,
 } as const
 
 export const course_enrollment = {
   studentId: t.int4,
   courseId: t.int4,
   enrollmentDate: t.date,
-  grade: t.bpchar
+  grade: t.bpchar,
 } as const
 
 export const address_type = {
   street: t.varchar,
   city: t.varchar,
   state: t.varchar,
-  zipCode: t.varchar
+  zipCode: t.varchar,
 } as const
 
 export const foo = {
@@ -71,13 +71,13 @@ export const foo = {
   status: 3338343 /* status_type */,
   address: t.address_type,
   productAttributes: 3338215 /* unknown */,
-  colorPreference: t.varchar
+  colorPreference: t.varchar,
 } as const
 
 export const student = {
   id: t.int4,
   firstName: t.varchar,
-  lastName: t.varchar
+  lastName: t.varchar,
 } as const
 
 export const account = {
@@ -92,7 +92,7 @@ export const account = {
   createdAt: t.timestamptz,
   updatedAt: t.timestamptz,
   lastLogin: t.timestamptz,
-  isDeleted: t.bool
+  isDeleted: t.bool,
 } as const
 
 export const post = {
@@ -101,5 +101,5 @@ export const post = {
   content: t.text,
   authorId: t.int4,
   createdAt: t.timestamptz,
-  updatedAt: t.timestamptz
+  updatedAt: t.timestamptz,
 } as const

@@ -1,4 +1,5 @@
 import crud from '@pg-nano/plugin-crud'
+import typebox from '@pg-nano/plugin-typebox'
 import { defineConfig } from 'pg-nano/config'
 
 export default defineConfig({
@@ -11,5 +12,10 @@ export default defineConfig({
   generate: {
     outFile: 'sql/schema.ts',
   },
-  plugins: [crud()],
+  plugins: [
+    crud(),
+    typebox({
+      formatScript: 'pnpm format',
+    }),
+  ],
 })

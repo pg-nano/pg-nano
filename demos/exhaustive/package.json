@@ -3,11 +3,17 @@
   "type": "module",
   "dependencies": {
     "@pg-nano/plugin-crud": "workspace:*",
+    "@pg-nano/plugin-typebox": "workspace:*",
     "pg-nano": "workspace:*"
   },
   "scripts": {
     "test": "tsx --watch test.ts",
-    "dev": "NODE_OPTIONS='--enable-source-maps' BUNDLE_REQUIRE_OPTIONS='--not-external @pg-nano/plugin --not-external radashi' pg-nano dev",
-    "start": "sh start.sh"
+    "dev": "NODE_OPTIONS='--enable-source-maps' BUNDLE_REQUIRE_OPTIONS='--not-external @pg-nano/plugin-crud --not-external @pg-nano/plugin-typebox' pg-nano dev",
+    "start": "sh start.sh",
+    "format": "biome check --fix"
+  },
+  "devDependencies": {
+    "magic-string": "^0.30.11",
+    "tinyspawn": "^1.3.3"
   }
 }
