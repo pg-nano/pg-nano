@@ -651,17 +651,17 @@ export async function generate(
     fieldMapper => `export { ${fieldMapper.name} } from "${fieldMapper.path}"`,
   )
 
-  // Step 5: Write the "types.ts" module.
+  // Step 5: Write the "typeData.ts" module.
   if (
     renderedBaseTypes.size +
     renderedEnumTypes.size +
     renderedCompositeFields.size +
     renderedFieldMappers.length
   ) {
-    foreignImports.add("* as t from './types.js'")
+    foreignImports.add("* as t from './typeData.js'")
     fs.writeFileSync(
-      path.resolve(outFile, '../types.ts'),
-      "import * as t from './types.js'\n\n// Base types\n" +
+      path.resolve(outFile, '../typeData.ts'),
+      "import * as t from './typeData.js'\n\n// Base types\n" +
         Array.from(renderedBaseTypes.values()).sort().join('\n') +
         (renderedFieldMappers.length > 0
           ? '\n\n// Field mappers\n' + renderedFieldMappers.join('\n')
