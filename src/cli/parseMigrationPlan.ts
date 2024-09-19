@@ -1,5 +1,9 @@
 import type { Readable } from 'node:stream'
 
+/**
+ * This is a streaming parser for the stdout of a `pg-schema-diff apply`
+ * command. Note that, currently, it's only used when --verbose is set.
+ */
 export async function* parseMigrationPlan(stdout: Readable) {
   let buffer = ''
   let skipped = false
