@@ -8,4 +8,10 @@ export * from './stringify.js'
 export * from './template.js'
 export * from './tuple.js'
 
-export { Range } from 'postgres-range'
+export {
+  Range,
+  RangeFlag,
+  RangeParserError,
+  parse as parseRange,
+  serialize as stringifyRange,
+} from 'postgres-range'

@@ -2,7 +2,7 @@ import * as array from 'postgres-array'
 import parseByteA from 'postgres-bytea'
 import parseTimestampTz from 'postgres-date'
 import parseInterval from 'postgres-interval'
-import range from 'postgres-range'
+import * as range from 'postgres-range'
 
 function parseArray(transform: (value: string) => any) {
   return (value: string) => array.parse(value, transform)
