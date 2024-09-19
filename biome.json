@@ -2,7 +2,8 @@
   "$schema": "https://biomejs.dev/schemas/1.8.3/schema.json",
   "extends": ["@radashi-org/biome-config"],
   "files": {
-    "include": ["scripts/**/*.mjs"]
+    "include": ["scripts/**/*.mjs", "demos/**/*.ts"],
+    "ignore": ["**/typebox-codegen/**"]
   },
   "linter": {
     "rules": {
