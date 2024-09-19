@@ -5,7 +5,7 @@
   "main": "config.js",
   "devDependencies": {
     "@types/node": "^22.5.1",
-    "@pg-nano/plugin": "workspace:^",
+    "pg-nano": "workspace:@pg-nano/core@^",
     "radashi": "12.2.0-beta.af825f4"
   }
 }

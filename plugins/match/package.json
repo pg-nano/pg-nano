@@ -13,8 +13,7 @@
     }
   },
   "devDependencies": {
-    "pg-nano": "workspace:@pg-nano/core@^",
-    "@pg-nano/plugin": "workspace:^"
+    "pg-nano": "workspace:@pg-nano/core@^"
   },
   "scripts": {
     "dev": "rimraf dist && tsup --watch --sourcemap",
