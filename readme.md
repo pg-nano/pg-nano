@@ -55,7 +55,8 @@ Now you're ready to start using pg-nano.
 ### Plugins
 
 Here's a list of actively maintained plugins:
-- [@pg-nano/plugin-crud](https://github.com/pg-nano/pg-nano/tree/master/plugins/crud)
+- [@pg-nano/plugin-crud](https://github.com/pg-nano/pg-nano/tree/master/plugins/crud) (auto-generates CRUD functions for your tables)
+- [@pg-nano/plugin-typebox](https://github.com/pg-nano/pg-nano/tree/master/plugins/typebox) (auto-generates [TypeBox](https://github.com/sinclairzx81/typebox) runtime type validators for your Postgres tables, enums, and composite types)
 - *If you write a plugin, please submit a PR adding it here!*
 
 Currently, the plugin API is undocumented, but you can check out the [type definitions](https://github.com/pg-nano/pg-nano/blob/master/src/plugin/plugin.ts) to get an idea of how they work.

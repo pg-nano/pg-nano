@@ -1,0 +1,42 @@
+{
+  "name": "@pg-nano/plugin-typebox",
+  "type": "module",
+  "version": "0.0.0",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/plugin.d.ts",
+      "default": "./dist/plugin.js"
+    },
+    "./types": {
+      "types": "./dist/types.d.ts",
+      "default": "./dist/types.js"
+    }
+  },
+  "devDependencies": {
+    "@sinclair/typebox": "link:../../node_modules/@sinclair/typebox",
+    "pg-nano": "workspace:@pg-nano/core@^"
+  },
+  "peerDependencies": {
+    "@sinclair/typebox": "*",
+    "pg-nano": "*",
+    "typescript": "*"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pg-nano/pg-nano.git",
+    "directory": "plugins/typebox"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "dev": "rimraf dist && tsup --watch --sourcemap",
+    "build": "rimraf dist && tsup",
+    "prepublishOnly": "pnpm -s build"
+  },
+  "dependencies": {
+    "magic-string": "^0.30.11",
+    "tinyspawn": "^1.3.3"
+  }
+}
