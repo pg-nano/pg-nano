@@ -678,6 +678,28 @@ export async function generate(
     )
   }
 
+  type GenerateEndPlugin = Plugin & { generateEnd: Function }
+
+  const generateEndPlugins = env.config.plugins.filter(
+    (p): p is GenerateEndPlugin => p.generateEnd != null,
+  )
+
+  const prelude: string[] = []
+
+  // Step 6: Run the "generateEnd" hook of each plugin.
+  if (generateEndPlugins.length > 0) {
+    const generateEndContext: PluginContext['generateEnd'] = {
+      renderedObjects,
+      imports,
+      foreignImports,
+      prelude,
+    }
+
+    for (const plugin of generateEndPlugins) {
+      await plugin.generateEnd(generateEndContext, env.config)
+    }
+  }
+
   let code = dedent`
     import { ${[...imports].sort().join(', ')} } from 'pg-nano'\n
   `
@@ -688,10 +710,14 @@ export async function generate(
 
   code += '\n'
 
+  if (prelude.length > 0) {
+    code += prelude.join('\n') + '\n\n'
+  }
+
   const nameSort = (a: { name: string }, b: { name: string }) =>
     a.name.localeCompare(b.name)
 
-  // Step 6: Concatenate type definitions for each namespace.
+  // Step 7: Concatenate type definitions for each namespace.
   for (const nsp of Object.values(namespaces)) {
     let nspCode = ''
 
@@ -714,10 +740,10 @@ export async function generate(
         : `export namespace ${pascal(nsp.schema)} {\n${indent(nspCode)}\n}\n\n`
   }
 
-  // Step 7: Write the TypeScript schema to a file.
+  // Step 8: Write the TypeScript schema to a file.
   fs.writeFileSync(outFile, code.replace(/\s+$/, '\n'))
 
-  // Step 8: Warn about any unsupported types.
+  // Step 9: Warn about any unsupported types.
   for (const typeOid of unsupportedTypes) {
     const typeName = await pg.queryValue<string>(sql`
       SELECT typname FROM pg_type WHERE oid = ${sql.val(typeOid)}

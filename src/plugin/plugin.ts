@@ -4,6 +4,7 @@ import type { ParsedObjectStmt } from '../cli/parseObjectStatements.js'
 import type {
   PgFieldContext,
   PgNamespace,
+  PgObject,
   PgParamKind,
   PgRoutine,
   PgTable,
@@ -31,6 +32,10 @@ export interface Plugin {
    */
   generateStart?: (
     ctx: PluginContext['generateStart'],
+    config: Readonly<ResolvedConfig>,
+  ) => Awaitable<void>
+  generateEnd?: (
+    ctx: PluginContext['generateEnd'],
     config: Readonly<ResolvedConfig>,
   ) => Awaitable<void>
   /**
@@ -85,6 +90,36 @@ export interface PluginContext {
     sql: typeof sql
   }
   generateStart: GenerateContext
+  generateEnd: {
+    /**
+     * Identifiers imported from the `pg-nano` package. These may include a
+     * leading `type` keyword (for type-only imports) or a trailing `as` clause
+     * (for renaming imports).
+     */
+    imports: Set<string>
+    /**
+     * Imports from other packages that will be added to the generated
+     * TypeScript module. You must include everything an `import` statement
+     * needs, except for the leading `import` keyword.
+     *
+     * @example
+     * ```ts
+     * foreignImports.add('{ foo } from "bar"')
+     * ```
+     */
+    foreignImports: Set<string>
+    /**
+     * A list of TypeScript statements to be included at the top of the
+     * generated file, after the imports.
+     */
+    prelude: string[]
+    /**
+     * Every database object mapped to the TypeScript code generated for it.
+     * After this hook is completed, they are concatenated into a single
+     * TypeScript file.
+     */
+    renderedObjects: Map<PgObject, string>
+  }
   mapTypeReference: PgTypeContext &
     GenerateContext & {
       /**
