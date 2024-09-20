@@ -4,12 +4,25 @@ import type { MigrationHazardType } from './hazards'
 export interface UserConfig {
   dev?: {
     /**
-     * The connection string to use when connecting to the database. The user
-     * must be a superuser.
-     *
-     * Defaults to `postgres://postgres:postgres@localhost:5432/postgres`.
+     * The host to connect to.
      */
-    connectionString?: string
+    host?: string
+    /**
+     * The port to connect to.
+     */
+    port?: number
+    /**
+     * The database to connect to.
+     */
+    database?: string
+    /**
+     * The user to connect as.
+     */
+    user?: string
+    /**
+     * The password for the user.
+     */
+    password?: string
   }
   schema?: {
     /**

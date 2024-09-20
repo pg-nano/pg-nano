@@ -49,14 +49,24 @@ export class Connection extends ConnectionEmitter {
   constructor(
     readonly fieldCase: FieldCase,
     readonly idleTimeout: number,
+    readonly host?: string,
+    readonly port?: number,
+    readonly database?: string,
+    readonly user?: string,
+    readonly password?: string,
   ) {
     super()
     reset(unprotect(this), ConnectionStatus.CLOSED)
   }
 
-  async connect(dsn: string) {
+  async connect(dsn?: string) {
     this.pq = new Libpq()
-    await util.promisify(this.pq.connect.bind(this.pq, dsn))()
+    if (dsn) {
+      await util.promisify(this.pq.connect.bind(this.pq, dsn))()
+    } else {
+      const connectionString = `host=${this.host} port=${this.port} dbname=${this.database} user=${this.user} password=${this.password}`;
+      await util.promisify(this.pq.connect.bind(this.pq, connectionString))()
+    }
     setStatus(unprotect(this), ConnectionStatus.IDLE)
   }
 
