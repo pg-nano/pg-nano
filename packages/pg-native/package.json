@@ -5,7 +5,7 @@
   "type": "module",
   "main": "index.js",
   "sideEffects": false,
-  "dependencies": {
+  "devDependencies": {
     "postgres-array": "workspace:^",
     "postgres-bytea": "workspace:^",
     "postgres-date": "workspace:^",

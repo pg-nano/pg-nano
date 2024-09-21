@@ -6,14 +6,11 @@ import { defineConfig, type Options } from 'tsup'
 const commonOptions = {
   format: ['esm'],
   external: ['pg-native', 'pg-nano', 'debug'],
-  noExternal: ['postgres-composite'],
   treeshake: 'smallest',
   minifySyntax: !process.env.DEV,
   dts: !process.env.DEV && {
-    compilerOptions: {
-      paths: JSON.parse(readFileSync('tsconfig.json', 'utf-8')).compilerOptions
-        .paths,
-    },
+    compilerOptions: JSON.parse(readFileSync('tsconfig.json', 'utf-8'))
+      .compilerOptions,
   },
 } satisfies Options
 

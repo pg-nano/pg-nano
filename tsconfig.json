@@ -15,7 +15,9 @@
     "paths": {
       "pg-nano": ["./src/core/mod.ts"],
       "pg-nano/config": ["./src/config/config.ts"],
-      "pg-nano/plugin": ["./src/plugin/plugin.ts"]
+      "pg-nano/plugin": ["./src/plugin/plugin.ts"],
+      "postgres-composite": ["./packages/postgres-composite/src/index.ts"],
+      "postgres-range": ["./packages/postgres-range/src/index.ts"]
     }
   }
 }
