@@ -1,16 +1,10 @@
 import MagicString from 'magic-string'
-import path from 'node:path'
 import { type PgObject, PgObjectType, type Plugin } from 'pg-nano/plugin'
-import { noop, select } from 'radashi'
-import spawn from 'tinyspawn'
+import { select } from 'radashi'
 import * as ts from 'typescript'
 import { TypeScriptToTypeBox } from './typebox-codegen/typescript/generator'
 
-export default function (
-  options: {
-    formatScript?: string
-  } = {},
-): Plugin {
+export default function (): Plugin {
   return {
     name: '@pg-nano/plugin-typebox',
     async generateEnd(
@@ -49,13 +43,6 @@ export default function (
           useExportEverything: true,
         })
         renderedObjects.set(object, fixTypeBoxOutput(output, object))
-      }
-
-      if (options.formatScript) {
-        await spawn(options.formatScript, {
-          cwd: path.dirname(config.generate.outFile),
-          stdio: 'inherit',
-        }).catch(noop)
       }
     },
   }

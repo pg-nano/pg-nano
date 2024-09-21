@@ -27,16 +27,13 @@
     "url": "git+https://github.com/pg-nano/pg-nano.git",
     "directory": "plugins/typebox"
   },
-  "files": [
-    "dist"
-  ],
+  "files": ["dist"],
   "scripts": {
     "dev": "rimraf dist && tsup --watch --sourcemap",
     "build": "rimraf dist && tsup",
     "prepublishOnly": "pnpm -s build"
   },
   "dependencies": {
-    "magic-string": "^0.30.11",
-    "tinyspawn": "^1.3.3"
+    "magic-string": "^0.30.11"
   }
 }
