@@ -10,6 +10,7 @@ import { resolveConfig, type UserConfig } from 'pg-nano/config'
 import { sql } from 'pg-native'
 import { camel, mapKeys } from 'radashi'
 import { allMigrationHazardTypes } from '../config/hazards'
+import { debug } from './debug.js'
 import { findConfigFile } from './findConfigFile'
 import { log } from './log'
 
@@ -58,8 +59,9 @@ async function loadEnv(cwd: string, options: EnvOptions) {
       const { '': _, ...parsedOptions } = mapKeys(mri(rawOptions), key =>
         camel(key),
       )
-
-      log('Using BUNDLE_REQUIRE_OPTIONS →', parsedOptions)
+      if (debug.enabled) {
+        log('Using BUNDLE_REQUIRE_OPTIONS →', parsedOptions)
+      }
       Object.assign(options, parsedOptions)
     }
     log('Loading config file', configFilePath)
