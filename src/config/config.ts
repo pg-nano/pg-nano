@@ -1,15 +1,31 @@
 import type { Plugin } from 'pg-nano/plugin'
+import type { ConnectOptions } from 'pg-native'
 import type { MigrationHazardType } from './hazards'
 
+export type { ConnectOptions }
+
 export interface UserConfig {
-  dev?: {
+  dev: {
     /**
      * The connection string to use when connecting to the database. The user
      * must be a superuser.
      *
-     * Defaults to `postgres://postgres:postgres@localhost:5432/postgres`.
+     * This may be a DSN (e.g. `"postgres://user:pass@host:port/db"`) or a
+     * string of space-separated connection options (e.g. `"user=postgres
+     * password=pass host=localhost port=5432 dbname=db"`).
+     *
+     * You may prefer using the `connection` option instead, which allows you to
+     * set all the connection options individually.
      */
     connectionString?: string
+    /**
+     * The connection options to use when connecting to the database. The user
+     * must be a superuser. This option is required if `connectionString` is not
+     * provided, but you can set it to an `{}` to use only
+     * {@link https://www.postgresql.org/docs/current/libpq-envars.html|environment variables}
+     * like `PGUSER`, `PGPASSWORD`, etc.
+     */
+    connection?: ConnectOptions
   }
   schema?: {
     /**

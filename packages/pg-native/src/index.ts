@@ -1,4 +1,5 @@
 export * from './casing.js'
+export * from './connect-options.js'
 export * from './connection.js'
 export * from './error.js'
 export * from './interval.js'

@@ -106,9 +106,12 @@ async function loadEnv(cwd: string, options: EnvOptions) {
     get client() {
       return (client ??= (async () => {
         log('Connecting to database', fuzzPassword(config.dev.connectionString))
+
         const client = new Client()
+
         await client.connect(config.dev.connectionString)
         await client.query(sql.unsafe('SET client_min_messages TO WARNING;'))
+
         return client
       })())
     },
@@ -119,8 +122,7 @@ async function loadEnv(cwd: string, options: EnvOptions) {
 }
 
 function fuzzPassword(connectionString: string) {
-  return connectionString.replace(
-    /\bpostgres:\/\/(\w+):[^@]+@/g,
-    'postgres://$1:***@',
-  )
+  return connectionString
+    .replace(/\bpostgres:\/\/(\w+):[^@]+@/g, 'postgres://$1:***@')
+    .replace(/\bpassword=[^&]+&?/g, 'password=***&')
 }

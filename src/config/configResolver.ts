@@ -1,5 +1,6 @@
 import path from 'node:path'
 import type { UserConfig } from 'pg-nano/config'
+import { stringifyConnectOptions } from 'pg-native'
 
 export type ResolvedConfig = ReturnType<typeof resolveConfig>
 
@@ -12,15 +13,27 @@ export function resolveConfig(
   userConfig: UserConfig | undefined,
   options: Options,
 ) {
+  let connectionString = options.dsn ?? userConfig?.dev.connectionString
+  if (connectionString) {
+    connectionString = addApplicationName(connectionString)
+  } else if (userConfig?.dev.connection) {
+    connectionString = stringifyConnectOptions({
+      ...userConfig.dev.connection,
+      application_name: 'pg-nano',
+    })
+  } else {
+    throw Error(
+      'Must set either dev.connectionString or dev.connection ' +
+        'in your config file or specify the --dsn flag',
+    )
+  }
+
   return {
     ...userConfig,
     plugins: userConfig?.plugins ?? [],
     dev: {
       ...userConfig?.dev,
-      connectionString:
-        options.dsn ??
-        userConfig?.dev?.connectionString ??
-        'postgres://postgres:postgres@localhost:5432/postgres',
+      connectionString,
     },
     schema: {
       ...userConfig?.schema,
@@ -44,4 +57,21 @@ export function resolveConfig(
       ),
     },
   }
+}
+
+function addApplicationName(connectionString: string) {
+  const name = 'pg-nano'
+  if (connectionString.startsWith('postgres://')) {
+    const url = new URL(connectionString)
+    url.searchParams.set('application_name', name)
+    return url.toString()
+  }
+  const options = Object.fromEntries(
+    connectionString.split(' ').map(part => {
+      const [key, value] = part.split('=')
+      return [key, value] as const
+    }),
+  )
+  options.application_name = name
+  return stringifyConnectOptions(options as any)
 }
