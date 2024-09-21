@@ -9,7 +9,7 @@ const configTemplate = dedent`
 
   export default defineConfig({
     dev: {
-      connectionString: 'postgres://postgres:postgres@localhost:5432/postgres',
+      connection: {},
     },
     schema: {
       include: ['**/*.pgsql'],
