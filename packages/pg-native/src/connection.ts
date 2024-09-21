@@ -217,7 +217,10 @@ async function sendQuery<TResult = Result[]>(
   }
 
   if (!sent) {
-    return resolvePromise(conn, new PgNativeError(conn.pq.errorMessage()))
+    return resolvePromise(
+      conn,
+      new PgNativeError(conn.pq.getLastErrorMessage()),
+    )
   }
 
   if (singleRowMode && !conn.pq.setSingleRowMode()) {
@@ -240,7 +243,7 @@ async function sendQuery<TResult = Result[]>(
 
   setStatus(conn, ConnectionStatus.QUERY_READING)
   conn.pq.on('readable', (conn.reader = () => read(conn, resultParser)))
-  conn.pq.startReader()
+  conn.pq.startRead()
   return conn.promise
 }
 
@@ -254,7 +257,7 @@ function read(
   // read waiting data from the socket
   // e.g. clear the pending 'select'
   if (!pq.consumeInput()) {
-    resolvePromise(conn, new PgNativeError(pq.errorMessage()))
+    resolvePromise(conn, new PgNativeError(pq.getLastErrorMessage()))
     return
   }
 
@@ -298,7 +301,7 @@ function resolvePromise(conn: IConnection, error?: Error) {
 
 function stopReading(conn: IConnection, newStatus: ConnectionStatus) {
   if (conn.pq && conn.status === ConnectionStatus.QUERY_READING) {
-    conn.pq.stopReader()
+    conn.pq.stopRead()
     conn.pq.removeListener('readable', conn.reader!)
   }
   setStatus(conn, newStatus)
@@ -311,7 +314,7 @@ function waitForDrain(pq: Libpq) {
         resolve()
         break
       case -1:
-        reject(pq.errorMessage())
+        reject(pq.getLastErrorMessage())
         break
       default:
         // You cannot read & write on a socket at the same time.
