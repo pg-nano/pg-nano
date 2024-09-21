@@ -1,5 +1,6 @@
 import type Libpq from '@pg-nano/libpq'
 import { isArray, isString } from 'radashi'
+import { PgNativeError } from './error.js'
 import { SQLTemplate, type SQLTemplateValue } from './template'
 import { escapeValue } from './value.js'
 
@@ -63,10 +64,21 @@ export function stringifyTemplateValue(
     return stringifyTemplate(arg, pq, options, parentIndent)
   }
   switch (arg.type) {
-    case 'id':
-      return pq.escapeIdentifier(arg.id)
+    case 'id': {
+      const escapedId = pq.escapeIdentifier(arg.id)
+      if (escapedId === null) {
+        throw new PgNativeError(pq.getLastErrorMessage())
+      }
+      return escapedId
+    }
     case 'val':
-      return escapeValue(arg.value, str => pq.escapeLiteral(str))
+      return escapeValue(arg.value, str => {
+        const escapedStr = pq.escapeLiteral(str)
+        if (escapedStr === null) {
+          throw new PgNativeError(pq.getLastErrorMessage())
+        }
+        return escapedStr
+      })
     case 'join': {
       const list: string[] = []
       const separator = isString(arg.separator)
