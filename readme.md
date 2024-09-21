@@ -222,9 +222,11 @@ I'm an independent developer without big sponsors, so I only develop what I need
 
 ### Pre-requisites
 
-- [pnpm](https://pnpm.io/installation)
-- [postgres](https://www.postgresql.org/download/)
-- [go](https://golang.org/dl/) (to compile `pg-schema-diff`)
+- [node](https://nodejs.org/en/download/) **v20.12+**
+- [pnpm](https://pnpm.io/installation) **v9.x**
+- [postgres](https://www.postgresql.org/download/) **v14+**
+- [go](https://golang.org/dl/)  
+  > *only if using local `./packages/pg-schema-diff`*
 
 ### Setup
 
