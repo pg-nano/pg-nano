@@ -13,8 +13,14 @@ export function resolveConfig(
   userConfig: UserConfig | undefined,
   options: Options,
 ) {
-  let connectionString = options.dsn ?? userConfig?.dev.connectionString
+  let connectionString = options.dsn || userConfig?.dev.connectionString
   if (connectionString) {
+    if (!options.dsn && userConfig?.dev.connection) {
+      throw new Error(
+        'Cannot set both dev.connection and dev.connectionString. ' +
+          'Use one or the other.',
+      )
+    }
     connectionString = addApplicationName(connectionString)
   } else if (userConfig?.dev.connection) {
     connectionString = stringifyConnectOptions({
