@@ -11,11 +11,7 @@ export default defineConfig({
   },
   generate: {
     outFile: 'sql/schema.ts',
+    postGenerateScript: 'pnpm format',
   },
-  plugins: [
-    crud(),
-    typebox({
-      formatScript: 'pnpm format',
-    }),
-  ],
+  plugins: [crud(), typebox()],
 })

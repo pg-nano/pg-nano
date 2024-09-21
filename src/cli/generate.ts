@@ -4,6 +4,7 @@ import path from 'node:path'
 import { snakeToCamel, sql } from 'pg-nano'
 import type { GenerateContext, Plugin, PluginContext } from 'pg-nano/plugin'
 import { camel, mapify, pascal, select } from 'radashi'
+import stringArgv from 'string-argv'
 import type { Env } from './env'
 import { quoteName, SQLIdentifier, unsafelyQuotedName } from './identifier.js'
 import { introspectBaseTypes, introspectNamespaces } from './introspect'
@@ -750,6 +751,20 @@ export async function generate(
     `)
 
     log.warn(`Unsupported type: ${typeName} (${typeOid})`)
+  }
+
+  if (env.config.generate.postGenerateScript) {
+    const [command, ...argv] = stringArgv(
+      env.config.generate.postGenerateScript,
+    )
+    const proc = spawn(command, argv, {
+      cwd: env.root,
+      stdio: 'inherit',
+    })
+    await new Promise((resolve, reject) => {
+      proc.on('close', resolve)
+      proc.on('error', reject)
+    })
   }
 
   // log.eraseLine()

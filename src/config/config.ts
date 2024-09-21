@@ -85,6 +85,12 @@ export interface UserConfig {
      * @default 'sql/nano_plugins'
      */
     pluginSqlDir?: string
+    /**
+     * Run a script after the TypeScript definitions have been generated. This
+     * can be useful for formatting the generated code after it's been written
+     * to disk.
+     */
+    postGenerateScript?: string
   }
   plugins?: Plugin[]
 }
