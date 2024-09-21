@@ -9,9 +9,6 @@
     "**/node_modules/**": true,
     "**/dist/**": true
   },
-  "files.exclude": {
-    "**/pg-native/index.d.ts": true
-  },
   "files.associations": {
     "*.pgsql": "sql",
     ".sqlfluff": "toml"
