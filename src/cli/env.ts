@@ -123,6 +123,6 @@ async function loadEnv(cwd: string, options: EnvOptions) {
 
 function fuzzPassword(connectionString: string) {
   return connectionString
-    .replace(/\bpostgres:\/\/(\w+):[^@]+@/g, 'postgres://$1:***@')
-    .replace(/\bpassword=[^&]+&?/g, 'password=***&')
+    .replace(/^postgres(?:ql)?:\/\/(\w+):[^@]+@/g, 'postgres://$1:***@')
+    .replace(/\bpassword=[^ ]+/g, 'password=***')
 }

@@ -61,7 +61,7 @@ export function resolveConfig(
 
 function addApplicationName(connectionString: string) {
   const name = 'pg-nano'
-  if (connectionString.startsWith('postgres://')) {
+  if (/^\w+:\/\//.test(connectionString)) {
     const url = new URL(connectionString)
     url.searchParams.set('application_name', name)
     return url.toString()
