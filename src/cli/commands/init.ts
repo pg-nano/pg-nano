@@ -1,8 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { log } from '../log'
-import { dedent } from '../util/dedent'
-import { cwdRelative } from '../util/path.js'
+import { cwdRelative, dedent, log } from 'pg-nano/node'
 
 const configTemplate = dedent`
   import { defineConfig } from 'pg-nano/config'

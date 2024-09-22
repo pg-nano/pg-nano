@@ -1,4 +1,4 @@
-import type { PgViewStmt } from './parseObjectStatements.ts'
+import type { PgViewStmt } from '../parser/types.js'
 
 export function parseViewSubquery(view: PgViewStmt) {
   return view.query

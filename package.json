@@ -4,15 +4,19 @@
   "version": "0.1.0-beta.7",
   "license": "MIT",
   "sideEffects": false,
-  "bin": "dist/pg-nano/cli/main.js",
+  "bin": "dist/cli/main.js",
   "exports": {
+    "./node": {
+      "types": "./dist/node/index.d.ts",
+      "default": "./dist/node/index.js"
+    },
     "./config": {
-      "types": "./dist/pg-nano/config.d.ts",
-      "default": "./dist/pg-nano/config.js"
+      "types": "./dist/node/config.d.ts",
+      "default": "./dist/node/config.js"
     },
     "./plugin": {
-      "types": "./dist/pg-nano/plugin.d.ts",
-      "default": "./dist/pg-nano/plugin.js"
+      "types": "./dist/node/plugin.d.ts",
+      "default": "./dist/node/plugin.js"
     },
     ".": {
       "types": "./dist/pg-nano.d.ts",
@@ -29,12 +33,9 @@
     "esbuild-plugin-alias": "^0.2.1",
     "esbuild-plugin-copy": "^2.1.1",
     "esbuild-plugin-license": "^1.2.3",
+    "kleur": "^4.1.5",
     "mri": "^1.2.0",
     "pg-nano": "link:",
-    "pg-native": "workspace:^",
-    "postgres-composite": "workspace:^",
-    "postgres-interval": "workspace:^",
-    "postgres-range": "workspace:^",
     "radashi": "12.2.0-beta.af825f4",
     "rimraf": "^6.0.1",
     "tinyrun": "^1.0.1",
@@ -43,10 +44,8 @@
     "vitest": "^2.0.5"
   },
   "scripts": {
-    "prepublishOnly": "pnpm -s build:core",
-    "build": "pnpm build:native && tinyrun --names core,plugins 'pnpm -s build:core' 'pnpm --stream --filter=@pg-nano/plugin-* build'",
-    "build:core": "rimraf dist && tsup",
-    "build:native": "pnpm --stream --filter=@pg-nano/libpq --filter=@pg-nano/pg-parser --filter=@pg-nano/pg-schema-diff build",
+    "prepublishOnly": "pnpm build",
+    "build": "rimraf dist && pnpm -r build",
     "dev": "tinyrun --names core,plugins 'pnpm -s dev:core' 'pnpm --stream --filter=@pg-nano/plugin-* dev'",
     "dev:core": "rimraf dist && DEV=1 tsup --watch --sourcemap",
     "format": "biome check --fix --unsafe src package.json",
@@ -56,9 +55,7 @@
     "type": "git",
     "url": "https://github.com/pg-nano/pg-nano.git"
   },
-  "files": [
-    "dist"
-  ],
+  "files": ["dist"],
   "dependencies": {
     "@pg-nano/libpq": "workspace:^",
     "@pg-nano/pg-parser": "workspace:^",

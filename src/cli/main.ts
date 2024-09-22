@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import mri from 'mri'
-import { log } from './log'
+import { log } from 'pg-nano/node'
 
 async function main() {
   const [command, ...argv] = process.argv.slice(2)

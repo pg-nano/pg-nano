@@ -15,6 +15,9 @@ importers:
         specifier: '*'
         version: 5.6.2
     devDependencies:
+      '@pg-nano/node':
+        specifier: workspace:^
+        version: link:../../src/node
       '@sinclair/typebox':
         specifier: link:../../node_modules/@sinclair/typebox
         version: link:../../node_modules/@sinclair/typebox

@@ -1,10 +1,11 @@
 {
   "name": "pg-native",
   "version": "0.0.0-development",
-  "private": true,
   "type": "module",
-  "main": "index.js",
-  "sideEffects": false,
+  "private": true,
+  "scripts": {
+    "build": "tsup"
+  },
   "devDependencies": {
     "postgres-array": "workspace:^",
     "postgres-bytea": "workspace:^",

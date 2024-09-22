@@ -1,5 +1,5 @@
 {
-  "name": "@pg-nano/cli",
+  "name": "@pg-nano/node",
   "version": "0.0.0-development",
   "type": "module",
   "private": true,
@@ -7,9 +7,9 @@
     "build": "tsup"
   },
   "devDependencies": {
-    "@pg-nano/node": "workspace:^",
+    "@pg-nano/pg-parser": "workspace:^",
     "@types/node": "^22.5.1",
-    "mri": "^1.2.0",
-    "pg-nano": "workspace:@pg-nano/core@^"
+    "pg-nano": "workspace:@pg-nano/core@^",
+    "pg-native": "workspace:^"
   }
 }

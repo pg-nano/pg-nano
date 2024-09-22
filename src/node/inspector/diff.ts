@@ -1,12 +1,12 @@
 import { type Client, isPgResultError, sql } from 'pg-nano'
-import { debug } from './debug.js'
-import type { SQLIdentifier } from './identifier'
+import { debug } from '../debug.js'
+import type { SQLIdentifier } from '../parser/identifier.js'
 import type {
   PgCompositeTypeStmt,
   PgRoutineStmt,
   PgViewStmt,
-} from './parseObjectStatements.js'
-import { appendCodeFrame } from './util/codeFrame.js'
+} from '../parser/types.js'
+import { appendCodeFrame } from '../util/codeFrame.js'
 
 /**
  * Compare a type to an existing type in the database.

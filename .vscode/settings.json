@@ -9,6 +9,11 @@
     "**/node_modules/**": true,
     "**/dist/**": true
   },
+  "files.exclude": {
+    "**/.git": true,
+    "**/node_modules": true,
+    "**/pnpm-lock.yaml": true
+  },
   "files.associations": {
     "*.pgsql": "sql",
     ".sqlfluff": "toml"

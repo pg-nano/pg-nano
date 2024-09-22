@@ -7,7 +7,7 @@ import {
   sql,
 } from 'pg-native'
 import { uid } from 'radashi'
-import type { PgViewStmt } from './parseObjectStatements.js'
+import type { PgViewStmt } from '../parser/types.js'
 import { parseViewSubquery } from './parseViewSubquery.js'
 import type {
   PgBaseType,
@@ -16,17 +16,14 @@ import type {
   PgNamespace,
   PgRoutine,
   PgTable,
-} from './pgTypes.js'
+} from './types.js'
 
-export async function introspectNamespaces(
-  client: Client,
-  signal?: AbortSignal,
-) {
+export async function inspectNamespaces(client: Client, signal?: AbortSignal) {
   const [routines, compositeTypes, enumTypes, tables] = await Promise.all([
-    introspectRoutines(client, signal),
-    introspectCompositeTypes(client, signal),
-    introspectEnumTypes(client, signal),
-    introspectTables(client, signal),
+    inspectRoutines(client, signal),
+    inspectCompositeTypes(client, signal),
+    inspectEnumTypes(client, signal),
+    inspectTables(client, signal),
   ])
 
   const namespaces: Record<string, PgNamespace> = {}
@@ -56,7 +53,7 @@ export async function introspectNamespaces(
   return namespaces
 }
 
-export function introspectRoutines(pg: Client, signal?: AbortSignal) {
+export function inspectRoutines(pg: Client, signal?: AbortSignal) {
   /**
    * Find the procs that are:
    *   - not built-in
@@ -91,17 +88,17 @@ export function introspectRoutines(pg: Client, signal?: AbortSignal) {
   return pg.queryRowList<PgRoutine>(query, { signal })
 }
 
-export async function introspectViews(pg: Client, signal?: AbortSignal) {
-  const query = sql`
-    SELECT
-      n.nspname,
-      v.viewname,
-      v.viewquery
-    FROM pg_catalog.pg_view v
-  `
-}
+// export async function inspectViews(pg: Client, signal?: AbortSignal) {
+//   const query = sql`
+//     SELECT
+//       n.nspname,
+//       v.viewname,
+//       v.viewquery
+//     FROM pg_catalog.pg_view v
+//   `
+// }
 
-export function introspectBaseTypes(client: Client, signal?: AbortSignal) {
+export function inspectBaseTypes(client: Client, signal?: AbortSignal) {
   const query = sql`
     SELECT
       'base type'::text AS "type",
@@ -119,7 +116,7 @@ export function introspectBaseTypes(client: Client, signal?: AbortSignal) {
   return client.queryRowList<PgBaseType>(query, { signal })
 }
 
-export function introspectEnumTypes(client: Client, signal?: AbortSignal) {
+export function inspectEnumTypes(client: Client, signal?: AbortSignal) {
   const query = sql`
     SELECT
       'enum type'::text AS "type",
@@ -141,7 +138,7 @@ export function introspectEnumTypes(client: Client, signal?: AbortSignal) {
   return client.queryRowList<PgEnumType>(query, { signal })
 }
 
-export function introspectCompositeTypes(client: Client, signal?: AbortSignal) {
+export function inspectCompositeTypes(client: Client, signal?: AbortSignal) {
   const attributesQuery = sql`
     SELECT array_agg(
       json_build_object(
@@ -175,7 +172,7 @@ export function introspectCompositeTypes(client: Client, signal?: AbortSignal) {
   return client.queryRowList<PgCompositeType>(query, { signal })
 }
 
-export function introspectTables(client: Client, signal?: AbortSignal) {
+export function inspectTables(client: Client, signal?: AbortSignal) {
   const attributesQuery = sql`
     SELECT array_agg(
       json_build_object(
@@ -211,15 +208,15 @@ export function introspectTables(client: Client, signal?: AbortSignal) {
   return client.queryRowList<PgTable>(query, { signal })
 }
 
-export async function introspectViewFields(
+export async function inspectViewFields(
   pg: Client,
   view: PgViewStmt,
   signal?: AbortSignal,
 ) {
-  return introspectResultSet(pg, sql.unsafe(parseViewSubquery(view)), 0, signal)
+  return inspectResultSet(pg, sql.unsafe(parseViewSubquery(view)), 0, signal)
 }
 
-export async function introspectResultSet(
+export async function inspectResultSet(
   pg: Client,
   command: SQLTemplate,
   paramCount = 0,

@@ -1,6 +1,4 @@
-import type { ResolvedConfig } from 'pg-nano/config'
 import type { sql, SQLTemplate } from 'pg-native'
-import type { ParsedObjectStmt } from '../cli/parseObjectStatements.js'
 import type {
   PgFieldContext,
   PgNamespace,
@@ -10,7 +8,9 @@ import type {
   PgTable,
   PgType,
   PgTypeContext,
-} from '../cli/pgTypes.js'
+} from '../inspector/types.js'
+import type { PgObjectStmt } from '../parser/types.js'
+import type { ResolvedConfig } from './configResolver.js'
 
 type Awaitable<T> = T | Promise<T>
 
@@ -83,7 +83,7 @@ export interface PluginContext {
     /**
      * The objects parsed from the input SQL files.
      */
-    objects: readonly Readonly<ParsedObjectStmt>[]
+    objects: readonly Readonly<PgObjectStmt>[]
     /**
      * A tagged template literal for creating SQL templates.
      */
@@ -136,17 +136,7 @@ export interface PluginContext {
 
 export type * from '@pg-nano/pg-parser'
 export { $, select, walk } from '@pg-nano/pg-parser'
-export type { ResolvedConfig } from 'pg-nano/config'
-export type { SQLIdentifier } from '../cli/identifier.js'
-export type * from '../cli/parseObjectStatements.js'
-export type * from '../cli/pgTypes.js'
-export {
-  isBaseType,
-  isCompositeType,
-  isEnumType,
-  isTableType,
-  PgIdentityKind,
-  PgObjectType,
-  PgParamKind,
-  PgRoutineKind,
-} from '../cli/pgTypes.js'
+export * from '../inspector/types.js'
+export type { SQLIdentifier } from '../parser/identifier.js'
+export * from '../parser/types.js'
+export type { ResolvedConfig } from './configResolver.js'

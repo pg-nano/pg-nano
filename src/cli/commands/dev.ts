@@ -1,10 +1,8 @@
 import { gray, strikethrough } from 'kleur/colors'
 import { statSync } from 'node:fs'
 import path from 'node:path'
+import { generate, getEnv, log, type EnvOptions } from 'pg-nano/node'
 import { debounce, select } from 'radashi'
-import { type EnvOptions, getEnv } from '../env'
-import { generate } from '../generate'
-import { log } from '../log'
 
 type Options = EnvOptions & {}
 

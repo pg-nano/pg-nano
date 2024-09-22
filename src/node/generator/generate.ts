@@ -2,36 +2,43 @@ import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { snakeToCamel, sql } from 'pg-nano'
-import type { GenerateContext, Plugin, PluginContext } from 'pg-nano/plugin'
 import { camel, mapify, pascal, select } from 'radashi'
 import stringArgv from 'string-argv'
-import type { Env } from './env'
-import { quoteName, SQLIdentifier, unsafelyQuotedName } from './identifier.js'
-import { introspectBaseTypes, introspectNamespaces } from './introspect'
-import { jsTypesByOid } from './jsTypesByOid.js'
-import { log } from './log'
-import { parseMigrationPlan } from './parseMigrationPlan'
+import type {
+  GenerateContext,
+  Plugin,
+  PluginContext,
+} from '../config/plugin.js'
+import type { Env } from '../env.js'
+import { events } from '../events.js'
+import { inspectBaseTypes, inspectNamespaces } from '../inspector/inspect.js'
 import {
   isBaseType,
   isCompositeType,
   isEnumType,
   isTableType,
-  PgIdentityKind,
-  PgObjectType,
-  PgParamKind,
   type PgBaseType,
   type PgCompositeType,
   type PgEnumType,
   type PgField,
   type PgFieldContext,
+  PgIdentityKind,
   type PgObject,
+  PgObjectType,
+  PgParamKind,
   type PgTable,
   type PgTableField,
   type PgType,
-} from './pgTypes.js'
-import { prepareDatabase } from './prepare'
-import { dedent } from './util/dedent'
-import { cwdRelative } from './util/path.js'
+} from '../inspector/types.js'
+import {
+  quoteName,
+  SQLIdentifier,
+  unsafelyQuotedName,
+} from '../parser/identifier.js'
+import { dedent } from '../util/dedent.js'
+import { jsTypesByOid } from './jsTypesByOid.js'
+import { migrate } from './migrate.js'
+import { prepareDatabase } from './prepare.js'
 
 export type GenerateOptions = {
   signal?: AbortSignal
@@ -43,7 +50,7 @@ export async function generate(
   options: GenerateOptions = {},
 ) {
   const pg = await env.client
-  const baseTypes = await introspectBaseTypes(pg, options.signal)
+  const baseTypes = await inspectBaseTypes(pg, options.signal)
 
   const [allObjects, pluginsByStatementId] = await prepareDatabase(
     filePaths,
@@ -56,14 +63,14 @@ export async function generate(
     obj => obj.id.toQualifiedName(),
   )
 
-  log('Migrating database...')
+  events.emit('migrate-start')
 
   await migrate(env)
 
-  log('Generating type definitions...')
+  events.emit('generate-start')
 
   // Step 1: Collect type information from the database.
-  const namespaces = await introspectNamespaces(pg, options.signal)
+  const namespaces = await inspectNamespaces(pg, options.signal)
 
   const typesByOid = new Map<number, PgType>()
   const typesByName = new Map<string, PgType>()
@@ -750,7 +757,7 @@ export async function generate(
       SELECT typname FROM pg_type WHERE oid = ${sql.val(typeOid)}
     `)
 
-    log.warn(`Unsupported type: ${typeName} (${typeOid})`)
+    events.emit('unsupported-type', { typeName, typeOid })
   }
 
   if (env.config.generate.postGenerateScript) {
@@ -767,109 +774,7 @@ export async function generate(
     })
   }
 
-  // log.eraseLine()
-  log.success('Generating type definitions... done')
-}
-
-async function migrate(env: Env) {
-  const applyProc = pgSchemaDiff(env, 'apply')
-
-  let applyStderr = ''
-  applyProc.stderr?.on('data', data => {
-    applyStderr += data
-  })
-
-  if (env.verbose) {
-    const successRegex = /(No plan generated|Finished executing)/
-    const commentRegex = /^\s+-- /
-
-    let completed = false
-    for await (const line of parseMigrationPlan(applyProc.stdout)) {
-      if (line.type === 'title') {
-        if (line.text === 'Complete') {
-          completed = true
-        } else {
-          log(line.text)
-        }
-      } else if (line.type === 'body') {
-        if (completed || successRegex.test(line.text)) {
-          log.success(line.text)
-        } else if (commentRegex.test(line.text)) {
-          log.comment(line.text)
-        } else {
-          log.command(line.text)
-        }
-      }
-    }
-  }
-
-  await new Promise((resolve, reject) => {
-    applyProc.on('close', resolve)
-    applyProc.on('error', reject)
-  })
-
-  if (applyStderr) {
-    let message = applyStderr
-
-    const schemaDirRegex = new RegExp(env.schemaDir + '/[^)]+')
-    if (env.verbose) {
-      message = message.replace(schemaDirRegex, source => {
-        const [, file, line] = fs
-          .readFileSync(source, 'utf8')
-          .match(/file:\/\/(.+?)#L(\d+)/)!
-
-        return `${cwdRelative(file)}:${line}`
-      })
-    } else {
-      const source = applyStderr.match(schemaDirRegex)
-      const pgError = applyStderr.match(/\bERROR: ([\S\s]+)$/)?.[1]
-      if (pgError) {
-        message = pgError.trimEnd()
-      }
-      if (source) {
-        const [, file, line] =
-          fs.readFileSync(source[0], 'utf8').match(/file:\/\/(.+?)#L(\d+)/) ||
-          []
-
-        if (file && line) {
-          message += `\n\n    at ${cwdRelative(file)}:${line}`
-        }
-      }
-    }
-    throw new Error(message)
-  }
-}
-
-function pgSchemaDiff(env: Env, command: 'apply' | 'plan') {
-  const applyArgs: string[] = []
-  if (command === 'apply') {
-    // const prePlanFile = path.join(env.untrackedDir, 'pre-plan.sql')
-    // fs.writeFileSync(prePlanFile, 'SET check_function_bodies = off;')
-
-    applyArgs.push(
-      '--skip-confirm-prompt',
-      '--allow-hazards',
-      env.config.migration.allowHazards.join(','),
-      '--disable-plan-validation',
-      // '--pre-plan-file',
-      // prePlanFile,
-    )
-  }
-
-  const binaryPath = path.join(
-    new URL(import.meta.resolve('@pg-nano/pg-schema-diff/package.json'))
-      .pathname,
-    '../pg-schema-diff',
-  )
-
-  return spawn(binaryPath, [
-    command,
-    '--dsn',
-    env.config.dev.connectionString,
-    '--schema-dir',
-    env.schemaDir,
-    ...applyArgs,
-  ])
+  events.emit('generate-end')
 }
 
 function indent(text: string, count = 2) {
