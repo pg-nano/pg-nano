@@ -2,7 +2,6 @@
   "recommendations": [
     "biomejs.biome",
     "stkb.rewrap",
-    "bradymholt.pgformatter",
     "uniquevision.vscode-plpgsql-lsp",
     "jtladeiras.vscode-inline-sql"
   ]
