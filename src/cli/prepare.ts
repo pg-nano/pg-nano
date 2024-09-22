@@ -121,52 +121,6 @@ export async function prepareDatabase(
     CREATE SCHEMA nano;
   `)
 
-  const formatObjectError = async (error: Error, object: ParsedObjectStmt) => {
-    let message = error.message.replace(/^ERROR:\s+/i, '').trimEnd()
-
-    // Remove "LINE XXX: " if present, and the same number of characters from
-    // any lines that come after.
-    const messageLines = message.split('\n')
-    for (let i = 0; i < messageLines.length; i++) {
-      if (messageLines[i].startsWith('LINE ')) {
-        const colonIndex = messageLines[i].indexOf(':') + 2
-        messageLines[i] =
-          ' '.repeat(colonIndex) + messageLines[i].slice(colonIndex)
-        message = messageLines.join('\n')
-        break
-      }
-    }
-
-    const id = object.id.toQualifiedName()
-    if (!message.includes(id)) {
-      const exists = await doesObjectExist(object.kind, object.id)
-      message = `Error ${exists ? 'updating' : 'creating'} ${object.kind} (${id}): ${message}`
-    }
-
-    const line =
-      error instanceof PgResultError && error.statementPosition
-        ? object.line -
-          1 +
-          getLineFromPosition(
-            Number.parseInt(error.statementPosition),
-            object.query,
-          )
-        : object.line
-
-    const stack =
-      '\n    at ' +
-      cwdRelative(object.file) +
-      ':' +
-      line +
-      (error.stack
-        ?.replace(error.name + ': ' + error.message, '')
-        .replace(/^\s*(?=\n)/, '') ?? '')
-
-    error.message = message
-    error.stack = message + stack
-    throw error
-  }
-
   const objectUpdates = new Map(
     allObjects.map(object => [object, Promise.withResolvers<any>()] as const),
   )
@@ -226,8 +180,9 @@ export async function prepareDatabase(
   await Promise.all(
     allObjects.map(object => {
       const { resolve } = objectUpdates.get(object)!
-      return updateObject(object).then(resolve, error => {
-        formatObjectError(error, object)
+      return updateObject(object).then(resolve, async error => {
+        const exists = await doesObjectExist(object.kind, object.id)
+        throwFormattedQueryError(error, object, exists)
       })
     }),
   )
@@ -345,4 +300,53 @@ async function preparePluginStatements(
   }
 
   return pluginsByStatementId
+}
+
+function throwFormattedQueryError(
+  error: Error,
+  object: ParsedObjectStmt,
+  exists: boolean,
+): never {
+  let message = error.message.replace(/^ERROR:\s+/i, '').trimEnd()
+
+  // Remove "LINE XXX: " if present, and the same number of characters from
+  // any lines that come after.
+  const messageLines = message.split('\n')
+  for (let i = 0; i < messageLines.length; i++) {
+    if (messageLines[i].startsWith('LINE ')) {
+      const colonIndex = messageLines[i].indexOf(':') + 2
+      messageLines[i] =
+        ' '.repeat(colonIndex) + messageLines[i].slice(colonIndex)
+      message = messageLines.join('\n')
+      break
+    }
+  }
+
+  const id = object.id.toQualifiedName()
+  if (!message.includes(id)) {
+    message = `Error ${exists ? 'updating' : 'creating'} ${object.kind} (${id}): ${message}`
+  }
+
+  const line =
+    error instanceof PgResultError && error.statementPosition
+      ? object.line -
+        1 +
+        getLineFromPosition(
+          Number.parseInt(error.statementPosition),
+          object.query,
+        )
+      : object.line
+
+  const stack =
+    '\n    at ' +
+    cwdRelative(object.file) +
+    ':' +
+    line +
+    (error.stack
+      ?.replace(error.name + ': ' + error.message, '')
+      .replace(/^\s*(?=\n)/, '') ?? '')
+
+  error.message = message
+  error.stack = message + stack
+  throw error
 }
