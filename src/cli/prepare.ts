@@ -110,6 +110,9 @@ export async function prepareDatabase(
 
   debug('plugin statements prepared')
 
+  // Since pg-schema-diff is still somewhat limited, we have to create our own
+  // dependency graph, so we can ensure all objects (and their dependencies)
+  // exist before pg-schema-diff works its magic.
   const sortedObjects = linkObjectStatements(allObjects)
 
   // The "nano" schema is used to store temporary objects during diffing.
@@ -164,10 +167,11 @@ export async function prepareDatabase(
     throw error
   }
 
-  // Since pg-schema-diff is still somewhat limited, we have to create our own
-  // dependency graph, so we can ensure all objects (and their dependencies)
-  // exist before pg-schema-diff works its magic.
-  for (const object of sortedObjects) {
+  const objectUpdates = new Map(
+    allObjects.map(object => [object, Promise.withResolvers<any>()] as const),
+  )
+
+  async function updateObject(object: ParsedObjectStmt): Promise<any> {
     if (object.dependents.size > 0 && !(object.kind in objectExistence)) {
       log.warn(
         'Missing %s {%s} required by %s other statement%s:',
@@ -179,57 +183,54 @@ export async function prepareDatabase(
       for (const dependent of object.dependents) {
         log.warn('  * %s {%s}', dependent.kind, dependent.id.toQualifiedName())
       }
-      continue
+      return
     }
 
-    if (await doesObjectExist(object.kind, object.id)) {
-      if (object.kind === 'type') {
-        if (object.subkind === 'composite') {
-          if (await hasCompositeTypeChanged(pg, object)) {
-            log.magenta('Composite type changed:', object.id.toQualifiedName())
-            await pg
-              .query(sql`
-                DROP TYPE ${object.id.toSQL()} CASCADE;
-                ${sql.unsafe(object.query)}
-              `)
-              .catch(error => {
-                formatObjectError(error, object)
-              })
-          }
-        }
-      } else if (object.kind === 'routine') {
-        if (await hasRoutineSignatureChanged(pg, object)) {
-          log.magenta('Routine signature changed:', object.id.toQualifiedName())
-          await pg
-            .query(sql`
-              DROP ROUTINE ${object.id.toSQL()} CASCADE;
-              ${sql.unsafe(object.query)}
-            `)
-            .catch(error => {
-              formatObjectError(error, object)
-            })
+    const exists = await doesObjectExist(object.kind, object.id)
+
+    // Wait for dependencies to be created/updated before proceeding.
+    if (object.dependencies.size > 0) {
+      await Promise.all(
+        Array.from(object.dependencies).map(
+          dependency => objectUpdates.get(dependency)?.promise,
+        ),
+      )
+    }
+
+    if (!exists) {
+      log.magenta('Creating %s %s', object.kind, object.id.toQualifiedName())
+      return pg.query(sql.unsafe(object.query))
+    }
+
+    if (object.kind === 'type') {
+      if (object.subkind === 'composite') {
+        if (await hasCompositeTypeChanged(pg, object)) {
+          log.magenta('Composite type changed:', object.id.toQualifiedName())
+          return pg.query(sql`
+            DROP TYPE ${object.id.toSQL()} CASCADE;
+            ${sql.unsafe(object.query)}
+          `)
         }
       }
-      // else if (object.type === 'view') {
-      //   if (await hasViewChanged(client, object)) {
-      //     log.magenta('View changed:', object.id.toQualifiedName())
-      //     await client
-      //       .query(sql`
-      //         DROP VIEW ${object.id.toSQL()} CASCADE;
-      //         ${sql.unsafe(object.query)}
-      //       `)
-      //       .catch(error => {
-      //         formatObjectError(error, object)
-      //       })
-      //   }
-      // }
-    } else {
-      log('Creating %s %s', object.kind, object.id.toQualifiedName())
-      await pg.query(sql.unsafe(object.query)).catch(error => {
-        formatObjectError(error, object)
-      })
+    } else if (object.kind === 'routine') {
+      if (await hasRoutineSignatureChanged(pg, object)) {
+        log.magenta('Routine signature changed:', object.id.toQualifiedName())
+        return pg.query(sql`
+          DROP ROUTINE ${object.id.toSQL()} CASCADE;
+          ${sql.unsafe(object.query)}
+        `)
+      }
     }
   }
+
+  await Promise.all(
+    allObjects.map(object => {
+      const { resolve } = objectUpdates.get(object)!
+      return updateObject(object).then(resolve, error => {
+        formatObjectError(error, object)
+      })
+    }),
+  )
 
   // Drop the "nano" schema now that diffing is complete.
   await pg.query(sql`
