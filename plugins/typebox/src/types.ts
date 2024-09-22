@@ -1,4 +1,10 @@
-import { type Static, type TSchema, Type } from '@sinclair/typebox'
+import {
+  type Static,
+  type TSchema,
+  type TString,
+  type TTransform,
+  Type,
+} from '@sinclair/typebox'
 import { Value } from '@sinclair/typebox/value'
 import { parseRange, Interval as PgInterval, stringifyRange } from 'pg-nano'
 
@@ -38,7 +44,7 @@ export const Timestamp = Type.Union([Type.Date(), Type.Number()], {
   see: 'https://www.postgresql.org/docs/current/datatype-datetime.html#DATATYPE-DATETIME-SPECIAL-VALUES',
 })
 
-export type Interval = typeof import('pg-nano').Interval
+export type Interval = import('pg-nano').Interval
 export const Interval = Type.Transform(
   Type.Union([
     Type.String(),
@@ -56,8 +62,10 @@ export const Interval = Type.Transform(
   .Decode(input => new PgInterval(input))
   .Encode(input => input.toISOString())
 
-export type Range = typeof import('pg-nano').Range
-export const Range = <TBound extends TSchema>(Bound: TBound) => {
+export type Range<T extends {}> = import('pg-nano').Range<T>
+export const Range = <TBound extends TSchema>(
+  Bound: TBound,
+): TTransform<TString, Range<Extract<Static<TBound>, {}>>> => {
   const decodeBound = (bound: string) =>
     Value.Decode(Bound, bound) as Extract<Static<TBound>, {}>
 
@@ -66,8 +74,6 @@ export const Range = <TBound extends TSchema>(Bound: TBound) => {
       pattern: '^empty$|^\\[.*?\\)$|^\\[.*?\\]$|^\\[.*?\\)$|^\\[.*?\\)$',
     }),
   )
-    .Decode(input =>
-      parseRange<Extract<Static<TBound>, {}>>(input, decodeBound),
-    )
+    .Decode(input => parseRange(input, decodeBound))
     .Encode(input => stringifyRange(input))
 }
