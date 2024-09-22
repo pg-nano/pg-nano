@@ -4,7 +4,7 @@ import util from 'node:util'
 import { isFunction, isString, uid } from 'radashi'
 import type { StrictEventEmitter } from 'strict-event-emitter-types'
 import { stringifyConnectOptions, type ConnectOptions } from './connect-options'
-import { debug, debugConnection, debugQuery } from './debug'
+import { debugConnection, debugQuery } from './debug'
 import { PgNativeError, PgResultError } from './error'
 import { buildResult, type FieldCase, type Result } from './result'
 import { stringifyTemplate } from './stringify'
@@ -131,7 +131,7 @@ function unprotect(conn: Connection): IConnection {
 function setStatus(conn: IConnection, newStatus: ConnectionStatus): void {
   if (conn.status !== newStatus) {
     conn.status = newStatus
-    if (process.env.NODE_ENV !== 'production' && debug.enabled) {
+    if (process.env.NODE_ENV !== 'production') {
       debugConnection(`connection status: ${ConnectionStatus[newStatus]}`)
     }
   }
