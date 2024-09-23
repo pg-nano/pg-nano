@@ -13,10 +13,11 @@
     "lib": ["esnext"],
     "baseUrl": "./",
     "paths": {
-      "pg-nano": ["./dist/pg-nano.d.ts"],
-      "pg-nano/node": ["./dist/node/index.d.ts"],
-      "pg-nano/plugin": ["./dist/node/plugin.d.ts"],
-      "pg-native": ["./dist/node_modules/pg-native"]
+      "pg-nano": ["./src/core/mod.ts"],
+      "pg-nano/node": ["./src/node/index.ts"],
+      "pg-nano/config": ["./src/node/config/config.ts"],
+      "pg-nano/plugin": ["./src/node/config/plugin.ts"],
+      "pg-native": ["./packages/pg-native/src/index.ts"]
     }
   }
 }

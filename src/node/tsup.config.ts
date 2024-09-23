@@ -15,5 +15,5 @@ export default defineConfig({
   treeshake: 'smallest',
   minifySyntax: !process.env.DEV,
   tsconfig: '../../tsconfig.json',
-  dts: true,
+  dts: !process.env.DEV,
 })

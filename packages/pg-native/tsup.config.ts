@@ -47,5 +47,5 @@ export default defineConfig({
   external: ['debug', '@pg-nano/libpq'],
   treeshake: 'smallest',
   minifySyntax: !process.env.DEV,
-  dts: true,
+  dts: !process.env.DEV,
 })
