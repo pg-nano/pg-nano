@@ -64,6 +64,12 @@ export interface ClientOptions {
    * @default FieldCase.camel
    */
   fieldCase: FieldCase
+
+  /**
+   * Executes the given SQL on each connection, immediately after it is
+   * established, before any queries are run.
+   */
+  postConnectDDL: SQLTemplate | null
 }
 
 /**
@@ -90,6 +96,7 @@ export class Client {
     maxRetries = Number.POSITIVE_INFINITY,
     idleTimeout = 30e3,
     fieldCase = FieldCase.camel,
+    postConnectDDL = null,
   }: Partial<ClientOptions> = {}) {
     this.config = {
       minConnections,
@@ -99,6 +106,7 @@ export class Client {
       maxRetries,
       idleTimeout,
       fieldCase,
+      postConnectDDL,
     }
   }
 
@@ -139,7 +147,11 @@ export class Client {
     const connection = new Connection(this.config.fieldCase, idleTimeout)
 
     const connecting = this.connectWithRetry(connection, signal).then(
-      () => {
+      async () => {
+        if (this.config.postConnectDDL) {
+          await connection.query(this.config.postConnectDDL)
+        }
+
         const index = this.pool.indexOf(connecting)
         this.pool[index] = connection
 
