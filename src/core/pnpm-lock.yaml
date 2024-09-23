@@ -6,4 +6,11 @@ settings:
 
 importers:
 
-  .: {}
+  .:
+    devDependencies:
+      pg-native:
+        specifier: workspace:^
+        version: link:../../packages/pg-native
+      postgres-composite:
+        specifier: workspace:^
+        version: link:../../packages/postgres-composite

@@ -1,20 +1,21 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { PgResultError, sql } from 'pg-nano'
-import type { PgBaseType, Plugin } from 'pg-nano/plugin'
-import { capitalize, map, memo, sift } from 'radashi'
-import { debug } from './debug.js'
-import { hasCompositeTypeChanged, hasRoutineSignatureChanged } from './diff'
-import type { Env } from './env'
-import type { SQLIdentifier } from './identifier'
-import { linkObjectStatements } from './linkObjectStatements'
-import { log } from './log'
+import { map, memo, sift } from 'radashi'
+import type { Plugin } from '../config/plugin.js'
+import { debug } from '../debug.js'
+import type { Env } from '../env.js'
+import { events } from '../events.js'
 import {
-  type ParsedObjectStmt,
-  type ParsedObjectType,
-  parseObjectStatements,
-} from './parseObjectStatements'
-import { cwdRelative } from './util/path.js'
+  hasCompositeTypeChanged,
+  hasRoutineSignatureChanged,
+} from '../inspector/diff.js'
+import type { PgBaseType } from '../inspector/types.js'
+import { linkObjectStatements } from '../linker/link.js'
+import type { SQLIdentifier } from '../parser/identifier.js'
+import { parseObjectStatements } from '../parser/parse.js'
+import type { PgObjectStmt, PgObjectStmtKind } from '../parser/types.js'
+import { cwdRelative } from '../util/path.js'
 
 export async function prepareDatabase(
   sqlFiles: string[],
@@ -46,7 +47,7 @@ export async function prepareDatabase(
    * Currently, functions and composite types need their dependencies created
    * before the pg-schema-diff migration process begins.
    */
-  const objectExistence: Record<ParsedObjectType, ObjectExistenceConfig> = {
+  const objectExistence: Record<PgObjectStmtKind, ObjectExistenceConfig> = {
     routine: {
       from: 'pg_proc',
       schemaKey: 'pronamespace',
@@ -74,13 +75,8 @@ export async function prepareDatabase(
     },
   }
 
-  const doesObjectExist = memo((type: ParsedObjectType, id: SQLIdentifier) => {
+  const doesObjectExist = memo((type: PgObjectStmtKind, id: SQLIdentifier) => {
     if (!(type in objectExistence)) {
-      log.warn(
-        'Could not check if object exists: %s (%s)',
-        id.toQualifiedName(),
-        type,
-      )
       return false
     }
 
@@ -121,22 +117,34 @@ export async function prepareDatabase(
     CREATE SCHEMA nano;
   `)
 
+  if (debug.enabled) {
+    for (const object of sortedObjects) {
+      if (object.dependencies.size > 0) {
+        debug(
+          '%s %s depends on %s',
+          object.kind,
+          object.id.toQualifiedName(),
+          Array.from(object.dependencies)
+            .map(dep => dep.id.toQualifiedName())
+            .join(', '),
+        )
+      } else {
+        debug(
+          '%s %s has no dependencies',
+          object.kind,
+          object.id.toQualifiedName(),
+        )
+      }
+    }
+  }
+
   const objectUpdates = new Map(
     allObjects.map(object => [object, Promise.withResolvers<any>()] as const),
   )
 
-  async function updateObject(object: ParsedObjectStmt): Promise<any> {
-    if (object.dependents.size > 0 && !(object.kind in objectExistence)) {
-      log.warn(
-        'Missing %s {%s} required by %s other statement%s:',
-        object.kind,
-        object.id.toQualifiedName(),
-        object.dependents.size,
-        object.dependents.size === 1 ? 's' : '',
-      )
-      for (const dependent of object.dependents) {
-        log.warn('  * %s {%s}', dependent.kind, dependent.id.toQualifiedName())
-      }
+  async function updateObject(object: PgObjectStmt): Promise<any> {
+    if (!(object.kind in objectExistence)) {
+      events.emit('unsupported-object', { object })
       return
     }
 
@@ -152,14 +160,14 @@ export async function prepareDatabase(
     }
 
     if (!exists) {
-      log.magenta('Creating %s %s', object.kind, object.id.toQualifiedName())
+      events.emit('create-object', { object })
       return pg.query(sql.unsafe(object.query))
     }
 
     if (object.kind === 'type') {
       if (object.subkind === 'composite') {
         if (await hasCompositeTypeChanged(pg, object)) {
-          log.magenta('Composite type changed:', object.id.toQualifiedName())
+          events.emit('update-object', { object })
           return pg.query(sql`
             DROP TYPE ${object.id.toSQL()} CASCADE;
             ${sql.unsafe(object.query)}
@@ -168,7 +176,7 @@ export async function prepareDatabase(
       }
     } else if (object.kind === 'routine') {
       if (await hasRoutineSignatureChanged(pg, object)) {
-        log.magenta('Routine signature changed:', object.id.toQualifiedName())
+        events.emit('update-object', { object })
         return pg.query(sql`
           DROP ROUTINE ${object.id.toSQL()} CASCADE;
           ${sql.unsafe(object.query)}
@@ -235,7 +243,7 @@ function getLineFromPosition(position: number, query: string) {
 async function preparePluginStatements(
   env: Env,
   baseTypes: PgBaseType[],
-  allObjects: ParsedObjectStmt[],
+  allObjects: PgObjectStmt[],
 ) {
   // Ensure that removed plugins don't leave behind any SQL files.
   fs.rmSync(env.config.generate.pluginSqlDir, {
@@ -258,7 +266,7 @@ async function preparePluginStatements(
   fs.mkdirSync(env.config.generate.pluginSqlDir, { recursive: true })
 
   for (const plugin of plugins) {
-    log('Generating SQL statements with plugin', plugin.name)
+    events.emit('plugin:statements', { plugin })
 
     const template = await plugin.statements(
       { objects: allObjects, sql },
@@ -286,11 +294,7 @@ async function preparePluginStatements(
       const objects = await parseObjectStatements(content, outFile, baseTypes)
       for (const object of objects) {
         if (allObjects.some(other => other.id.equals(object.id))) {
-          log.warn(
-            '%s name is already in use:',
-            capitalize(object.kind),
-            object.id.toQualifiedName(),
-          )
+          events.emit('name-collision', { object })
           continue
         }
         allObjects.push(object)
@@ -304,7 +308,7 @@ async function preparePluginStatements(
 
 function throwFormattedQueryError(
   error: Error,
-  object: ParsedObjectStmt,
+  object: PgObjectStmt,
   exists: boolean,
 ): never {
   let message = error.message.replace(/^ERROR:\s+/i, '').trimEnd()

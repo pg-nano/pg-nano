@@ -1,6 +1,6 @@
-import type { Plugin } from 'pg-nano/plugin'
 import type { ConnectOptions } from 'pg-native'
 import type { MigrationHazardType } from './hazards'
+import type { Plugin } from './plugin'
 
 export type { ConnectOptions, MigrationHazardType }
 
@@ -94,9 +94,3 @@ export interface UserConfig {
   }
   plugins?: Plugin[]
 }
-
-export function defineConfig(config: UserConfig) {
-  return config
-}
-
-export * from './configResolver'

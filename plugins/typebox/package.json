@@ -14,6 +14,7 @@
     }
   },
   "devDependencies": {
+    "@pg-nano/node": "workspace:^",
     "@sinclair/typebox": "link:../../node_modules/@sinclair/typebox",
     "pg-nano": "workspace:@pg-nano/core@^"
   },
@@ -27,9 +28,7 @@
     "url": "git+https://github.com/pg-nano/pg-nano.git",
     "directory": "plugins/typebox"
   },
-  "files": [
-    "dist"
-  ],
+  "files": ["dist"],
   "scripts": {
     "dev": "rimraf dist && tsup --watch --sourcemap",
     "build": "rimraf dist && tsup",

@@ -8,6 +8,9 @@ importers:
 
   .:
     devDependencies:
+      '@pg-nano/node':
+        specifier: workspace:^
+        version: link:../../src/node
       pg-nano:
         specifier: workspace:@pg-nano/core@^
         version: link:../../src/core

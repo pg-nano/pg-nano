@@ -1,9 +1,9 @@
+import { SQLIdentifier } from '../parser/identifier.js'
+import type { PgObjectStmt } from '../parser/types.js'
 import { ExecutionQueue } from './executionQueue.js'
-import { SQLIdentifier } from './identifier.js'
-import type { ParsedObjectStmt } from './parseObjectStatements'
 
-export function linkObjectStatements(objects: ParsedObjectStmt[]) {
-  const objectsByName = new Map<string, ParsedObjectStmt>()
+export function linkObjectStatements(objects: PgObjectStmt[]) {
+  const objectsByName = new Map<string, PgObjectStmt>()
 
   const idSortedObjects = objects.toSorted((left, right) => {
     const cmp = (left.id.schema ?? 'public').localeCompare(
@@ -19,7 +19,7 @@ export function linkObjectStatements(objects: ParsedObjectStmt[]) {
     objectsByName.set(object.id.toQualifiedName(), object)
   }
 
-  const link = (stmt: ParsedObjectStmt, id: SQLIdentifier) => {
+  const link = (stmt: PgObjectStmt, id: SQLIdentifier) => {
     const dep = objectsByName.get(id.toQualifiedName(stmt.id.schema))
     if (dep) {
       stmt.dependencies.add(dep)

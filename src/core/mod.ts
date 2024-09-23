@@ -31,6 +31,8 @@ export {
 // Plugin APIs
 export {
   FieldMapper,
+  FieldType,
+  Fields,
   defineFieldMapper,
 } from './data/fields.js'
 

@@ -1,14 +1,19 @@
 import { gray, strikethrough } from 'kleur/colors'
 import { statSync } from 'node:fs'
 import path from 'node:path'
+import {
+  enableEventLogging,
+  generate,
+  getEnv,
+  log,
+  type EnvOptions,
+} from 'pg-nano/node'
 import { debounce, select } from 'radashi'
-import { type EnvOptions, getEnv } from '../env'
-import { generate } from '../generate'
-import { log } from '../log'
 
 type Options = EnvOptions & {}
 
 export default async function dev(cwd: string, options: Options = {}) {
+  enableEventLogging(options.verbose)
   const env = await getEnv(cwd, {
     ...options,
     watch: true,

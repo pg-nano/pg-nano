@@ -3,5 +3,11 @@
   "version": "0.0.0-development",
   "type": "module",
   "private": true,
-  "main": "mod.ts"
+  "scripts": {
+    "build": "tsup"
+  },
+  "devDependencies": {
+    "pg-native": "workspace:^",
+    "postgres-composite": "workspace:^"
+  }
 }

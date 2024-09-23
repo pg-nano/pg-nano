@@ -1,6 +1,6 @@
 import path from 'node:path'
-import type { UserConfig } from 'pg-nano/config'
 import { stringifyConnectOptions } from 'pg-native'
+import type { UserConfig } from './configTypes'
 
 export type ResolvedConfig = ReturnType<typeof resolveConfig>
 
