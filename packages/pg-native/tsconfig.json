@@ -1,13 +1,4 @@
 {
-  "include": ["src"],
-  "compilerOptions": {
-    "declaration": true,
-    "emitDeclarationOnly": true,
-    "allowSyntheticDefaultImports": true,
-    "strict": true,
-    "module": "esnext",
-    "moduleResolution": "node",
-    "target": "esnext",
-    "lib": ["esnext"]
-  }
+  "extends": "../../tsconfig.json",
+  "include": ["src"]
 }

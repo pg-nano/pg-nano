@@ -17,7 +17,8 @@
       "pg-nano/node": ["./src/node/index.ts"],
       "pg-nano/config": ["./src/node/config/config.ts"],
       "pg-nano/plugin": ["./src/node/config/plugin.ts"],
-      "pg-native": ["./packages/pg-native/src/index.ts"]
+      "pg-native": ["./packages/pg-native/src/index.ts"],
+      "postgres-range": ["./packages/postgres-range/src/index.ts"]
     }
   }
 }
