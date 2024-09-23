@@ -46,8 +46,7 @@
   "scripts": {
     "prepublishOnly": "pnpm build",
     "build": "rimraf dist && pnpm -r build",
-    "dev": "tinyrun --names core,plugins 'pnpm -s dev:core' 'pnpm --stream --filter=@pg-nano/plugin-* dev'",
-    "dev:core": "rimraf dist && DEV=1 tsup --watch --sourcemap",
+    "dev": "pnpm --filter './src/**/*' --filter pg-native --filter './plugins/**/*' --parallel dev",
     "format": "biome check --fix --unsafe src package.json",
     "lint": "tinyrun --names pg-nano,pg-native,biome 'tsc -p .' 'tsc -p src/pg-native' 'biome lint src generators'"
   },

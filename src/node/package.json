@@ -4,6 +4,7 @@
   "type": "module",
   "private": true,
   "scripts": {
+    "dev": "DEV=1 tsup --watch --sourcemap",
     "build": "tsup"
   },
   "devDependencies": {
