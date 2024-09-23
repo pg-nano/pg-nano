@@ -14,6 +14,7 @@ import type { PgObjectStmt } from './parser/types.js'
 
 export type Events = {
   connect: (options: ConnectOptions) => void
+  'create-database': (dbname: string) => void
   'load-config': (event: { configFilePath: string }) => void
   'unsupported-type': (event: { typeOid: number; typeName: string }) => void
   'unsupported-object': (event: { object: PgObjectStmt }) => void
@@ -40,6 +41,10 @@ export function enableEventLogging(verbose?: boolean) {
       options = { ...options, password: '***' }
     }
     log('Connecting to database', stringifyConnectOptions(options))
+  })
+
+  events.on('create-database', dbname => {
+    log('Database "%s" not found, creating...', dbname)
   })
 
   events.on('load-config', ({ configFilePath }) => {
