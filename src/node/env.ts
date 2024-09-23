@@ -113,9 +113,34 @@ async function loadEnv(cwd: string, options: EnvOptions) {
       return (client ??= (async () => {
         events.emit('connect', config.dev.connection)
 
-        const client = new Client()
+        const client = new Client({
+          maxRetries: 2,
+        })
 
-        await client.connect(config.dev.connectionString)
+        try {
+          await client.connect(config.dev.connectionString)
+        } catch (error: any) {
+          if (!/database ".+?" does not exist/.test(error.message)) {
+            throw error
+          }
+
+          const { dbname } = config.dev.connection
+          events.emit('create-database', dbname)
+
+          await client.connect({
+            application_name: 'pg-nano',
+            ...config.dev.connection,
+            dbname: 'postgres',
+          })
+
+          await client.query(sql`
+            CREATE DATABASE ${sql.id(dbname)}
+          `)
+
+          await client.close()
+          await client.connect(config.dev.connectionString)
+        }
+
         await client.query(sql`
           SET client_min_messages TO WARNING;
         `)
