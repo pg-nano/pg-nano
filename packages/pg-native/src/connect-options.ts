@@ -1,3 +1,5 @@
+import { isIntString } from 'radashi'
+
 /**
  * Connection options for libpq.
  *
@@ -330,4 +332,28 @@ export function stringifyConnectOptions(options: ConnectOptions): string {
     .filter(([_, value]) => value !== undefined)
     .map(([key, value]) => `${key}=${value}`)
     .join(' ')
+}
+
+export function parseConnectionString(
+  connectionString: string,
+): ConnectOptions {
+  if (/^\w+:\/\//.test(connectionString)) {
+    const url = new URL(connectionString)
+    return {
+      ...Object.fromEntries(url.searchParams.entries()),
+      user: url.username || undefined,
+      password: url.password || undefined,
+      host: url.hostname,
+      port: url.port || undefined,
+      dbname: url.pathname.split('/')[1] || undefined,
+    }
+  }
+  const options = {} as ConnectOptions
+  for (const option of connectionString.split(' ')) {
+    const separatorIndex = option.indexOf('=')
+    const key = option.slice(0, separatorIndex) as keyof ConnectOptions
+    const value = option.slice(separatorIndex + 1)
+    options[key] = (isIntString(value) ? Number(value) : value) as any
+  }
+  return options
 }
