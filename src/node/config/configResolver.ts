@@ -1,6 +1,7 @@
 import path from 'node:path'
-import { stringifyConnectOptions } from 'pg-native'
-import type { UserConfig } from './configTypes'
+import os from 'os'
+import { parseConnectionString, stringifyConnectOptions } from 'pg-native'
+import type { ConnectOptions, UserConfig } from './configTypes'
 
 export type ResolvedConfig = ReturnType<typeof resolveConfig>
 
@@ -13,7 +14,9 @@ export function resolveConfig(
   userConfig: UserConfig | undefined,
   options: Options,
 ) {
-  let connectionString = options.dsn || userConfig?.dev.connectionString
+  let connection: ConnectOptions
+
+  const connectionString = options.dsn || userConfig?.dev.connectionString
   if (connectionString) {
     if (!options.dsn && userConfig?.dev.connection) {
       throw new Error(
@@ -21,12 +24,9 @@ export function resolveConfig(
           'Use one or the other.',
       )
     }
-    connectionString = addApplicationName(connectionString)
+    connection = parseConnectionString(connectionString)
   } else if (userConfig?.dev.connection) {
-    connectionString = stringifyConnectOptions({
-      ...userConfig.dev.connection,
-      application_name: 'pg-nano',
-    })
+    connection = userConfig.dev.connection
   } else {
     throw Error(
       'Must set either dev.connectionString or dev.connection ' +
@@ -39,7 +39,17 @@ export function resolveConfig(
     plugins: userConfig?.plugins ?? [],
     dev: {
       ...userConfig?.dev,
-      connectionString,
+      connectionString: stringifyConnectOptions({
+        application_name: 'pg-nano',
+        ...connection,
+      }),
+      connection: {
+        ...connection,
+        // Ensure host and dbname always exist.
+        host: connection.host || 'localhost',
+        dbname:
+          connection.dbname || process.env.PGDATABASE || os.userInfo().username,
+      },
     },
     schema: {
       ...userConfig?.schema,
@@ -63,21 +73,4 @@ export function resolveConfig(
       ),
     },
   }
-}
-
-function addApplicationName(connectionString: string) {
-  const name = 'pg-nano'
-  if (/^\w+:\/\//.test(connectionString)) {
-    const url = new URL(connectionString)
-    url.searchParams.set('application_name', name)
-    return url.toString()
-  }
-  const options = Object.fromEntries(
-    connectionString.split(' ').map(part => {
-      const [key, value] = part.split('=')
-      return [key, value] as const
-    }),
-  )
-  options.application_name = name
-  return stringifyConnectOptions(options as any)
 }
