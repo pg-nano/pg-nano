@@ -6,7 +6,7 @@ import { type Static, type SchemaOptions, Type } from '@sinclair/typebox'
 export { Timestamp, JSON, Point, Range }
 
 export type StatusType = Static<typeof StatusType>
-export const StatusType = Type.Union([
+export const StatusType = /* @__PURE__ */ Type.Union([
   Type.Literal('pending'),
   Type.Literal('active'),
   Type.Literal('inactive'),
@@ -14,7 +14,7 @@ export const StatusType = Type.Union([
 ])
 
 export type AddressType = Static<typeof AddressType>
-export const AddressType = Type.Object({
+export const AddressType = /* @__PURE__ */ Type.Object({
   street: Type.Optional(Type.String()),
   city: Type.Optional(Type.String()),
   state: Type.Optional(Type.String()),

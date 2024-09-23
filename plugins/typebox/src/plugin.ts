@@ -63,6 +63,8 @@ function fixTypeBoxOutput(input: string, object: PgObject) {
     fixNameCollisions(source, output)
     fixStaticTypeQueries(source, output)
     prependArrowFunctions(source, output)
+  } else {
+    prependPureAnnotations(source, output)
   }
   return output.toString()
 }
@@ -108,19 +110,42 @@ function prependArrowFunction(
   decl: ts.VariableDeclaration,
   output: MagicString,
 ) {
-  if (decl.initializer) {
-    // If the initializer is not a call expression, skip it.
-    if (!ts.isCallExpression(decl.initializer)) {
-      return
+  if (!decl.initializer) {
+    return
+  }
+
+  // If the initializer is not a call expression, skip it.
+  if (!ts.isCallExpression(decl.initializer)) {
+    prependPureAnnotation(decl, output)
+    return
+  }
+
+  const initializerStart = decl.initializer.getStart()
+  output.appendRight(initializerStart, '(options?: SchemaOptions) => ')
+
+  // Pass the options as the last argument of the call expression.
+  const callExpr = decl.initializer as ts.CallExpression
+  const lastArgument = callExpr.arguments[callExpr.arguments.length - 1]
+  output.appendRight(lastArgument.getEnd(), ', options')
+}
+
+function prependPureAnnotations(source: ts.SourceFile, output: MagicString) {
+  for (const statement of source.statements) {
+    if (ts.isVariableStatement(statement)) {
+      for (const decl of statement.declarationList.declarations) {
+        prependPureAnnotation(decl, output)
+      }
     }
+  }
+}
 
+function prependPureAnnotation(
+  decl: ts.VariableDeclaration,
+  output: MagicString,
+) {
+  if (decl.initializer) {
     const initializerStart = decl.initializer.getStart()
-    output.appendRight(initializerStart, '(options?: SchemaOptions) => ')
-
-    // Pass the options as the last argument of the call expression.
-    const callExpr = decl.initializer as ts.CallExpression
-    const lastArgument = callExpr.arguments[callExpr.arguments.length - 1]
-    output.appendRight(lastArgument.getEnd(), ', options')
+    output.appendLeft(initializerStart, '/* @__PURE__ */')
   }
 }
 
