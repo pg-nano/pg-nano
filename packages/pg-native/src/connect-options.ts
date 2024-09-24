@@ -31,7 +31,7 @@ export interface ConnectOptions {
    * @default process.env.PGPORT
    * @see https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNECT-PORT
    */
-  port?: string
+  port?: string | number
 
   /**
    * The database name. Defaults to be the same as the user name.
