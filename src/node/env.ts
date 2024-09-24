@@ -115,6 +115,9 @@ async function loadEnv(cwd: string, options: EnvOptions) {
 
         const client = new Client({
           maxRetries: 2,
+          postConnectDDL: sql`
+            SET client_min_messages TO WARNING;
+          `,
         })
 
         try {
@@ -140,10 +143,6 @@ async function loadEnv(cwd: string, options: EnvOptions) {
           await client.close()
           await client.connect(config.dev.connectionString)
         }
-
-        await client.query(sql`
-          SET client_min_messages TO WARNING;
-        `)
 
         return client
       })())
