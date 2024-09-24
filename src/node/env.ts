@@ -14,6 +14,7 @@ import { allMigrationHazardTypes } from './config/hazards.js'
 import { debug } from './debug.js'
 import { events } from './events.js'
 import { log } from './log.js'
+import { isLocalHost } from './util/localhost.js'
 
 export type EnvOptions = {
   dsn?: string
@@ -80,7 +81,7 @@ async function loadEnv(cwd: string, options: EnvOptions) {
   config.migration.allowHazards.push('HAS_UNTRACKABLE_DEPENDENCIES' as any)
 
   // Enable unsafe mode for local development.
-  if (config.dev.connectionString.includes('localhost')) {
+  if (isLocalHost(config.dev.connection.host)) {
     config.migration.allowHazards.push(...allMigrationHazardTypes)
   } else {
     throw new Error('Non-local databases are not currently supported')
