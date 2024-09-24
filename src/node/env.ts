@@ -7,7 +7,7 @@ import mri from 'mri'
 import path from 'node:path'
 import { Client } from 'pg-nano'
 import { sql } from 'pg-native'
-import { camel, mapKeys } from 'radashi'
+import { camel, castArrayIfExists, mapKeys } from 'radashi'
 import { resolveConfig, type UserConfig } from './config/config.js'
 import { findConfigFile } from './config/findConfigFile.js'
 import { allMigrationHazardTypes } from './config/hazards.js'
@@ -64,6 +64,8 @@ async function loadEnv(cwd: string, options: EnvOptions) {
       if (debug.enabled) {
         log('Using BUNDLE_REQUIRE_OPTIONS →', parsedOptions)
       }
+      parsedOptions.external = castArrayIfExists(parsedOptions.external)
+      parsedOptions.noExternal = castArrayIfExists(parsedOptions.noExternal)
       Object.assign(options, parsedOptions)
     }
     events.emit('load-config', { configFilePath })
