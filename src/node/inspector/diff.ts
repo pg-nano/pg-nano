@@ -17,54 +17,52 @@ export async function hasCompositeTypeChanged(
   client: Client,
   type: PgCompositeTypeStmt,
 ) {
-  const tmpId = type.id.withSchema('nano')
-  const tmpStmt = type.query.replace(
-    type.id.toRegExp(),
-    tmpId.toQualifiedName(),
-  )
-
-  // Add the latest type to the database (but under the "nano" schema), so we
-  // can compare it to the existing type.
-  await client.query(sql`
-    DROP TYPE IF EXISTS ${tmpId.toSQL()} CASCADE;
-    ${sql.unsafe(tmpStmt)}
-  `)
-
-  const selectTypeById = (id: SQLIdentifier) => sql`
-    SELECT
-      array_agg(
-        (a.attname, a.atttypid, a.attnum)
-        ORDER BY a.attnum
-      ) AS columns
-    FROM
-      pg_type t
-    JOIN
-      pg_attribute a ON a.attrelid = t.typrelid
-    WHERE
-      t.typname = ${id.nameVal}
-      AND t.typnamespace = ${id.schemaVal}::regnamespace
-      AND t.typtype = 'c'
-      AND a.attnum > 0
-      AND NOT a.attisdropped
-  `
-
   if (debug.enabled) {
     debug('did %s change?', type.id.toQualifiedName())
   }
 
-  const hasChanges = await client.queryValue<boolean>(sql`
-    WITH type1 AS (
-      ${selectTypeById(type.id)}
-    ),
-    type2 AS (
-      ${selectTypeById(tmpId)}
-    )
-    SELECT
-      t1.columns <> t2.columns AS has_changes
-    FROM
-      type1 t1,
-      type2 t2;
-  `)
+  type ExistingColumn = {
+    name: string
+    type_oid: number
+  }
+
+  const [existingColumns, columnTypeOids] = await Promise.all([
+    client.queryRowList<ExistingColumn>(sql`
+      SELECT
+        a.attname AS name,
+        a.atttypid AS type_oid
+      FROM
+        pg_type t
+      JOIN
+        pg_attribute a ON a.attrelid = t.typrelid
+      WHERE
+        t.typname = ${type.id.nameVal}
+        AND t.typnamespace = ${type.id.schemaVal}::regnamespace
+        AND t.typtype = 'c'
+        AND a.attnum > 0
+        AND NOT a.attisdropped
+      ORDER BY a.attnum
+    `),
+    client.queryValueList<number>(sql`
+      SELECT
+        t.oid
+      FROM
+        pg_type t
+      WHERE
+        t.typname = ${type.id.nameVal}
+        AND t.typnamespace = ${type.id.schemaVal}::regnamespace
+    `),
+  ])
+
+  const hasChanges =
+    type.columns.length !== existingColumns.length ||
+    type.columns.some((col, index) => {
+      const existingCol = existingColumns[index]
+      return (
+        col.name !== existingCol.name ||
+        columnTypeOids[index] !== existingCol.type_oid
+      )
+    })
 
   return hasChanges
 }
