@@ -12,7 +12,7 @@ import {
   type Row,
   type SQLTemplate,
 } from 'pg-native'
-import { isString, sleep } from 'radashi'
+import { isString, noop, sleep } from 'radashi'
 import { ConnectionError, QueryError } from './error.js'
 import { Query, type QueryOptions, type ResultParser } from './query.js'
 
@@ -237,14 +237,11 @@ export class Client {
     }
     this.dsn = isString(target) ? target : stringifyConnectOptions(target)
     if (this.config.minConnections > 0) {
-      const firstConnection = this.addConnection(
-        signal,
-        Number.POSITIVE_INFINITY,
-      )
+      // Wait for the first connection to be established before adding more.
+      await this.addConnection(signal, Number.POSITIVE_INFINITY)
       for (let i = 0; i < this.config.minConnections - 1; i++) {
-        this.addConnection(signal, Number.POSITIVE_INFINITY)
+        this.addConnection(signal, Number.POSITIVE_INFINITY).catch(noop)
       }
-      await firstConnection
     }
     return this
   }
