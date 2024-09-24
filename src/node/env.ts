@@ -111,7 +111,7 @@ async function loadEnv(cwd: string, options: EnvOptions) {
       : undefined,
     get client() {
       return (client ??= (async () => {
-        events.emit('connect', config.dev.connectionString)
+        events.emit('connect', config.dev.connection)
 
         const client = new Client()
 

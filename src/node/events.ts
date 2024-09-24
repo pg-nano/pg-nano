@@ -3,6 +3,7 @@ import type { ChildProcess } from 'node:child_process'
 import { EventEmitter } from 'node:events'
 import type { Readable } from 'node:stream'
 import util from 'node:util'
+import { stringifyConnectOptions, type ConnectOptions } from 'pg-native'
 import { capitalize } from 'radashi'
 import type { StrictEventEmitter } from 'strict-event-emitter-types'
 import type { Plugin } from './config/plugin.js'
@@ -12,7 +13,7 @@ import { log } from './log.js'
 import type { PgObjectStmt } from './parser/types.js'
 
 export type Events = {
-  connect: (connectionString: string) => void
+  connect: (options: ConnectOptions) => void
   'load-config': (event: { configFilePath: string }) => void
   'unsupported-type': (event: { typeOid: number; typeName: string }) => void
   'unsupported-object': (event: { object: PgObjectStmt }) => void
@@ -34,13 +35,11 @@ export const events = new EventEmitter() as StrictEventEmitter<
 >
 
 export function enableEventLogging(verbose?: boolean) {
-  const fuzzPassword = (connectionString: string) =>
-    connectionString
-      .replace(/^postgres(?:ql)?:\/\/(\w+):[^@]+@/g, 'postgres://$1:***@')
-      .replace(/\bpassword=[^ ]+/g, 'password=***')
-
-  events.on('connect', connectionString => {
-    log('Connecting to database', fuzzPassword(connectionString))
+  events.on('connect', options => {
+    if (options.password) {
+      options = { ...options, password: '***' }
+    }
+    log('Connecting to database', stringifyConnectOptions(options))
   })
 
   events.on('load-config', ({ configFilePath }) => {
