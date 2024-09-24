@@ -22,8 +22,8 @@ importers:
         specifier: link:../../node_modules/@sinclair/typebox
         version: link:../../node_modules/@sinclair/typebox
       pg-nano:
-        specifier: workspace:@pg-nano/core@^
-        version: link:../../src/core
+        specifier: workspace:^
+        version: link:../..
 
 packages:
 
