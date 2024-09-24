@@ -1,4 +1,5 @@
 import type { Field } from 'pg-native'
+import type { ColumnDef, FunctionParameter } from '../config/plugin.js'
 import type { SQLIdentifier } from './identifier.js'
 
 export type PgObjectStmtKind<T = PgObjectStmt> = T extends PgObjectStmt
@@ -29,23 +30,28 @@ export type PgParamDef = {
   variadic: boolean
 }
 
-export type PgColumnDef = {
+export type PgColumnDef<TNode extends ColumnDef | FunctionParameter> = {
   name: string
   type: SQLIdentifier
   refs?: SQLIdentifier[]
+  /**
+   * This will be a `FunctionParameter` node if declared as an OUT or INOUT
+   * parameter. Otherwise, it's a `ColumnDef` node.
+   */
+  node: TNode
 }
 
 export interface PgRoutineStmt extends IPgObjectStmt {
   kind: 'routine'
   params: PgParamDef[]
-  returnType: SQLIdentifier | PgColumnDef[] | undefined
+  returnType: SQLIdentifier | PgColumnDef<FunctionParameter>[] | undefined
   returnSet: boolean
   isProcedure: boolean
 }
 
 export interface PgTableStmt extends IPgObjectStmt {
   kind: 'table'
-  columns: PgColumnDef[]
+  columns: PgColumnDef<ColumnDef>[]
   primaryKeyColumns: string[]
 }
 
@@ -61,7 +67,7 @@ export interface PgEnumStmt extends PgTypeStmt {
 
 export interface PgCompositeTypeStmt extends PgTypeStmt {
   subkind: 'composite'
-  columns: PgColumnDef[]
+  columns: PgColumnDef<ColumnDef>[]
 }
 
 export interface PgViewStmt extends IPgObjectStmt {

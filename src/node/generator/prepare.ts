@@ -7,6 +7,7 @@ import { debug } from '../debug.js'
 import type { Env } from '../env.js'
 import { events } from '../events.js'
 import {
+  findAddedTableColumns,
   hasCompositeTypeChanged,
   hasRoutineSignatureChanged,
 } from '../inspector/diff.js'
@@ -181,6 +182,34 @@ export async function prepareDatabase(
           DROP ROUTINE ${object.id.toSQL()} CASCADE;
           ${sql.unsafe(object.query)}
         `)
+      }
+    } else if (object.kind === 'table') {
+      const addedColumns = await findAddedTableColumns(pg, object)
+
+      if (addedColumns.length > 0) {
+        events.emit('update-object', { object })
+
+        const alterStmts = addedColumns.map(name => {
+          const index = object.columns.findIndex(c => c.name === name)
+          const column = object.columns[index]
+
+          const siblingIndex = index + 1
+          const siblingNode =
+            siblingIndex < object.columns.length
+              ? object.columns[siblingIndex].node
+              : undefined
+
+          const colExpr = object.query.slice(
+            column.node.location,
+            siblingNode?.location ?? object.query.lastIndexOf(')'),
+          )
+
+          return sql`
+            ALTER TABLE ${object.id.toSQL()} ADD COLUMN ${sql.unsafe(colExpr)};
+          `
+        })
+
+        return pg.query(sql`${sql.join('\n', alterStmts)}`)
       }
     }
   }

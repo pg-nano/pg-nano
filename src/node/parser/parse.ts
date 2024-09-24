@@ -99,6 +99,7 @@ export async function parseObjectStatements(
             outParams.push({
               name: param.name!,
               type: SQLIdentifier.fromTypeName(param.argType),
+              node: param,
             })
           }
         }
@@ -167,6 +168,7 @@ export async function parseObjectStatements(
             name: colname,
             type,
             refs,
+            node: elt.ColumnDef,
           })
         } else if ($.isConstraint(elt)) {
           const { contype } = $(elt)
@@ -198,6 +200,7 @@ export async function parseObjectStatements(
         return {
           name: colname,
           type: SQLIdentifier.fromTypeName(typeName),
+          node: col.ColumnDef,
         }
       })
 

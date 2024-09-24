@@ -1,12 +1,46 @@
 import { type Client, isPgResultError, sql } from 'pg-nano'
+import { select } from 'radashi'
 import { debug } from '../debug.js'
 import type { SQLIdentifier } from '../parser/identifier.js'
 import type {
   PgCompositeTypeStmt,
   PgRoutineStmt,
+  PgTableStmt,
   PgViewStmt,
 } from '../parser/types.js'
 import { appendCodeFrame } from '../util/codeFrame.js'
+
+/**
+ * Returns a set of column names that were added to the table.
+ */
+export async function findAddedTableColumns(
+  client: Client,
+  table: PgTableStmt,
+) {
+  if (debug.enabled) {
+    debug('did %s have columns added?', table.id.toQualifiedName())
+  }
+
+  const existingNames = await client.queryValueList<string>(sql`
+    SELECT
+      a.attname
+    FROM
+      pg_class c
+    JOIN
+      pg_attribute a ON a.attrelid = c.oid
+    WHERE
+      c.relname = ${table.id.nameVal}
+      AND c.relnamespace = ${table.id.schemaVal}::regnamespace
+      AND a.attnum > 0
+      AND NOT a.attisdropped
+  `)
+
+  return select(
+    table.columns,
+    col => col.name,
+    col => !existingNames.includes(col.name),
+  )
+}
 
 /**
  * Compare a type to an existing type in the database.
