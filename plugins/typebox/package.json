@@ -16,7 +16,7 @@
   "devDependencies": {
     "@pg-nano/node": "workspace:^",
     "@sinclair/typebox": "link:../../node_modules/@sinclair/typebox",
-    "pg-nano": "workspace:@pg-nano/core@^"
+    "pg-nano": "workspace:^"
   },
   "peerDependencies": {
     "@sinclair/typebox": "*",

@@ -8,7 +8,7 @@
   },
   "scripts": {
     "test": "tsx --watch test.ts",
-    "dev": "NODE_OPTIONS='--enable-source-maps' BUNDLE_REQUIRE_OPTIONS='--not-external @pg-nano/plugin-crud --not-external @pg-nano/plugin-typebox' pg-nano dev",
+    "dev": "NODE_OPTIONS='--enable-source-maps' BUNDLE_REQUIRE_OPTIONS='--external pg-nano' pg-nano dev",
     "start": "sh start.sh",
     "format": "biome check --fix"
   },

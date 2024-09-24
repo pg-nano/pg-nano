@@ -14,7 +14,7 @@
   },
   "devDependencies": {
     "@pg-nano/node": "workspace:^",
-    "pg-nano": "workspace:@pg-nano/core@^"
+    "pg-nano": "workspace:^"
   },
   "scripts": {
     "dev": "rimraf dist && tsup --watch --sourcemap",

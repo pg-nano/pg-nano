@@ -15,7 +15,7 @@
   },
   "devDependencies": {
     "@pg-nano/node": "workspace:^",
-    "pg-nano": "workspace:@pg-nano/core@^"
+    "pg-nano": "workspace:^"
   },
   "peerDependencies": {
     "pg-nano": "*"
