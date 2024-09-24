@@ -298,7 +298,7 @@ async function preparePluginStatements(
     events.emit('plugin:statements', { plugin })
 
     const template = await plugin.statements(
-      { objects: allObjects, sql },
+      { objects: allObjects },
       env.config,
     )
 

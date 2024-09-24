@@ -3,7 +3,7 @@ import {
   PgParamKind,
   type PgTableStmt,
   type Plugin,
-  type PluginContext,
+  sql,
 } from 'pg-nano/plugin'
 import { objectify } from 'radashi'
 
@@ -11,7 +11,7 @@ export default function (): Plugin {
   return {
     name: '@pg-nano/plugin-crud',
     async statements(context) {
-      const { objects, sql } = context
+      const { objects } = context
       const tables = objects.filter(obj => obj.kind === 'table')
 
       this.generateStart = ({ routines }) => {
@@ -67,19 +67,13 @@ export default function (): Plugin {
       }
 
       return sql`
-        ${sql.join(
-          sql.unsafe('\n'),
-          tables.map(table => renderTableQueries(table, context)),
-        )}
+        ${sql.join('\n', tables.map(renderTableQueries))}
       `
     },
   }
 }
 
-function renderTableQueries(
-  table: Readonly<PgTableStmt>,
-  { sql }: PluginContext['statements'],
-) {
+function renderTableQueries(table: Readonly<PgTableStmt>) {
   if (!table.primaryKeyColumns.length) {
     console.warn(
       'Table %s has no primary key, skipping',

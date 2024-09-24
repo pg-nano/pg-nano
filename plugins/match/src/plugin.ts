@@ -1,4 +1,4 @@
-import type { PgTableStmt, Plugin, StatementsContext } from 'pg-nano/plugin'
+import { sql, type PgTableStmt, type Plugin } from 'pg-nano/plugin'
 import { objectify } from 'radashi'
 import irregularPlurals from './irregular-plurals'
 
@@ -10,12 +10,12 @@ export default function (options: Options = {}): Plugin {
   return {
     name: '@pg-nano/plugin-crud',
     async statements(context) {
-      const { objects, sql } = context
-      const tables = objects.filter(obj => obj.type === 'table')
+      const { objects } = context
+      const tables = objects.filter(obj => obj.kind === 'table')
 
       return sql`
-        ${renderUtilityQueries(context)}
-        ${tables.map(table => renderTableQueries(table, context, options))}
+        ${renderUtilityQueries()}
+        ${tables.map(table => renderTableQueries(table, options))}
       `
     },
     generateStart({ namespaces }) {
@@ -27,7 +27,7 @@ export default function (options: Options = {}): Plugin {
   }
 }
 
-function renderUtilityQueries({ sql }: StatementsContext) {
+function renderUtilityQueries() {
   return sql`
     -- Build WHERE clause from conditions
     CREATE FUNCTION build_where_clause(conditions JSON)
@@ -91,11 +91,7 @@ function renderUtilityQueries({ sql }: StatementsContext) {
   `
 }
 
-function renderTableQueries(
-  table: Readonly<PgTableStmt>,
-  { sql }: StatementsContext,
-  options: Options,
-) {
+function renderTableQueries(table: Readonly<PgTableStmt>, options: Options) {
   if (!table.primaryKeyColumns.length) {
     // No primary key, skip
     return ''

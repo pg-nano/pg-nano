@@ -1,4 +1,4 @@
-import type { sql, SQLTemplate } from 'pg-native'
+import type { SQLTemplate } from 'pg-native'
 import type {
   PgFieldContext,
   PgNamespace,
@@ -84,10 +84,6 @@ export interface PluginContext {
      * The objects parsed from the input SQL files.
      */
     objects: readonly Readonly<PgObjectStmt>[]
-    /**
-     * A tagged template literal for creating SQL templates.
-     */
-    sql: typeof sql
   }
   generateStart: GenerateContext
   generateEnd: {
@@ -136,6 +132,7 @@ export interface PluginContext {
 
 export type * from '@pg-nano/pg-parser'
 export { $, select, walk } from '@pg-nano/pg-parser'
+export { sql } from 'pg-native'
 export * from '../inspector/types.js'
 export type { SQLIdentifier } from '../parser/identifier.js'
 export * from '../parser/types.js'
