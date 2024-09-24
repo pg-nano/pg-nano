@@ -138,6 +138,7 @@ export class Client {
           Math.min(delay * 2, this.config.maxRetryDelay),
         )
       }
+      this.dsn = null
       throw error
     }
   }
