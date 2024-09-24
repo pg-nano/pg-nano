@@ -16,7 +16,7 @@ import { Query, type QueryOptions, type ResultParser } from './query.js'
 
 const debug = /** @__PURE__ */ createDebug('pg-nano')
 
-export interface ClientOptions {
+export interface ClientConfig {
   /**
    * The minimum number of connections to maintain in the pool.
    * @default 1
@@ -86,7 +86,7 @@ export class Client {
   protected backlog: ((err?: Error) => void)[] = []
 
   readonly dsn: string | null = null
-  readonly config: Readonly<ClientOptions>
+  readonly config: Readonly<ClientConfig>
 
   constructor({
     minConnections = 1,
@@ -97,7 +97,7 @@ export class Client {
     idleTimeout = 30e3,
     fieldCase = FieldCase.camel,
     postConnectDDL = null,
-  }: Partial<ClientOptions> = {}) {
+  }: Partial<ClientConfig> = {}) {
     this.config = {
       minConnections,
       maxConnections,
