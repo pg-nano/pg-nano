@@ -4,13 +4,15 @@ import {
   Connection,
   ConnectionStatus,
   FieldCase,
+  stringifyConnectOptions,
   stringifyTemplate,
+  type ConnectOptions,
   type QueryHook,
   type Result,
   type Row,
   type SQLTemplate,
 } from 'pg-native'
-import { sleep } from 'radashi'
+import { isString, sleep } from 'radashi'
 import { ConnectionError, QueryError } from './error.js'
 import { Query, type QueryOptions, type ResultParser } from './query.js'
 
@@ -85,7 +87,7 @@ export class Client {
   protected pool: (Connection | Promise<Connection>)[] = []
   protected backlog: ((err?: Error) => void)[] = []
 
-  readonly dsn: string | null = null
+  dsn: string | null = null
   readonly config: Readonly<ClientConfig>
 
   constructor({
@@ -228,11 +230,11 @@ export class Client {
   /**
    * Connects to the database and initializes the connection pool.
    */
-  async connect(dsn: string, signal?: AbortSignal) {
+  async connect(target: string | ConnectOptions, signal?: AbortSignal) {
     if (this.dsn != null) {
       throw new ConnectionError('Postgres is already connected')
     }
-    this.setDSN(dsn)
+    this.dsn = isString(target) ? target : stringifyConnectOptions(target)
     if (this.config.minConnections > 0) {
       const firstConnection = this.addConnection(
         signal,
@@ -431,7 +433,7 @@ export class Client {
     if (this.dsn == null) {
       return
     }
-    this.setDSN(null)
+    this.dsn = null
     const closing = Promise.all(
       this.pool.map(connection =>
         isPromise(connection)
@@ -458,10 +460,6 @@ export class Client {
     const connection = await (this.pool[0] || this.getConnection())
     // biome-ignore lint/complexity/useLiteralKeys: Protected access
     return stringifyTemplate(template, connection['pq'], options)
-  }
-
-  private setDSN(dsn: string | null) {
-    ;(this as { dsn: string | null }).dsn = dsn
   }
 }
 

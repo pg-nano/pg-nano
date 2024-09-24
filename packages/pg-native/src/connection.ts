@@ -1,9 +1,8 @@
 import Libpq from '@pg-nano/libpq'
 import { EventEmitter } from 'node:events'
 import util from 'node:util'
-import { isFunction, isString, uid } from 'radashi'
+import { isFunction, uid } from 'radashi'
 import type { StrictEventEmitter } from 'strict-event-emitter-types'
-import { stringifyConnectOptions, type ConnectOptions } from './connect-options'
 import { debugConnection, debugQuery } from './debug'
 import { PgNativeError, PgResultError } from './error'
 import { buildResult, type FieldCase, type Result } from './result'
@@ -55,9 +54,9 @@ export class Connection extends ConnectionEmitter {
     reset(unprotect(this), ConnectionStatus.CLOSED)
   }
 
-  async connect(dsn: string | ConnectOptions) {
+  async connect(dsn: string) {
     this.pq = new Libpq()
-    await this.pq.connect(isString(dsn) ? dsn : stringifyConnectOptions(dsn))
+    await this.pq.connect(dsn)
     setStatus(unprotect(this), ConnectionStatus.IDLE)
   }
 
