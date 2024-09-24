@@ -102,7 +102,10 @@ export async function hasCompositeTypeChanged(
 }
 
 /**
- * Compare a routine to an existing routine in the database.
+ * Compare a the type signature of parsed CREATE routine statement to an
+ * existing routine in the database.
+ *
+ * Bodies are not compared, since pg-schema-diff handles that.
  *
  * @returns `true` if the routine has changed, `false` otherwise.
  */
