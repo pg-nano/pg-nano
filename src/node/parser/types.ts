@@ -30,7 +30,9 @@ export type PgParamDef = {
   variadic: boolean
 }
 
-export type PgColumnDef<TNode extends ColumnDef | FunctionParameter> = {
+export type PgColumnDef<
+  TNode extends ColumnDef | FunctionParameter = ColumnDef | FunctionParameter,
+> = {
   name: string
   type: SQLIdentifier
   refs?: SQLIdentifier[]

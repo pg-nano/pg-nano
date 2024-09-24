@@ -1,18 +1,17 @@
 import { Tuple } from 'pg-native'
 import { isArray, isObject } from 'radashi'
 import type { Client } from '../client.js'
-import { FieldMapper, type Fields, type FieldType } from './fields.js'
+import { FieldMapper, type FieldType, type Fields } from './fields.js'
 
 export type InParams = Fields | readonly FieldType[]
-export type OutParams = { [name: string]: Fields | FieldMapper }
 
 /**
- * The `prepareParams` function has two purposes:
+ * The `prepareInParams` function has two purposes:
  *
  *   1. Convert named parameters to positional parameters.
  *   2. Prepare composite types for query execution.
  */
-export function prepareParams(
+export function prepareInParams(
   client: Client,
   input: unknown,
   params: InParams,
@@ -67,7 +66,7 @@ export function prepareParams(
     if (value != null && isObject(type)) {
       if (isArray(value)) {
         value = value.map(value => {
-          return prepareParams(
+          return prepareInParams(
             client,
             value as Record<string, unknown>,
             type,
@@ -75,7 +74,7 @@ export function prepareParams(
           )
         })
       } else {
-        value = prepareParams(
+        value = prepareInParams(
           client,
           value as Record<string, unknown>,
           type,

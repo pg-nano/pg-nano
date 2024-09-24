@@ -340,7 +340,7 @@ export function parseConnectionString(
   if (/^\w+:\/\//.test(connectionString)) {
     const url = new URL(connectionString)
     return {
-      ...Object.fromEntries(url.searchParams.entries()),
+      ...Object.fromEntries(url.searchParams),
       user: url.username || undefined,
       password: url.password || undefined,
       host: url.hostname,

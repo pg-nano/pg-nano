@@ -111,7 +111,7 @@ async function loadEnv(cwd: string, options: EnvOptions) {
       : undefined,
     get client() {
       return (client ??= (async () => {
-        events.emit('connect', config.dev.connection)
+        events.emit('connecting', config.dev.connection)
 
         const client = new Client({
           maxRetries: 2,

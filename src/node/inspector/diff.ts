@@ -98,6 +98,8 @@ export async function hasCompositeTypeChanged(
       )
     })
 
+  console.log({ hasChanges, existingColumns, columnTypeOids })
+
   return hasChanges
 }
 

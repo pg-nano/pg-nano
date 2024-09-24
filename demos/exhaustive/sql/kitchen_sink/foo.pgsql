@@ -1,5 +1,3 @@
-CREATE EXTENSION hstore;
-
 CREATE TYPE status_type AS ENUM (
   'pending',
   'active',

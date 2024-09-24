@@ -1,3 +1,8 @@
+export enum FieldCase {
+  preserve = 0,
+  camel = 1,
+}
+
 const snakeRegex = /_([a-z0-9])/g
 const camelRegex = /([a-z])([A-Z]+)/g
 

@@ -1,55 +1,48 @@
-import type {
-  PgNativeError,
-  PgResultError,
-  Result,
+import { isPromise } from 'node:util/types'
+import {
+  type Connection,
+  FieldCase,
+  type PgNativeError,
+  type PgResultError,
+  type QueryHook,
+  type QueryOptions,
+  type QueryType,
   SQLTemplate,
 } from 'pg-native'
-import type { Client } from './mod'
-import { streamResults } from './stream.js'
+import { isArray, noop } from 'radashi'
+import { snakeToCamel } from './casing.js'
+import type { Client } from './client.js'
+import { QueryError } from './error.js'
 
 type UnwrapArray<T> = T extends readonly (infer U)[] ? U : T
-
-export type ResultParser = (result: Result, client: Client) => void
-
-export interface QueryOptions {
-  /**
-   * Cancel the query early when this signal is aborted.
-   */
-  signal?: AbortSignal
-  /**
-   * Hook into each result after it's been parsed but before it's returned.
-   * Useful for handling custom field types.
-   * @internal
-   */
-  resultParser?: ResultParser
-  /**
-   * Transform the resolved value of the promise.
-   * @internal
-   */
-  resolve?: (results: Result[]) => any
-}
 
 export class Query<
   TPromiseResult,
   TIteratorResult = UnwrapArray<TPromiseResult>,
 > {
-  protected options: QueryOptions | undefined
-
   constructor(
     protected client: Client,
-    protected sql: SQLTemplate,
-    protected transform?: (
-      result: UnwrapArray<TPromiseResult>,
-    ) => TIteratorResult | TIteratorResult[],
+    protected type: QueryType,
+    protected input: SQLTemplate | QueryHook<any>,
+    protected options?: QueryOptions | null,
+    protected expectedCount?: '[0,1]' | '[1,1]' | null,
   ) {}
 
   /**
-   * Set options for the query.
+   * Request that the query be cancelled and stop all processing. Does nothing
+   * if the query hasn't been awaited yet.
    */
-  withOptions(options: QueryOptions | undefined) {
-    if (options) {
-      this.options = { ...this.options, ...options }
-    }
+  public cancel: () => void = noop
+
+  protected signal?: AbortSignal
+
+  /**
+   * Request that the query be cancelled when the given signal is aborted.
+   *
+   * Note: This must be called before the query is awaited.
+   */
+  cancelWithSignal(signal: AbortSignal) {
+    this.signal = signal
     return this
   }
 
@@ -64,17 +57,7 @@ export class Query<
       | undefined
       | null,
   ): Promise<TResult | TCatchResult> {
-    let promise = this.send()
-    if (this.options?.resolve) {
-      promise = promise.then(this.options.resolve)
-    }
-    const template = this.sql
-    promise = promise.catch(function onError(error) {
-      error.ddl = template.ddl
-      Error.captureStackTrace(error, onError)
-      throw error
-    })
-    return promise.then(onfulfilled, onrejected)
+    return this.send().then(onfulfilled, onrejected)
   }
 
   catch<TCatchResult = TPromiseResult>(
@@ -85,41 +68,129 @@ export class Query<
       | undefined
       | null,
   ): Promise<TPromiseResult | TCatchResult> {
-    return this.then(undefined, onrejected)
+    return this.send().catch(onrejected)
   }
 
   finally(
     onfinally?: (() => void) | undefined | null,
   ): Promise<TPromiseResult> {
-    return Promise.resolve(this).finally(onfinally)
-  }
-
-  protected send(): Promise<any>
-  protected send(singleRowMode: true): AsyncIterable<TIteratorResult>
-  protected send(
-    singleRowMode?: boolean,
-  ): Promise<any> | AsyncIterable<TIteratorResult> {
-    const client = this.client as unknown as {
-      getConnection: Client['getConnection']
-      dispatchQuery: Client['dispatchQuery']
-    }
-    const signal = this.options?.signal
-    const connection = client.getConnection(signal)
-    const promise = client.dispatchQuery(
-      connection,
-      this.sql,
-      signal,
-      this.options?.resultParser,
-      singleRowMode,
-    )
-    if (singleRowMode) {
-      return streamResults(connection, this.transform)
-    }
-    return promise
+    return this.send().finally(onfinally)
   }
 
   [Symbol.asyncIterator]() {
     return this.send(true)[Symbol.asyncIterator]()
+  }
+
+  protected send(): Promise<TPromiseResult>
+  protected send(singleRowMode: true): AsyncIterable<TIteratorResult>
+  protected send(singleRowMode?: boolean): Promise<any> | AsyncIterable<any> {
+    const client = this.client as unknown as {
+      config: Client['config']
+      getConnection: Client['getConnection']
+    }
+    const connection = client.getConnection(this.signal)
+    const promise = this.promise(connection, this.input, {
+      ...this.options,
+      singleRowMode,
+      mapFieldName:
+        this.options?.mapFieldName ??
+        (client.config.fieldCase === FieldCase.camel
+          ? snakeToCamel
+          : undefined),
+    })
+    if (singleRowMode) {
+      return this.stream(connection, promise)
+    }
+    return promise
+  }
+
+  protected async promise(
+    connection: Connection | Promise<Connection>,
+    input: SQLTemplate | QueryHook<any>,
+    options?: QueryOptions | null,
+  ): Promise<any> {
+    if (isPromise(connection)) {
+      // Only await the connection if necessary, so the connection status can
+      // change to QUERY_WRITING as soon as possible.
+      connection = await connection
+      this.signal?.throwIfAborted()
+    }
+
+    const client = this.client as unknown as {
+      parseText: Client['parseText']
+      onQueryFinished: Client['onQueryFinished']
+    }
+
+    const queryPromise = connection.query(
+      this.type,
+      input,
+      client.parseText,
+      options,
+    )
+
+    this.cancel = queryPromise.cancel
+    this.signal?.addEventListener('abort', this.cancel)
+
+    const promise = queryPromise.catch(error => {
+      if (input instanceof SQLTemplate) {
+        error.ddl = input.ddl
+      }
+      Error.captureStackTrace(error, this.send)
+      throw error
+    })
+
+    promise.finally(() => {
+      try {
+        client.onQueryFinished()
+      } catch (error) {
+        console.error(error)
+      }
+    })
+
+    if (this.expectedCount) {
+      const rows: any[] = await promise
+      if (rows.length > 1) {
+        throw new QueryError(`Expected at most 1 row, got ${rows.length}`)
+      }
+      if (rows.length === 0) {
+        if (this.expectedCount === '[1,1]') {
+          throw new QueryError('Expected row, got undefined')
+        }
+        return null
+      }
+      return rows[0]
+    }
+    return promise
+  }
+
+  protected async *stream(
+    conn: Connection | Promise<Connection>,
+    queryPromise: Promise<any>,
+  ): AsyncGenerator<any, void, unknown> {
+    if (isPromise(conn)) {
+      conn = await conn
+    }
+    const endSymbol: any = Symbol('end')
+    while (true) {
+      const { promise, resolve, reject } = Promise.withResolvers<any>()
+      const end = () => queryPromise.then(() => resolve(endSymbol), reject)
+      conn.on('result', resolve)
+      conn.on('end', end)
+
+      const result = await promise.finally(() => {
+        conn.off('result', resolve)
+        conn.off('end', end)
+      })
+
+      if (result === endSymbol) {
+        return
+      }
+      if (isArray(result)) {
+        yield* result as any
+      } else {
+        yield result
+      }
+    }
   }
 }
 

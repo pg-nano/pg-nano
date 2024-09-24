@@ -13,7 +13,7 @@ import { log } from './log.js'
 import type { PgObjectStmt } from './parser/types.js'
 
 export type Events = {
-  connect: (options: ConnectOptions) => void
+  connecting: (options: ConnectOptions) => void
   'create-database': (dbname: string) => void
   'load-config': (event: { configFilePath: string }) => void
   'unsupported-type': (event: { typeOid: number; typeName: string }) => void
@@ -36,7 +36,7 @@ export const events = new EventEmitter() as StrictEventEmitter<
 >
 
 export function enableEventLogging(verbose?: boolean) {
-  events.on('connect', options => {
+  events.on('connecting', options => {
     if (options.password) {
       options = { ...options, password: '***' }
     }

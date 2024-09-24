@@ -266,44 +266,21 @@ export async function generate(
     oid: number,
     fieldContext: Omit<PgFieldContext, 'fieldType'>,
   ) => {
-    let code: string
+    let code = ''
 
     const type = typesByOid.get(oid)
-    if (!type) {
-      code = oid + ' /* unknown */'
-    } else if (isBaseType(type)) {
-      const baseType = type.object
-      const typeName = baseType.name + (type.isArray ? '_array' : '')
-
-      if (!renderedBaseTypes.has(oid)) {
-        renderedBaseTypes.set(oid, `export const ${typeName} = ${oid}`)
-      }
-
-      code = 't.' + typeName
-    } else if (isEnumType(type)) {
-      const enumType = type.object
-      const enumName =
-        (enumType.schema !== 'public' ? `${enumType.schema}.` : '') +
-        enumType.name
-
-      if (!renderedEnumTypes.has(oid)) {
-        renderedEnumTypes.set(oid, `export const ${enumName} = ${oid}`)
-      }
-
-      code = oid + ` /* ${enumName} */`
-    } else {
+    if (type && (isCompositeType(type) || isTableType(type))) {
       code = 't.' + type.object.name
     }
 
+    const mapFieldContext = {
+      ...generateContext,
+      ...fieldContext,
+      fieldType: type ?? typesByName.get('unknown')!,
+    }
+
     for (const plugin of fieldMapperPlugins) {
-      const fieldMapper = plugin.mapField(
-        {
-          ...generateContext,
-          ...fieldContext,
-          fieldType: type ?? typesByName.get('unknown')!,
-        },
-        env.config,
-      )
+      const fieldMapper = plugin.mapField(mapFieldContext, env.config)
       if (!fieldMapper) {
         continue
       }
@@ -337,19 +314,19 @@ export async function generate(
     compact?: boolean,
   ) =>
     `{${compact ? ' ' : '\n  '}${select(fields, field => {
-      if (!field) {
-        return null
+      if (field) {
+        const type = renderFieldType(field.typeOid, {
+          fieldName: field.name,
+          paramKind: field.paramKind,
+          paramIndex: field.paramIndex,
+          ...context,
+        })
+
+        if (type) {
+          const name = formatFieldName(field.name)
+          return `${name}: ${type}`
+        }
       }
-
-      const name = formatFieldName(field.name)
-      const type = renderFieldType(field.typeOid, {
-        fieldName: field.name,
-        paramKind: field.paramKind,
-        paramIndex: field.paramIndex,
-        ...context,
-      })
-
-      return `${name}: ${type}`
     }).join(compact ? ', ' : ',\n  ')}${compact ? ' ' : '\n'}}`
 
   const renderCompositeFields = (object: PgCompositeType | PgTable) =>

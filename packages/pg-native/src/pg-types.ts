@@ -1,11 +1,13 @@
 import * as array from 'postgres-array'
 import parseByteA from 'postgres-bytea'
+import * as composite from 'postgres-composite'
 import parseTimestampTz from 'postgres-date'
 import parseInterval from 'postgres-interval'
 import * as range from 'postgres-range'
 
-function parseArray(transform: (value: string) => any) {
-  return (value: string) => array.parse(value, transform)
+export function parseArray(parseElement: TextParser): TextParser {
+  return (value, parse) =>
+    array.parse(value, element => parseElement(element, parse))
 }
 
 function parseBool(value: string) {
@@ -41,6 +43,20 @@ function parseCircle(value: string) {
   }
 }
 
+export function parseComposite(fields: Record<string, number>): TextParser {
+  const fieldNames = Object.keys(fields)
+  return (value, parse) => {
+    const row: Record<string, unknown> = {}
+    let index = 0
+    for (const fieldValue of composite.parse(value)) {
+      const fieldName = fieldNames[index++]
+      row[fieldName] =
+        fieldValue !== null ? parse(fieldValue, fields[fieldName]) : fieldValue
+    }
+    return row
+  }
+}
+
 function parsePoint(value: string) {
   if (value[0] !== '(') {
     return null
@@ -68,12 +84,13 @@ function parseTimestamp(value: string) {
 const parseBigInt = BigInt
 const parseFloat = Number.parseFloat
 const parseInt = Number
+const parseJson = (value: string) => JSON.parse(value)
 
 const parseIntArray = parseArray(parseInt)
 const parseFloatArray = parseArray(parseFloat)
 const parseStringArray = parseArray(parseString)
 const parseBigIntArray = parseArray(parseBigInt)
-const parseJsonArray = parseArray(JSON.parse)
+const parseJsonArray = parseArray(parseJson)
 
 const parseIntRange = parseRange(parseInt)
 const parseBigIntRange = parseRange(parseBigInt)
@@ -81,14 +98,19 @@ const parseTimestampRange = parseRange(parseTimestamp)
 const parseTimestampTzRange = parseRange(parseTimestampTz)
 const parseDateRange = parseRange(parseString)
 
-const textParsers: Record<number, (value: string) => any> = {
+export type TextParser = (
+  value: string,
+  parse: (value: string, dataTypeID: number) => any,
+) => any
+
+export const baseTypeParsers: Record<number, TextParser> = {
   16: parseBool, // bool
   17: parseByteA, // bytea
   20: parseBigInt, // int8
   21: parseInt, // int2
   23: parseInt, // int4
   26: parseInt, // oid
-  114: JSON.parse, // json
+  114: parseJson, // json
   600: parsePoint, // point
   700: parseFloat, // float4
   701: parseFloat, // float8
@@ -97,7 +119,7 @@ const textParsers: Record<number, (value: string) => any> = {
   1184: parseTimestampTz, // timestamp with time zone
   1186: parseInterval, // interval
   1700: parseBigInt, // numeric
-  3802: JSON.parse, // jsonb
+  3802: parseJson, // jsonb
 
   // Range types
   3904: parseIntRange, // int4range
@@ -144,10 +166,10 @@ const textParsers: Record<number, (value: string) => any> = {
   3927: parseArray(parseBigIntRange), // int8range[]
 }
 
-export function getTypeParser(oid: number) {
-  return textParsers[oid] || parseString
-}
-
-export function setTypeParser(oid: number, parser: (value: string) => any) {
-  textParsers[oid] = parser
+export function createTextParser(textParsers: Record<number, TextParser>) {
+  const parser = (text: string, dataTypeID: number): unknown => {
+    const parse = textParsers[dataTypeID]
+    return parse ? parse(text, parser) : text
+  }
+  return parser
 }

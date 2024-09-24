@@ -14,6 +14,9 @@ importers:
       postgres-bytea:
         specifier: workspace:^
         version: link:../postgres-bytea
+      postgres-composite:
+        specifier: workspace:^
+        version: link:../postgres-composite
       postgres-date:
         specifier: workspace:^
         version: link:../postgres-date

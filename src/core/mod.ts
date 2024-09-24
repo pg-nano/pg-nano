@@ -1,3 +1,4 @@
+export * from './casing.js'
 export * from './client.js'
 export * from './data/types.js'
 export * from './error.js'
@@ -11,17 +12,16 @@ export {
   Range,
   RangeFlag,
   RangeParserError,
-  buildResult,
-  camelToSnake,
   isPgResultError,
+  parseArray,
+  parseComposite,
   parseRange,
-  snakeToCamel,
   sql,
   stringifyRange,
+  type CommandResult,
   type Field,
   type IntervalParts,
   type QueryHook,
-  type Result,
   type Row,
   type SQLTemplate,
   type SQLTemplateValue,

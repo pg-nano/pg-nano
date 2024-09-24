@@ -1,22 +1,27 @@
-import createDebug from 'debug'
 import { isPromise } from 'node:util/types'
 import {
+  baseTypeParsers,
   Connection,
   ConnectionStatus,
-  FieldCase,
+  createTextParser,
+  parseConnectionString,
+  QueryType,
   stringifyConnectOptions,
   stringifyTemplate,
+  type CommandResult,
   type ConnectOptions,
   type QueryHook,
-  type Result,
+  type QueryOptions,
   type Row,
   type SQLTemplate,
+  type TextParser,
 } from 'pg-native'
 import { isString, noop, sleep } from 'radashi'
-import { ConnectionError, QueryError } from './error.js'
-import { Query, type QueryOptions, type ResultParser } from './query.js'
-
-const debug = /** @__PURE__ */ createDebug('pg-nano')
+import { FieldCase } from './casing.js'
+import { importCustomTypeParsers } from './data/composite.js'
+import { debug } from './debug.js'
+import { ConnectionError } from './error.js'
+import { Query } from './query.js'
 
 export interface ClientConfig {
   /**
@@ -72,6 +77,14 @@ export interface ClientConfig {
    * established, before any queries are run.
    */
   postConnectDDL: SQLTemplate | null
+
+  /**
+   * Text parsers for custom types. This can be used to override or extend the
+   * default text parsers. Note that pg-nano will automatically generate type
+   * parsers for certain custom types discovered through introspection, such as
+   * user-defined composite types.
+   */
+  textParsers: Record<number, TextParser> | null
 }
 
 /**
@@ -86,6 +99,9 @@ export interface ClientConfig {
 export class Client {
   protected pool: (Connection | Promise<Connection>)[] = []
   protected backlog: ((err?: Error) => void)[] = []
+  protected init: Promise<void> | null = null
+  protected parseText: ((value: string, dataTypeID: number) => unknown) | null =
+    null
 
   dsn: string | null = null
   readonly config: Readonly<ClientConfig>
@@ -99,6 +115,7 @@ export class Client {
     idleTimeout = 30e3,
     fieldCase = FieldCase.camel,
     postConnectDDL = null,
+    textParsers = null,
   }: Partial<ClientConfig> = {}) {
     this.config = {
       minConnections,
@@ -109,6 +126,7 @@ export class Client {
       idleTimeout,
       fieldCase,
       postConnectDDL,
+      textParsers,
     }
   }
 
@@ -117,13 +135,15 @@ export class Client {
     signal?: AbortSignal,
     retries = Math.max(this.config.maxRetries, 0),
     delay = Math.max(this.config.initialRetryDelay, 0),
-  ): Promise<void> {
-    if (!this.dsn) {
+  ): Promise<string> {
+    const { dsn } = this
+    if (!dsn) {
       throw new ConnectionError('Postgres is not connected')
     }
     signal?.throwIfAborted()
     try {
-      await connection.connect(this.dsn)
+      await connection.connect(dsn)
+      return dsn
     } catch (error) {
       if (retries > 0) {
         signal?.throwIfAborted()
@@ -143,16 +163,52 @@ export class Client {
     }
   }
 
+  protected async resolveTextParsers(dsn: string, connection: Connection) {
+    const {
+      host = process.env.PGHOST ?? 'localhost',
+      port = process.env.PGPORT ?? 5432,
+      dbname = process.env.PGDATABASE ?? 'postgres',
+    } = parseConnectionString(dsn)
+
+    // Generate type parsers for custom types discovered by introspection. This
+    // can't be done at compile-time, since it depends on type OIDs, which are
+    // not stable across Postgres databases.
+    const { default: customTypeParsers } = await importCustomTypeParsers(
+      connection,
+      host,
+      port,
+      dbname,
+    )
+
+    console.log(customTypeParsers)
+
+    if (this.dsn === dsn) {
+      this.parseText = createTextParser({
+        ...baseTypeParsers,
+        ...customTypeParsers,
+        ...this.config.textParsers,
+      })
+    }
+  }
+
   protected addConnection(
     signal?: AbortSignal,
     idleTimeout = this.config.idleTimeout,
   ): Promise<Connection> {
-    const connection = new Connection(this.config.fieldCase, idleTimeout)
+    const connection = new Connection(idleTimeout)
 
-    const connecting = this.connectWithRetry(connection, signal).then(
-      async () => {
+    const connecting = this.connectWithRetry(connection, signal)
+      .then(async dsn => {
+        if (!this.parseText) {
+          await (this.init ??= this.resolveTextParsers(dsn, connection).finally(
+            () => {
+              this.init = null
+            },
+          ))
+        }
+
         if (this.config.postConnectDDL) {
-          await connection.query(this.config.postConnectDDL)
+          await connection.query(QueryType.void, this.config.postConnectDDL)
         }
 
         const index = this.pool.indexOf(connecting)
@@ -163,12 +219,11 @@ export class Client {
         })
 
         return connection
-      },
-      error => {
+      })
+      .catch(error => {
         this.removeConnection(connecting)
         throw error
-      },
-    )
+      })
 
     this.pool.push(connecting)
 
@@ -249,52 +304,11 @@ export class Client {
   /**
    * Execute one or more commands.
    */
-  query<TRow extends Row = Row, TIteratorResult = Result<TRow>>(
-    commands: SQLTemplate,
-    transform?: (result: Result<TRow>) => TIteratorResult | TIteratorResult[],
-  ) {
-    return new Query<Result<TRow>[], TIteratorResult>(this, commands, transform)
-  }
-
-  protected async dispatchQuery<
-    TRow extends Row = Row,
-    TResult = Result<TRow>[],
-  >(
-    connection: Connection | Promise<Connection>,
-    commands: SQLTemplate | QueryHook<TResult>,
-    signal?: AbortSignal,
-    resultParser?: ResultParser,
-    singleRowMode?: boolean,
-  ): Promise<TResult> {
-    signal?.throwIfAborted()
-
-    if (isPromise(connection)) {
-      // Only await the connection if necessary, so the connection status can
-      // change to QUERY_WRITING as soon as possible.
-      connection = await connection
-    }
-
-    try {
-      signal?.throwIfAborted()
-
-      const queryPromise = connection.query(
-        commands,
-        resultParser && (result => resultParser(result, this)),
-        singleRowMode,
-      )
-
-      if (signal) {
-        const cancel = () => connection.cancel()
-        signal.addEventListener('abort', cancel)
-        queryPromise.finally(() => {
-          signal.removeEventListener('abort', cancel)
-        })
-      }
-
-      return await queryPromise
-    } finally {
-      this.backlog.shift()?.()
-    }
+  query<TRow extends Row>(
+    sql: SQLTemplate | QueryHook<CommandResult<TRow>[]>,
+    options?: QueryOptions | null,
+  ): Query<CommandResult<TRow>[]> {
+    return new Query(this, QueryType.full, sql, options)
   }
 
   /**
@@ -306,17 +320,10 @@ export class Client {
    *   sequentially. The result sets are concatenated.
    */
   queryRowList<TRow extends Row>(
-    command: SQLTemplate,
-    options?: QueryOptions,
+    sql: SQLTemplate | QueryHook<TRow[]>,
+    options?: QueryOptions | null,
   ): Query<TRow[]> {
-    const query = this.query<TRow, TRow>(command, result => result.rows)
-    return query.withOptions({
-      ...options,
-      resolve: results =>
-        results.flatMap(result => {
-          return result.rows
-        }),
-    }) as any
+    return new Query(this, QueryType.row, sql, options)
   }
 
   /**
@@ -327,38 +334,35 @@ export class Client {
    * - Your SQL template may contain multiple commands, but they run
    *   sequentially. The result sets are concatenated.
    */
-  queryValueList<T>(command: SQLTemplate, options?: QueryOptions): Query<T[]> {
-    const query = this.query(command)
-    return query.withOptions({
-      ...options,
-      resolve: results =>
-        results.flatMap(result => {
-          if (result.fields.length !== 1) {
-            throw new QueryError(
-              'Expected 1 field, got ' + result.fields.length,
-            )
-          }
-          return result.rows.map(row => row[result.fields[0].name])
-        }),
-    }) as any
+  queryValueList<T>(
+    sql: SQLTemplate | QueryHook<T[]>,
+    options?: QueryOptions | null,
+  ): Query<T[]> {
+    return new Query(this, QueryType.value, sql, options)
   }
 
   /**
-   * Create a query that resolves with a single row. This assumes only one
-   * command exists in the given query. If you don't limit the results, the
+   * Create a query that resolves with a single row or null. This assumes only
+   * one command exists in the given query. If you don't limit the results, the
    * promise will be rejected when more than one row is received.
    *
    * You may define the row type using generics.
    */
-  async queryRow<TRow extends Row>(
-    command: SQLTemplate,
-    options?: QueryOptions,
-  ): Promise<TRow | undefined> {
-    const [result] = await this.query<TRow>(command).withOptions(options)
-    if (result.rows.length > 1) {
-      throw new QueryError('Expected at most 1 row, got ' + result.rows.length)
-    }
-    return result.rows[0]
+  queryRowOrNull<TRow extends Row>(
+    sql: SQLTemplate | QueryHook<TRow[]>,
+    options?: QueryOptions | null,
+  ): Query<TRow | null, TRow> {
+    return new Query(this, QueryType.row, sql, options, '[0,1]')
+  }
+
+  /**
+   * Like `queryRowOrNull`, but throws an error if the result is null.
+   */
+  queryRow<TRow extends Row>(
+    sql: SQLTemplate | QueryHook<TRow[]>,
+    options?: QueryOptions | null,
+  ): Query<TRow> {
+    return new Query(this, QueryType.row, sql, options, '[1,1]')
   }
 
   /**
@@ -366,35 +370,26 @@ export class Client {
    * column of the single row of the result set.
    *
    */
-  async queryValueOrNull<T>(
-    command: SQLTemplate,
-    options?: QueryOptions,
-  ): Promise<T | null> {
-    const [result] = await this.query(command).withOptions(options)
-    if (result.rows.length > 1) {
-      throw new QueryError('Expected at most 1 row, got ' + result.rows.length)
-    }
-    if (result.fields.length !== 1) {
-      throw new QueryError('Expected 1 field, got ' + result.fields.length)
-    }
-    if (result.rows.length > 0) {
-      return result.rows[0][result.fields[0].name] as T | null
-    }
-    return null
+  queryValueOrNull<T>(
+    sql: SQLTemplate | QueryHook<T[]>,
+    options?: QueryOptions | null,
+  ): Query<T | null, T> {
+    return new Query(this, QueryType.value, sql, options, '[0,1]')
   }
 
   /**
    * Like `queryValueOrNull`, but throws an error if the result is null.
    */
-  async queryValue<T>(
-    command: SQLTemplate,
-    options?: QueryOptions,
-  ): Promise<T> {
-    const value = await this.queryValueOrNull<T>(command, options)
-    if (value == null) {
-      throw new QueryError('Expected value, got null')
-    }
-    return value
+  queryValue<T>(
+    sql: SQLTemplate | QueryHook<T[]>,
+    options?: QueryOptions | null,
+  ): Query<T, T> {
+    return new Query(this, QueryType.value, sql, options, '[1,1]')
+  }
+
+  // Signals an idle connection.
+  protected onQueryFinished() {
+    this.backlog.shift()?.()
   }
 
   /**
@@ -432,6 +427,7 @@ export class Client {
       return
     }
     this.dsn = null
+    this.init = null
     const closing = Promise.all(
       this.pool.map(connection =>
         isPromise(connection)
@@ -445,7 +441,8 @@ export class Client {
       this.backlog.forEach(fn => fn(error))
       this.backlog = []
     }
-    await closing
+    await closing.catch(noop)
+    this.parseText = null
   }
 
   /**

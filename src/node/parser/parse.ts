@@ -43,9 +43,12 @@ export async function parseObjectStatements(
       lineBreaks.findIndex(lineBreak => location < lineBreak) + 1 ||
       lineBreaks.length
 
-    debug('parsing statement on line', line)
-
     const query = content.slice(location, location + length)
+    if (!query) {
+      continue
+    }
+
+    debug('parsing statement on line', line)
     const [parseError, parseResult] = await tryit(parseQuery)(query)
 
     if (parseError) {

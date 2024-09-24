@@ -1,68 +1,101 @@
-import { getTypeParser, type Result } from 'pg-native'
-import { parse as parseValues } from 'postgres-composite'
-import { isArray, isObject } from 'radashi'
-import type { Client } from '../client.js'
-import { FieldMapper, type Fields } from './fields.js'
+import fs from 'node:fs'
+import path from 'node:path'
+import { QueryType, sql, type Connection, type TextParser } from 'pg-native'
+import { pascal } from 'radashi'
+import { debug } from '../debug.js'
 
-export function parseCompositeFields(
-  client: Client,
-  result: Result,
-  fields: { [name: string]: Fields | FieldMapper },
-) {
-  for (const name in fields) {
-    const type = fields[name]
+export async function importCustomTypeParsers(
+  conn: Connection,
+  host: string,
+  port: string | number,
+  dbname: string,
+): Promise<{ default: Record<number, TextParser> }> {
+  const cacheDir = path.resolve(
+    'node_modules/.pg-nano',
+    host + '+' + port + '+' + dbname,
+  )
 
-    for (const row of result.rows) {
-      row[name] = parseCompositeField(client, row[name] as any, type)
+  const cachedModulePath = path.join(cacheDir, 'customTypeParsers.mjs')
+  if (fs.existsSync(cachedModulePath)) {
+    return import(cachedModulePath)
+  }
+
+  debug('building custom type parsers')
+
+  const code = await buildCustomTypeParsers(conn)
+
+  fs.mkdirSync(cacheDir, { recursive: true })
+  fs.writeFileSync(cachedModulePath, code)
+
+  return import(cachedModulePath)
+}
+
+async function buildCustomTypeParsers(conn: Connection) {
+  let code = ''
+  let textParsersByOid = ''
+
+  const imports = new Set<string>()
+
+  for (const type of await queryCustomTypes(conn)) {
+    const parserId = `parse${pascal(type.name)}`
+
+    if (type.kind === 'c') {
+      code += `const ${parserId} = parseComposite({ ${type.attributes
+        .map(attr => `${JSON.stringify(attr.name)}: ${attr.dataTypeID}`)
+        .join(', ')} })\n`
+
+      imports.add('parseComposite')
+      textParsersByOid += `  ${type.id}: ${parserId},\n`
+    } else {
+      continue
+    }
+
+    if (type.arrayTypeID) {
+      imports.add('parseArray')
+      textParsersByOid += `  ${type.arrayTypeID}: parseArray(${parserId}),\n`
     }
   }
+
+  code += `export default {\n${textParsersByOid}\n}\n`
+
+  return `import { ${[...imports].join(', ')} } from 'pg-nano'\n\n` + code
 }
 
-function parseCompositeField(
-  client: Client,
-  value: string[] | string | null | undefined,
-  type: Fields | FieldMapper,
-) {
-  if (value == null) {
-    return value
-  }
-
-  let mapOutput: ((value: unknown, client: Client) => unknown) | null = null
-  if (type instanceof FieldMapper) {
-    mapOutput = type.mapOutput
-    type = type.type as Fields
-  }
-
-  // The value may be an array of unparsed objects.
-  if (isArray(value)) {
-    return value.map(str => {
-      const result = parseTuple(client, str, type)
-      return mapOutput ? mapOutput(result, client) : result
-    })
-  }
-
-  const result = parseTuple(client, value, type)
-  return mapOutput ? mapOutput(result, client) : result
+type CustomType = {
+  id: number
+  name: string
+  kind: string
+  arrayTypeID: number
+  attributes: {
+    name: string
+    dataTypeID: number
+  }[]
 }
 
-function parseTuple(client: Client, rawValue: string, fields: Fields) {
-  const result: Record<string, unknown> = {}
-  const names = Object.keys(fields)
-
-  let index = 0
-  for (const value of parseValues(rawValue)) {
-    const name = names[index++]
-    const type = fields[name]
-
-    // If `type` is an object, we have a composite type that depends on another
-    // composite type for one of its fields.
-    result[name] =
-      value != null
-        ? isObject(type)
-          ? parseCompositeField(client, value, type)
-          : getTypeParser(type)(value)
-        : value
-  }
-
-  return result
+function queryCustomTypes(conn: Connection) {
+  return conn.query<CustomType[]>(
+    QueryType.row,
+    sql`
+      SELECT
+        oid AS "id",
+        typname AS "name",
+        typtype AS "kind",
+        typarray AS "arrayTypeID",
+        (SELECT
+          json_agg(json_build_object(
+            'name', attname,
+            'dataTypeID', atttypid::int
+          ) ORDER BY attnum)
+          FROM pg_attribute
+          WHERE attrelid = t.typrelid
+            AND attnum > 0
+            AND NOT attisdropped
+        ) AS attributes
+      FROM
+        pg_type t
+      WHERE
+        typtype = 'c'
+        AND typnamespace NOT IN ('pg_catalog'::regnamespace, 'information_schema'::regnamespace)
+    `,
+  )
 }

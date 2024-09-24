@@ -1,19 +1,26 @@
 import Libpq from '@pg-nano/libpq'
 import { EventEmitter } from 'node:events'
 import util from 'node:util'
-import { isFunction, uid } from 'radashi'
+import { isFunction, noop, uid } from 'radashi'
 import type { StrictEventEmitter } from 'strict-event-emitter-types'
 import { debugConnection, debugQuery } from './debug'
-import { PgNativeError, PgResultError } from './error'
-import { buildResult, type FieldCase, type Result } from './result'
+import { PgNativeError } from './error'
+import { baseTypeParsers, createTextParser } from './pg-types.js'
+import {
+  type CommandResult,
+  type IQuery,
+  type QueryHook,
+  type QueryOptions,
+  type QueryPromise,
+  QueryType,
+} from './query.js'
+import { streamResults } from './result-stream.js'
 import { stringifyTemplate } from './stringify'
 import type { SQLTemplate } from './template'
 
 interface ConnectionEvents {
-  result: (result: Result) => void
-  error: (error: Error) => void
+  result: (result: unknown) => void
   end: () => void
-  notify: (msg: Libpq.NotifyMsg) => void
   close: () => void
 }
 
@@ -42,16 +49,15 @@ type ConnectionEmitter = InstanceType<typeof ConnectionEmitter>
  * database. This is useful for push-based data updates.
  */
 export class Connection extends ConnectionEmitter {
+  protected currentQuery: IQuery | null = null
   protected idleTimeoutId: any = null
   protected declare pq: Libpq
-  declare readonly status: ConnectionStatus
 
-  constructor(
-    readonly fieldCase: FieldCase,
-    readonly idleTimeout: number,
-  ) {
+  readonly id = uid(8)
+  readonly status: ConnectionStatus = ConnectionStatus.CLOSED
+
+  constructor(readonly idleTimeout: number) {
     super()
-    reset(unprotect(this), ConnectionStatus.CLOSED)
   }
 
   async connect(dsn: string) {
@@ -63,34 +69,70 @@ export class Connection extends ConnectionEmitter {
   /**
    * Execute a dynamic query which may contain multiple statements.
    */
-  query<TResult = Result[]>(
+  query<TResult = CommandResult[]>(
+    type: QueryType,
     command: SQLTemplate | QueryHook<TResult>,
-    resultParser?: (result: Result) => void,
-    singleRowMode?: boolean,
-  ): Promise<TResult> {
-    const promise = sendQuery(
-      unprotect(this),
+    parseText?: ((value: string, dataTypeID: number) => unknown) | null,
+    options?: QueryOptions | null,
+  ): QueryPromise<TResult> {
+    const conn = unprotect(this)
+    const query: IQuery = {
+      id: uid(8),
+      type,
       command,
-      resultParser,
-      singleRowMode,
-    )
-    if (Number.isFinite(this.idleTimeout)) {
-      clearTimeout(this.idleTimeoutId)
-      promise.finally(() => {
-        this.idleTimeoutId = setTimeout(() => this.close(), this.idleTimeout)
-      })
-    }
-    return promise
-  }
+      parseText: parseText || createTextParser(baseTypeParsers),
+      ctrl: new AbortController(),
+      error: null,
 
-  /**
-   * Cancel the current query.
-   */
-  cancel() {
-    const result = this.pq.cancel()
-    if (result !== true) {
-      throw new Error(result)
+      // Options
+      mapFieldName: options?.mapFieldName,
+      mapFieldValue: options?.mapFieldValue,
+      singleRowMode: options?.singleRowMode,
     }
+
+    const promise = sendQuery(conn, query) as QueryPromise<TResult>
+
+    promise.finally(() => {
+      try {
+        reset(conn, ConnectionStatus.IDLE)
+        conn.emit('end')
+
+        if (Number.isFinite(this.idleTimeout)) {
+          clearTimeout(this.idleTimeoutId)
+          this.idleTimeoutId = setTimeout(() => this.close(), this.idleTimeout)
+        }
+      } catch (error) {
+        console.error(error)
+      }
+    })
+
+    promise.cancel = () => {
+      promise.cancel = noop
+      if (this.currentQuery === query) {
+        query.ctrl.abort()
+        const result = this.pq.cancel()
+        if (result !== true) {
+          throw new Error(result)
+        }
+      }
+    }
+
+    if (process.env.NODE_ENV !== 'production' && debugQuery.enabled) {
+      promise.then(
+        results => {
+          debugQuery(
+            `query:${query.id} results\n  ${util.inspect(results, { depth: null }).replace(/\n/g, '\n  ')}`,
+          )
+        },
+        error => {
+          debugQuery(
+            `query:${query.id} error\n  ${util.inspect(error, { depth: null }).replace(/\n/g, '\n  ')}`,
+          )
+        },
+      )
+    }
+
+    return promise
   }
 
   /**
@@ -98,8 +140,8 @@ export class Connection extends ConnectionEmitter {
    */
   close() {
     if (this.pq) {
-      stopReading(unprotect(this), ConnectionStatus.CLOSED)
-      debugConnection('closing connection')
+      this.currentQuery?.ctrl.abort('connection closed')
+      reset(unprotect(this), ConnectionStatus.CLOSED)
       this.pq.finish()
       this.pq = null!
       this.emit('close')
@@ -108,19 +150,17 @@ export class Connection extends ConnectionEmitter {
 }
 
 export enum ConnectionStatus {
-  IDLE = 0,
-  QUERY_WRITING = 1,
-  QUERY_READING = 2,
-  CLOSED = 3,
+  CLOSED = 0,
+  IDLE = 1,
+  QUERY_WRITING = 2,
+  QUERY_READING = 3,
 }
 
 interface IConnection extends ConnectionEmitter {
   pq: Libpq
+  id: string
   status: ConnectionStatus
-  fieldCase: FieldCase
-  reader: (() => void) | null
-  results: Result[]
-  promise: Promise<any>
+  currentQuery: IQuery | null
 }
 
 function unprotect(conn: Connection): IConnection {
@@ -131,189 +171,101 @@ function setStatus(conn: IConnection, newStatus: ConnectionStatus): void {
   if (conn.status !== newStatus) {
     conn.status = newStatus
     if (process.env.NODE_ENV !== 'production') {
-      debugConnection(`connection status: ${ConnectionStatus[newStatus]}`)
+      debugConnection(
+        `connection:${conn.id} status changed to ${ConnectionStatus[newStatus]}`,
+      )
     }
   }
 }
 
 function reset(conn: IConnection, newStatus: ConnectionStatus): void {
   stopReading(conn, newStatus)
-  conn.reader = null
-  conn.results = []
-  conn.promise = new Promise((resolve, reject) => {
-    function onEnd() {
-      conn.off('end', onEnd).off('error', onError)
-      resolve(conn.results)
-    }
-    function onError(error: any) {
-      conn.off('end', onEnd).off('error', onError)
-      reject(error)
-    }
-    conn.on('end', onEnd).on('error', onError)
-  })
+  conn.currentQuery = null
 }
-
-/**
- * Hook into the query execution process. Useful for `libpq` tasks beyond
- * executing a dynamic query.
- *
- * If the function returns a promise, the query execution will wait for the
- * promise to resolve before continuing.
- */
-export type QueryHook<TResult> = (
-  pq: Libpq,
-) => boolean | (() => Promise<TResult>)
 
 /**
  * Sends a query to libpq and waits for it to finish writing query text to the
  * socket.
  */
-async function sendQuery<TResult = Result[]>(
-  conn: IConnection,
-  command: SQLTemplate | QueryHook<TResult>,
-  resultParser?: (result: Result) => void,
-  singleRowMode?: boolean,
-): Promise<TResult> {
+async function sendQuery(conn: IConnection, query: IQuery): Promise<any> {
   stopReading(conn, ConnectionStatus.QUERY_WRITING)
-
-  let debugId: string | undefined
-  if (process.env.NODE_ENV !== 'production' && debugQuery.enabled) {
-    debugId = uid(8)
-    conn.promise.then(
-      results => {
-        debugQuery(
-          `query:${debugId} results\n  ${util.inspect(results, { depth: null }).replace(/\n/g, '\n  ')}`,
-        )
-      },
-      error => {
-        debugQuery(
-          `query:${debugId} error\n  ${util.inspect(error, { depth: null }).replace(/\n/g, '\n  ')}`,
-        )
-      },
-    )
-  }
+  conn.currentQuery = query
 
   if (!conn.pq.setNonBlocking(true)) {
-    return resolvePromise(
-      conn,
-      new PgNativeError('Unable to set non-blocking to true'),
-    )
+    throw new PgNativeError('Unable to set non-blocking to true')
   }
 
-  let sent: boolean | (() => Promise<TResult>)
+  const { command } = query
+
+  let sent: boolean | (() => Promise<any>)
 
   if (isFunction(command)) {
     sent = command(conn.pq)
   } else {
-    const query = (command.ddl = stringifyTemplate(command, conn.pq))
-
+    const ddl = (command.ddl = stringifyTemplate(command, conn.pq))
     if (process.env.NODE_ENV !== 'production' && debugQuery.enabled) {
-      const indentedQuery = query.replace(/^|\n/g, '$&  ')
-      debugQuery(`query:${debugId} writing\n${indentedQuery}`)
+      debugQuery(`query:${query.id} writing\n${ddl.replace(/^|\n/g, '$&  ')}`)
     }
-
-    sent = conn.pq.sendQuery(query)
+    sent = conn.pq.sendQuery(ddl)
   }
 
   if (!sent) {
-    return resolvePromise(
-      conn,
-      new PgNativeError(conn.pq.getLastErrorMessage()),
-    )
+    debugConnection(`connection:${conn.id} failed to send query`)
+    throw new PgNativeError(conn.pq.getLastErrorMessage())
   }
 
-  if (singleRowMode && !conn.pq.setSingleRowMode()) {
-    return resolvePromise(
-      conn,
-      new PgNativeError('Unable to set single row mode'),
-    )
+  if (query.singleRowMode && !conn.pq.setSingleRowMode()) {
+    throw new PgNativeError('Unable to set single row mode')
   }
 
-  await waitForDrain(conn.pq)
+  await waitForDrain(conn, conn.pq)
 
   if (isFunction(sent)) {
-    try {
-      conn.results = (await sent()) as any
-      return resolvePromise(conn)
-    } catch (error: any) {
-      return resolvePromise(conn, error)
-    }
+    return sent()
   }
 
   setStatus(conn, ConnectionStatus.QUERY_READING)
-  conn.pq.on('readable', (conn.reader = () => read(conn, resultParser)))
-  conn.pq.startRead()
-  return conn.promise
-}
 
-// called when libpq is readable
-function read(
-  conn: IConnection,
-  resultParser?: (result: Result) => void,
-): void {
-  const { pq } = conn
+  const results = query.singleRowMode ? null : ([] as unknown[])
 
-  // read waiting data from the socket
-  // e.g. clear the pending 'select'
-  if (!pq.consumeInput()) {
-    resolvePromise(conn, new PgNativeError(pq.getLastErrorMessage()))
-    return
-  }
-
-  // check if there is still outstanding data
-  // if so, wait for it all to come in
-  if (pq.isBusy()) {
-    return
-  }
-
-  // load our result object
-  while (pq.getResult()) {
-    processResult(conn, resultParser)
-
-    // if reading multiple results, sometimes the following results might cause
-    // a blocking read. in this scenario yield back off the reader until libpq is readable
-    if (pq.isBusy()) {
-      return
+  // Each `result` is an array of results, except when `query.singleRowMode` is
+  // true, in which case, individual results are yielded immediately upon being
+  // received and parsed.
+  for await (const result of streamResults(conn.pq, query)) {
+    if (results) {
+      results.push(result)
+    } else {
+      conn.emit('result', result)
     }
   }
 
-  resolvePromise(conn)
-
-  let notice = pq.notifies()
-  while (notice) {
-    conn.emit('notify', notice)
-    notice = pq.notifies()
-  }
-}
-
-function resolvePromise(conn: IConnection, error?: Error) {
-  if (error) {
-    conn.emit('error', error)
-  } else {
-    conn.emit('end')
+  if (query.error) {
+    throw query.error
   }
 
-  const promise = conn.promise
-  reset(conn, ConnectionStatus.IDLE)
-  return promise
+  return results && query.type !== QueryType.full
+    ? results.length > 1
+      ? results.flat()
+      : results[0]
+    : results
 }
 
 function stopReading(conn: IConnection, newStatus: ConnectionStatus) {
   if (conn.pq && conn.status === ConnectionStatus.QUERY_READING) {
     conn.pq.stopRead()
-    conn.pq.removeListener('readable', conn.reader!)
   }
   setStatus(conn, newStatus)
 }
 
-function waitForDrain(pq: Libpq) {
+function waitForDrain(conn: IConnection, pq: Libpq) {
   return new Promise<void>(function check(resolve, reject) {
     switch (pq.flush()) {
       case 0:
         resolve()
         break
       case -1:
-        reject(pq.getLastErrorMessage())
+        debugConnection(`connection:${conn.id} failed to flush`)
+        reject(new PgNativeError(pq.getLastErrorMessage()))
         break
       default:
         // You cannot read & write on a socket at the same time.
@@ -322,38 +274,4 @@ function waitForDrain(pq: Libpq) {
         })
     }
   })
-}
-
-function processResult(
-  conn: IConnection,
-  resultParser?: (result: Result) => void,
-) {
-  const resultStatus = conn.pq.resultStatus()
-
-  switch (resultStatus) {
-    case 'PGRES_FATAL_ERROR': {
-      const error = new PgResultError(conn.pq.resultErrorMessage())
-      Object.assign(error, conn.pq.resultErrorFields())
-      resolvePromise(conn, error)
-      return
-    }
-
-    case 'PGRES_SINGLE_TUPLE': {
-      const result = buildResult(conn.pq, conn.fieldCase)
-      resultParser?.(result)
-      conn.emit('result', result)
-      return
-    }
-
-    case 'PGRES_TUPLES_OK':
-    case 'PGRES_COMMAND_OK':
-    case 'PGRES_EMPTY_QUERY': {
-      const result = buildResult(conn.pq, conn.fieldCase)
-      resultParser?.(result)
-      conn.results.push(result)
-      return
-    }
-  }
-
-  console.warn(`[pg-native] Unrecognized result status: ${resultStatus}`)
 }
