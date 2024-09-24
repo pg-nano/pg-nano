@@ -143,7 +143,7 @@ export async function parseObjectStatements(
             for (const constraint of constraints) {
               const { contype } = $(constraint)
               if (contype === ConstrType.CONSTR_PRIMARY) {
-                primaryKeyColumns.push(colname!)
+                primaryKeyColumns.push(colname)
               } else if (contype === ConstrType.CONSTR_FOREIGN) {
                 const { pktable } = $(constraint)
                 if (pktable) {
