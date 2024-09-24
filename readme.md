@@ -188,6 +188,8 @@ Here are some caveats with the pg-nano approach.
    - [Domain types](https://www.postgresql.org/docs/current/sql-createdomain.html)
    - [Pseudo types](https://www.postgresql.org/docs/current/extend-type-system.html#EXTEND-TYPE-SYSTEM-PSEUDO)
    - [Transforms](https://www.postgresql.org/docs/current/sql-createtransform.html)
+   - Circular foreign key constraints (#34)
+   - Multi-dimensional array types (#38)
 
 ### What Postgres features are definitely supported?
 
