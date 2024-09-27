@@ -15,6 +15,7 @@ export {
   isPgResultError,
   parseArray,
   parseComposite,
+  parseInterval,
   parseRange,
   sql,
   stringifyRange,

@@ -2,7 +2,7 @@ import * as array from 'postgres-array'
 import parseByteA from 'postgres-bytea'
 import * as composite from 'postgres-composite'
 import parseTimestampTz from 'postgres-date'
-import parseInterval from 'postgres-interval'
+import { parse as parseInterval } from 'postgres-interval'
 import * as range from 'postgres-range'
 
 export function parseArray(parseElement: TextParser): TextParser {

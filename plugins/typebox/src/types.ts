@@ -6,7 +6,7 @@ import {
   Type,
 } from '@sinclair/typebox'
 import { Value } from '@sinclair/typebox/value'
-import { parseRange, Interval as PgInterval, stringifyRange } from 'pg-nano'
+import { parseInterval, parseRange, stringifyRange } from 'pg-nano'
 
 export type Circle = Static<typeof Circle>
 export const Circle = Type.Object({
@@ -59,7 +59,7 @@ export const Interval = Type.Transform(
     ),
   ]),
 )
-  .Decode(input => new PgInterval(input))
+  .Decode(input => parseInterval(input))
   .Encode(input => input.toISOString())
 
 export type Range<T extends {}> = import('pg-nano').Range<T>
