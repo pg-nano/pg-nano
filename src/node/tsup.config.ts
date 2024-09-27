@@ -11,7 +11,7 @@ export default defineConfig({
   },
   outDir: '../../dist/node',
   format: ['esm'],
-  external: ['pg-native', ...Object.keys(pkgJson.dependencies)],
+  external: ['pg-native', 'pg-nano', ...Object.keys(pkgJson.dependencies)],
   treeshake: 'smallest',
   minifySyntax: !process.env.DEV,
   tsconfig: '../../tsconfig.json',
