@@ -137,8 +137,8 @@ export class Client {
     delay = Math.max(this.config.initialRetryDelay, 0),
   ): Promise<string> {
     const { dsn } = this
-    if (!dsn) {
-      throw new ConnectionError('Postgres is not connected')
+    if (dsn == null) {
+      throw new ConnectionError('Postgres client was closed')
     }
     signal?.throwIfAborted()
     try {
