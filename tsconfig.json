@@ -18,6 +18,11 @@
       "pg-nano/config": ["./src/node/config/config.ts"],
       "pg-nano/plugin": ["./src/node/config/plugin.ts"],
       "pg-native": ["./packages/pg-native/src/index.ts"],
+      "postgres-array": ["./packages/postgres-array/index.js"],
+      "postgres-bytea": ["./packages/postgres-bytea/index.js"],
+      "postgres-composite": ["./packages/postgres-composite/src/index.ts"],
+      "postgres-date": ["./packages/postgres-date/index.js"],
+      "postgres-interval": ["./packages/postgres-interval/index.js"],
       "postgres-range": ["./packages/postgres-range/src/index.ts"]
     }
   }

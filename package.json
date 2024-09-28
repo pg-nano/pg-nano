@@ -41,6 +41,7 @@
     "tinyrun": "^1.0.1",
     "tsup": "^8.2.4",
     "typescript": "^5.5.4",
+    "vite-tsconfig-paths": "^5.0.1",
     "vitest": "^2.0.5"
   },
   "scripts": {
@@ -48,7 +49,8 @@
     "build": "rimraf dist && pnpm -r build",
     "dev": "pnpm --filter './src/**/*' --filter pg-native --filter './plugins/**/*' --parallel dev",
     "format": "biome check --fix --unsafe src package.json",
-    "lint": "tinyrun --names pg-nano,pg-native,biome 'tsc -p .' 'tsc -p src/pg-native' 'biome lint src generators'"
+    "lint": "tinyrun --names pg-nano,pg-native,biome 'tsc -p .' 'tsc -p src/pg-native' 'biome lint src generators'",
+    "test": "vitest"
   },
   "repository": {
     "type": "git",
