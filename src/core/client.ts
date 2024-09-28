@@ -7,13 +7,14 @@ import {
   parseConnectionString,
   QueryType,
   stringifyConnectOptions,
-  stringifyTemplate,
+  stringifyTemplateValue,
   type CommandResult,
   type ConnectOptions,
   type QueryHook,
   type QueryOptions,
   type Row,
   type SQLTemplate,
+  type SQLTemplateValue,
   type TextParser,
 } from 'pg-native'
 import { isString, noop, sleep } from 'radashi'
@@ -449,12 +450,15 @@ export class Client {
    * Returns a stringified version of the template. It's async because it uses
    * libpq's escaping functions.
    */
-  async stringify(template: SQLTemplate, options: { reindent?: boolean } = {}) {
+  stringify(sql: SQLTemplateValue, options: { reindent?: boolean } = {}) {
     // Since we're not sending anything to the server, it's perfectly fine to
     // use a non-idle connection.
-    const connection = await (this.pool[0] || this.getConnection())
+    const connection = this.pool[0]
+    if (!connection || isPromise(connection)) {
+      throw new ConnectionError('Postgres is not connected')
+    }
     // biome-ignore lint/complexity/useLiteralKeys: Protected access
-    return stringifyTemplate(template, connection['pq'], options)
+    return stringifyTemplateValue(sql, connection['pq'], options)
   }
 }
 

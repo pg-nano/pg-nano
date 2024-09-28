@@ -309,7 +309,7 @@ async function preparePluginStatements(
       )
 
       const pg = await env.client
-      const content = await pg.stringify(template, {
+      const content = pg.stringify(template, {
         reindent: true,
       })
 
