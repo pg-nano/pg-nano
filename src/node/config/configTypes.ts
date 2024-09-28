@@ -61,7 +61,7 @@ export interface UserConfig {
      * The file to write the generated TypeScript definitions to. This includes
      * the UDF wrapper functions.
      *
-     * @default 'sql/api.ts'
+     * @default 'sql/schema.ts'
      */
     outFile?: string
     /**
