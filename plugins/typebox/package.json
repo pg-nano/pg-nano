@@ -1,7 +1,7 @@
 {
   "name": "@pg-nano/plugin-typebox",
   "type": "module",
-  "version": "0.1.0-beta.2",
+  "version": "0.1.0-beta.3",
   "sideEffects": false,
   "exports": {
     ".": {
@@ -28,7 +28,9 @@
     "url": "git+https://github.com/pg-nano/pg-nano.git",
     "directory": "plugins/typebox"
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "dev": "rimraf dist && tsup --watch --sourcemap",
     "build": "rimraf dist && tsup",
