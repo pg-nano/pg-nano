@@ -234,7 +234,8 @@ function renderTableQueries(table: Readonly<PgTableStmt>) {
         SELECT * FROM ${tableId}
         WHERE ctid = _ctid
         LIMIT 1
-        INTO _result;
+        INTO _result
+        FOR UPDATE;
 
         FOR i IN 1..array_upper(updated_data, 1) BY 2 LOOP
           CASE updated_data[i]
@@ -360,7 +361,8 @@ function renderTableQueries(table: Readonly<PgTableStmt>) {
         }),
       )}
       LIMIT 1
-      INTO _ctid;
+      INTO _ctid
+      FOR UPDATE;
 
       IF FOUND THEN
         DELETE FROM ${tableId} WHERE ctid = _ctid;
