@@ -1,7 +1,7 @@
 node_modules
 dist
 test/ephemeralpg
-text/__fixtures__/*/
+test/__fixtures__/*/
 
 # bundle-require
 *.bundled_*.mjs
