@@ -7,10 +7,7 @@ import { TypeScriptToTypeBox } from './typebox-codegen/typescript/generator'
 export default function (): Plugin {
   return {
     name: '@pg-nano/plugin-typebox',
-    async generateEnd(
-      { renderedObjects, imports, foreignImports, prelude },
-      config,
-    ) {
+    async generateEnd({ renderedObjects, imports, foreignImports, prelude }) {
       const builtinTypes = select(
         [...imports],
         imported => {
@@ -152,7 +149,7 @@ function prependPureAnnotation(
 function fixNameCollisions(source: ts.SourceFile, output: MagicString) {
   const conflicts = findConflictingStmts(source)
   for (const conflict of conflicts) {
-    const name = conflict.moduleDeclaration.name.text
+    const moduleName = conflict.moduleDeclaration.name.text
 
     // Rewrite "export module" to "export declare namespace" to avoid runtime
     // naming collisions.
@@ -164,42 +161,78 @@ function fixNameCollisions(source: ts.SourceFile, output: MagicString) {
     // after the module declaration, since `declare namespace` forbids them.
     const moduleBody = conflict.moduleDeclaration.body
     if (moduleBody && ts.isModuleBlock(moduleBody)) {
-      const varNames = new Set<string>()
+      const removedStmts = new Set<ts.Statement>()
+      const namedVariables = new Map<string, ts.VariableDeclaration>()
 
       for (const stmt of moduleBody.statements) {
         if (ts.isVariableStatement(stmt)) {
-          const varDecl = stmt.declarationList.declarations[0]
+          // Remove the variable statement, since we don't want runtime objects
+          // declared inside what is now a type-only namespace.
+          removedStmts.add(stmt)
 
-          if (ts.isIdentifier(varDecl.name) && varDecl.initializer) {
-            varNames.add(varDecl.name.text)
-            prependArrowFunction(varDecl, output)
-            output.remove(stmt.getStart(), varDecl.initializer.getStart())
-            output.move(
-              varDecl.initializer.getStart(),
-              varDecl.initializer.getEnd(),
-              moduleBody.end,
-            )
-            output.appendLeft(
-              moduleBody.end,
-              '\n' + name + '.' + varDecl.name.text + ' = ',
-            )
-            output.appendRight(moduleBody.end, '\n\n')
+          // Collect the variable names, so we can rewrite references to them
+          // whenever necessary.
+          for (const varDecl of stmt.declarationList.declarations) {
+            if (ts.isIdentifier(varDecl.name)) {
+              namedVariables.set(varDecl.name.text, varDecl)
+            }
           }
         }
       }
 
+      const updateReferences = (
+        root: ts.VariableDeclaration | ts.TypeAliasDeclaration,
+      ) => {
+        ts.forEachChild(
+          ts.isTypeAliasDeclaration(root) ? root.type : root.initializer!,
+          function visit(node: ts.Node) {
+            if (ts.isIdentifier(node)) {
+              if (namedVariables.has(node.text)) {
+                output.appendRight(node.getStart(), moduleName + '.')
+                if (ts.isVariableDeclaration(root)) {
+                  output.appendRight(node.getEnd(), '()')
+                }
+              }
+            } else {
+              ts.forEachChild(node, visit)
+            }
+          },
+        )
+      }
+
       for (const stmt of moduleBody.statements) {
         if (ts.isTypeAliasDeclaration(stmt)) {
-          const typeName = stmt.name.text
-          if (varNames.has(typeName)) {
-            ts.forEachChild(stmt.type, function visit(node: ts.Node) {
-              if (ts.isIdentifier(node) && node.text === typeName) {
-                output.appendRight(node.getStart(), name + '.')
-              }
-              ts.forEachChild(node, visit)
-            })
+          updateReferences(stmt)
+        } else if (ts.isVariableStatement(stmt)) {
+          for (const decl of stmt.declarationList.declarations) {
+            if (decl.initializer) {
+              updateReferences(decl)
+            }
           }
         }
+      }
+
+      for (const [varName, varDecl] of namedVariables) {
+        if (!varDecl.initializer) {
+          continue
+        }
+
+        // Ensure schema options can be passed into the validator.
+        prependArrowFunction(varDecl, output)
+
+        // Assign directly to the validator whose name collides with the
+        // original module declaration (which is now a type-only namespace).
+        output.appendRight(
+          moduleBody.end,
+          `\n${moduleName}.${varName} = ${output.slice(
+            varDecl.initializer.getStart(),
+            varDecl.initializer.getEnd(),
+          )}\n`,
+        )
+      }
+
+      for (const stmt of removedStmts) {
+        output.remove(stmt.getStart(), stmt.getEnd())
       }
     }
   }
