@@ -101,5 +101,11 @@ export function stringifyTemplateValue(
 
       return list.join(separator)
     }
+    default: {
+      const constructor = (arg as any)?.constructor
+      throw new Error(
+        'Unsupported template value: ' + (constructor?.name || typeof arg),
+      )
+    }
   }
 }
