@@ -1,3 +1,4 @@
+import licenses from 'esbuild-plugin-license'
 import { readFileSync } from 'node:fs'
 import { defineConfig } from 'tsup'
 
@@ -16,4 +17,5 @@ export default defineConfig({
   minifySyntax: !process.env.DEV,
   tsconfig: '../../tsconfig.json',
   dts: !process.env.DEV,
+  esbuildPlugins: [licenses()],
 })

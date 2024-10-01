@@ -1,3 +1,4 @@
+import licenses from 'esbuild-plugin-license'
 import { defineConfig } from 'tsup'
 
 export default defineConfig({
@@ -8,4 +9,5 @@ export default defineConfig({
   treeshake: 'smallest',
   minifySyntax: !process.env.DEV,
   tsconfig: '../../tsconfig.json',
+  esbuildPlugins: [licenses()],
 })
