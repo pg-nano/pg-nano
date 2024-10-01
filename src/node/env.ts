@@ -1,7 +1,4 @@
-import {
-  bundleRequire,
-  type Options as BundleRequireOptions,
-} from 'bundle-require'
+import type { Options as BundleRequireOptions } from 'bundle-require'
 import { watch } from 'chokidar'
 import mri from 'mri'
 import path from 'node:path'
@@ -22,6 +19,12 @@ export type EnvOptions = {
   watch?: boolean
   /** Skip cache and reload environment */
   reloadEnv?: boolean
+  /**
+   * When true, dynamic `import()` is used to load the config file, instead of
+   * the `bundle-require` npm package. When “config bundling” is disabled,
+   * changes to modules imported by the config file aren't observed.
+   */
+  noConfigBundling?: boolean
 }
 
 const cache = new Map<string, Promise<Env>>()
@@ -54,27 +57,33 @@ async function loadEnv(cwd: string, options: EnvOptions) {
   let userConfigDependencies: string[] = []
 
   if (configFilePath) {
-    const options: Partial<BundleRequireOptions> = {}
-    if (process.env.BUNDLE_REQUIRE_OPTIONS) {
-      const { default: stringArgv } = await import('string-argv')
-      const rawOptions = stringArgv(process.env.BUNDLE_REQUIRE_OPTIONS)
-      const { '': _, ...parsedOptions } = mapKeys(mri(rawOptions), key =>
-        camel(key),
-      )
-      if (debug.enabled) {
-        log('Using BUNDLE_REQUIRE_OPTIONS →', parsedOptions)
-      }
-      parsedOptions.external = castArrayIfExists(parsedOptions.external)
-      parsedOptions.noExternal = castArrayIfExists(parsedOptions.noExternal)
-      Object.assign(options, parsedOptions)
-    }
     events.emit('load-config', { configFilePath })
-    const result = await bundleRequire({
-      ...options,
-      filepath: configFilePath,
-    })
-    userConfig = result.mod.default
-    userConfigDependencies = result.dependencies.map(dep => path.resolve(dep))
+    if (options.noConfigBundling) {
+      const configModule = await import(configFilePath)
+      userConfig = configModule.default
+    } else {
+      const requireOptions: Partial<BundleRequireOptions> = {}
+      if (process.env.BUNDLE_REQUIRE_OPTIONS) {
+        const { default: stringArgv } = await import('string-argv')
+        const rawOptions = stringArgv(process.env.BUNDLE_REQUIRE_OPTIONS)
+        const { '': _, ...parsedOptions } = mapKeys(mri(rawOptions), key =>
+          camel(key),
+        )
+        if (debug.enabled) {
+          log('Using BUNDLE_REQUIRE_OPTIONS →', parsedOptions)
+        }
+        parsedOptions.external = castArrayIfExists(parsedOptions.external)
+        parsedOptions.noExternal = castArrayIfExists(parsedOptions.noExternal)
+        Object.assign(requireOptions, parsedOptions)
+      }
+      const { bundleRequire } = await import('bundle-require')
+      const result = await bundleRequire({
+        ...requireOptions,
+        filepath: configFilePath,
+      })
+      userConfig = result.mod.default
+      userConfigDependencies = result.dependencies.map(dep => path.resolve(dep))
+    }
   }
 
   const config = resolveConfig(root, userConfig, options)
