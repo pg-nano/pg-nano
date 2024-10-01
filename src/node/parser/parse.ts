@@ -1,6 +1,8 @@
 import {
   $,
+  type ColumnDef,
   ConstrType,
+  type FunctionParameter,
   FunctionParameterMode,
   parseQuery,
   splitWithScannerSync,
@@ -79,7 +81,7 @@ export async function parseObjectStatements(
       const id = SQLIdentifier.fromQualifiedName(fn.funcname)
 
       const inParams: PgParamDef[] = []
-      const outParams: PgColumnDef[] = []
+      const outParams: PgColumnDef<FunctionParameter>[] = []
 
       if (fn.parameters) {
         for (const { FunctionParameter: param } of fn.parameters) {
@@ -130,7 +132,7 @@ export async function parseObjectStatements(
       }
 
       const id = new SQLIdentifier(relation.relname, relation.schemaname)
-      const columns: PgColumnDef[] = []
+      const columns: PgColumnDef<ColumnDef>[] = []
       const primaryKeyColumns: string[] = []
 
       for (const elt of tableElts) {
@@ -194,18 +196,21 @@ export async function parseObjectStatements(
       const { typevar, coldeflist } = $(node)
 
       const id = new SQLIdentifier(typevar.relname, typevar.schemaname)
-      const columns = select(coldeflist, (col): PgColumnDef | null => {
-        const { colname, typeName } = $(col)
-        if (!colname || !typeName) {
-          events.emit('parser:skip-column', { columnDef: col.ColumnDef })
-          return null
-        }
-        return {
-          name: colname,
-          type: SQLIdentifier.fromTypeName(typeName),
-          node: col.ColumnDef,
-        }
-      })
+      const columns = select(
+        coldeflist,
+        (col): PgColumnDef<ColumnDef> | null => {
+          const { colname, typeName } = $(col)
+          if (!colname || !typeName) {
+            events.emit('parser:skip-column', { columnDef: col.ColumnDef })
+            return null
+          }
+          return {
+            name: colname,
+            type: SQLIdentifier.fromTypeName(typeName),
+            node: col.ColumnDef,
+          }
+        },
+      )
 
       objects.push({
         kind: 'type',
