@@ -143,8 +143,9 @@ describe('@pg-nano/plugin-crud', () => {
     ).rejects.toThrowErrorMatchingInlineSnapshot(`
       [PgResultError: ERROR:  duplicate key value violates unique constraint "grocery_list_pkey"
       DETAIL:  Key (list_id, item_id)=(1, 1) already exists.
-      CONTEXT:  SQL statement "INSERT INTO "public"."grocery_list" VALUES ($1[1]::int4, $1[2]::int4, $1[3])
-        RETURNING *"
+      CONTEXT:  SQL statement "INSERT INTO "public"."grocery_list"
+          VALUES ($1[1]::int4, $1[2]::int4, $1[3])
+          RETURNING *"
       PL/pgSQL function create_grocery_list(text[]) line 6 at SQL statement
       ]
     `)
