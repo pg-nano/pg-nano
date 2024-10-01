@@ -247,7 +247,11 @@ async function sendQuery(conn: IConnection, query: IQuery): Promise<any> {
     throw new PgNativeError(conn.pq.getLastErrorMessage())
   }
 
-  if (query.singleRowMode && !conn.pq.setSingleRowMode()) {
+  if (
+    query.singleRowMode &&
+    query.type !== QueryType.full &&
+    !conn.pq.setSingleRowMode()
+  ) {
     throw new PgNativeError('Unable to set single row mode')
   }
 
