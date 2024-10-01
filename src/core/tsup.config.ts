@@ -9,25 +9,6 @@ export default defineConfig({
   entry: {
     'pg-nano': 'mod.ts',
   },
-  esbuildPlugins: [licenses()],
-  // plugins: [
-  //   {
-  //     name: 'create-package.json',
-  //     buildEnd() {
-  //       const pkgJson = {
-  //         name: 'pg-nano',
-  //         private: true,
-  //         type: 'module',
-  //         exports: pkgJson.exports,
-  //       }
-
-  //       writeFileSync(
-  //         `${outDir}/package.json`,
-  //         JSON.stringify(pkgJson, null, 2),
-  //       )
-  //     },
-  //   },
-  // ],
   outDir,
   format: ['esm'],
   external: ['pg-native', ...Object.keys(pkgJson.dependencies)],
@@ -35,4 +16,5 @@ export default defineConfig({
   minifySyntax: !process.env.DEV,
   tsconfig: '../../tsconfig.json',
   dts: !process.env.DEV,
+  esbuildPlugins: [licenses()],
 })
