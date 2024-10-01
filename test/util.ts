@@ -89,37 +89,62 @@ export function addFixtures(
   }
 }
 
-export async function createProject(fixtures: Record<string, string>) {
+export function currentTestName() {
   const { currentTestName } = expect.getState()
-  const testId = currentTestName
-    ?.replace(/\s+\>\s+/, '__')
-    .replace(/\s+/g, '_')
-    .replace(/[./]/g, '')
+  if (!currentTestName) {
+    throw new Error('No current test name')
+  }
+  return currentTestName
+    .replace(/\s+\>\s+/, '__')
+    .replace(/\s+(-\s+)?/g, '_')
+    .replace(/[./]/g, '+')
+}
 
-  const fixtureDir = new URL('./__fixtures__/' + testId, import.meta.url)
-    .pathname
+export type Project = Awaited<ReturnType<typeof createProject>>
 
-  const config: UserConfig = {
-    dev: { connectionString: process.env.PG_TMP_DSN! },
+export async function createProject(
+  fixtures: Record<string, string>,
+  config?: Partial<Omit<UserConfig, 'plugins'>> & {
+    plugins?: string[]
+  },
+) {
+  const name = currentTestName()
+  const fixtureDir = new URL('./__fixtures__/' + name, import.meta.url).pathname
+
+  const connectionString = process.env.PG_TMP_DSN!
+  const plugins = config?.plugins ?? []
+
+  config = {
+    ...config,
+    dev: { connectionString },
+    plugins: undefined,
   }
 
   fixtures['pg-nano.config.ts'] ??= dedent`
-    export default ${JSON.stringify(config)}
+    ${plugins.map((plugin, index) => `import $${index} from '${plugin}'`).join('\n')}
+    const config = ${JSON.stringify(config)}
+    export default {...config, plugins: [${plugins.map((_, index) => `$${index}()`).join(', ')}]}
   `
 
+  // Write fixtures to the file system.
   addFixtures(fixtureDir, fixtures)
-  const env = await getEnv(fixtureDir)
+
+  // Load the environment, including the config file.
+  const env = await getEnv(fixtureDir, {
+    noConfigBundling: true,
+  })
+
+  const eventLog: any[][] = []
+  events.emit = (...args: any[]) => {
+    eventLog.push(args)
+  }
+
   const readFile = (name: string) => {
     try {
       return fs.readFileSync(path.join(fixtureDir, name), 'utf8')
     } catch (error) {
       return null
     }
-  }
-
-  const eventLog: any[][] = []
-  events.emit = (...args: any[]) => {
-    eventLog.push(args)
   }
 
   return {
@@ -135,6 +160,8 @@ export async function createProject(fixtures: Record<string, string>) {
           file => file.endsWith('.sql'),
         ),
       )
+    },
+    get generatedFiles() {
       return shake({
         'sql/schema.ts': readFile('sql/schema.ts'),
         'sql/typeData.ts': readFile('sql/typeData.ts'),
@@ -143,7 +170,7 @@ export async function createProject(fixtures: Record<string, string>) {
     async importClient<TSchema extends object>() {
       const schema = await import(path.join(fixtureDir, 'sql/schema.ts'))
       const client = new Client()
-      await client.connect(config.dev.connectionString!)
+      await client.connect(connectionString)
       return client.withSchema<TSchema>(schema)
     },
   }
