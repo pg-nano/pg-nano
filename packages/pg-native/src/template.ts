@@ -44,7 +44,7 @@ export class SQLTemplate {
   }
 }
 
-type SQLTokenType = 'id' | 'val' | 'join'
+type SQLTokenType = string & keyof SQLTokenValue
 type SQLTokenJoinSeparator = ';' | ',' | '.' | ' ' | '\n' | ''
 type SQLTokenValue = {
   id: {
