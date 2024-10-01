@@ -130,14 +130,14 @@ export async function generate(
     tables: Object.values(namespaces).flatMap(nsp => nsp.tables),
   })
 
-  type GeneratePlugin = Plugin & { generateStart: Function }
+  type GenerateStartPlugin = Plugin & { generateStart: Function }
 
-  const generatePlugins = env.config.plugins.filter(
-    (p): p is GeneratePlugin => p.generateStart != null,
+  const generateStartPlugins = env.config.plugins.filter(
+    (p): p is GenerateStartPlugin => p.generateStart != null,
   )
 
   // Step 3: Run the `generateStart` hook for each plugin.
-  for (const plugin of generatePlugins) {
+  for (const plugin of generateStartPlugins) {
     await plugin.generateStart(generateContext, env.config)
   }
 
