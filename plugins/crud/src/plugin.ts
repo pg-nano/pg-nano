@@ -38,6 +38,10 @@ export default function (): Plugin {
             // Remove named parameters from update routines.
             routine.paramNames = null
           }
+          if (isRoutineWithPrefix(routine, /^(create_|upsert_|update_)/)) {
+            // These routines should never return null.
+            routine.bindingFunction = 'bindQueryRow'
+          }
         }
       }
 
