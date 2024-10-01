@@ -6,6 +6,8 @@ export * from './stringify.js'
 export * from './template.js'
 export * from './tuple.js'
 
+export { escapeValue } from './value.js'
+
 export {
   QueryType,
   type CommandResult,
