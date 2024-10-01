@@ -11,7 +11,6 @@ import {
   type CommandResult,
   type ConnectOptions,
   type QueryHook,
-  type QueryOptions,
   type Row,
   type SQLTemplate,
   type SQLTemplateValue,
@@ -307,7 +306,7 @@ export class Client {
    */
   query<TRow extends Row>(
     sql: SQLTemplate | QueryHook<CommandResult<TRow>[]>,
-    options?: QueryOptions | null,
+    options?: Query.Options | null,
   ): Query<CommandResult<TRow>[]> {
     return new Query(this, QueryType.full, sql, options)
   }
@@ -322,7 +321,7 @@ export class Client {
    */
   queryRowList<TRow extends Row>(
     sql: SQLTemplate | QueryHook<TRow[]>,
-    options?: QueryOptions | null,
+    options?: Query.Options | null,
   ): Query<TRow[]> {
     return new Query(this, QueryType.row, sql, options)
   }
@@ -337,7 +336,7 @@ export class Client {
    */
   queryValueList<T>(
     sql: SQLTemplate | QueryHook<T[]>,
-    options?: QueryOptions | null,
+    options?: Query.Options | null,
   ): Query<T[]> {
     return new Query(this, QueryType.value, sql, options)
   }
@@ -351,7 +350,7 @@ export class Client {
    */
   queryRowOrNull<TRow extends Row>(
     sql: SQLTemplate | QueryHook<TRow[]>,
-    options?: QueryOptions | null,
+    options?: Query.Options | null,
   ): Query<TRow | null, TRow> {
     return new Query(this, QueryType.row, sql, options, '[0,1]')
   }
@@ -361,7 +360,7 @@ export class Client {
    */
   queryRow<TRow extends Row>(
     sql: SQLTemplate | QueryHook<TRow[]>,
-    options?: QueryOptions | null,
+    options?: Query.Options | null,
   ): Query<TRow> {
     return new Query(this, QueryType.row, sql, options, '[1,1]')
   }
@@ -373,7 +372,7 @@ export class Client {
    */
   queryValueOrNull<T>(
     sql: SQLTemplate | QueryHook<T[]>,
-    options?: QueryOptions | null,
+    options?: Query.Options | null,
   ): Query<T | null, T> {
     return new Query(this, QueryType.value, sql, options, '[0,1]')
   }
@@ -383,7 +382,7 @@ export class Client {
    */
   queryValue<T>(
     sql: SQLTemplate | QueryHook<T[]>,
-    options?: QueryOptions | null,
+    options?: Query.Options | null,
   ): Query<T, T> {
     return new Query(this, QueryType.value, sql, options, '[1,1]')
   }

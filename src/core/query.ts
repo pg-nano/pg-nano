@@ -16,6 +16,10 @@ import { QueryError } from './error.js'
 
 type UnwrapArray<T> = T extends readonly (infer U)[] ? U : T
 
+export declare namespace Query {
+  type Options = Omit<QueryOptions, 'singleRowMode'>
+}
+
 export class Query<
   TPromiseResult,
   TIteratorResult = UnwrapArray<TPromiseResult>,
@@ -24,7 +28,7 @@ export class Query<
     protected client: Client,
     protected type: QueryType,
     protected input: SQLTemplate | QueryHook<any>,
-    protected options?: QueryOptions | null,
+    protected options?: Query.Options | null,
     protected expectedCount?: '[0,1]' | '[1,1]' | null,
   ) {}
 
