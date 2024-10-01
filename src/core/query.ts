@@ -91,6 +91,7 @@ export class Query<
     const client = this.client as unknown as {
       config: Client['config']
       getConnection: Client['getConnection']
+      onQueryFinished: Client['onQueryFinished']
     }
     const connection = client.getConnection(this.signal)
     const promise = this.promise(connection, this.input, {
@@ -102,6 +103,21 @@ export class Query<
           ? snakeToCamel
           : undefined),
     })
+      .catch(error => {
+        if (this.input instanceof SQLTemplate) {
+          error.ddl = this.input.ddl
+        }
+        Error.captureStackTrace(error, this.send)
+        throw error
+      })
+      .finally(() => {
+        try {
+          client.onQueryFinished()
+        } catch (error) {
+          console.error(error)
+        }
+      })
+
     if (singleRowMode) {
       return this.stream(connection, promise)
     }
@@ -122,34 +138,17 @@ export class Query<
 
     const client = this.client as unknown as {
       parseText: Client['parseText']
-      onQueryFinished: Client['onQueryFinished']
     }
 
-    const queryPromise = connection.query(
+    const promise = connection.query(
       this.type,
       input,
       client.parseText,
       options,
     )
 
-    this.cancel = queryPromise.cancel
+    this.cancel = promise.cancel
     this.signal?.addEventListener('abort', this.cancel)
-
-    const promise = queryPromise.catch(error => {
-      if (input instanceof SQLTemplate) {
-        error.ddl = input.ddl
-      }
-      Error.captureStackTrace(error, this.send)
-      throw error
-    })
-
-    promise.finally(() => {
-      try {
-        client.onQueryFinished()
-      } catch (error) {
-        console.error(error)
-      }
-    })
 
     if (this.expectedCount) {
       const rows: any[] = await promise
