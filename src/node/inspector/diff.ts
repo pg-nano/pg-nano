@@ -57,7 +57,7 @@ export async function hasCompositeTypeChanged(
 
   type ExistingColumn = {
     name: string
-    type_oid: number
+    typeOid: number
   }
 
   const [existingColumns, columnTypeOids] = await Promise.all([
@@ -79,28 +79,30 @@ export async function hasCompositeTypeChanged(
     `),
     client.queryValueList<number>(sql`
       SELECT
-        t.oid
+        a.atttypid
       FROM
         pg_type t
+      JOIN
+        pg_attribute a ON a.attrelid = t.typrelid
       WHERE
         t.typname = ${type.id.nameVal}
         AND t.typnamespace = ${type.id.schemaVal}::regnamespace
+        AND a.attnum > 0
+        AND NOT a.attisdropped
+      ORDER BY a.attnum
     `),
   ])
 
-  const hasChanges =
+  return (
     type.columns.length !== existingColumns.length ||
     type.columns.some((col, index) => {
       const existingCol = existingColumns[index]
       return (
         col.name !== existingCol.name ||
-        columnTypeOids[index] !== existingCol.type_oid
+        columnTypeOids[index] !== existingCol.typeOid
       )
     })
-
-  console.log({ hasChanges, existingColumns, columnTypeOids })
-
-  return hasChanges
+  )
 }
 
 /**
