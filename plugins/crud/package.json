@@ -1,7 +1,7 @@
 {
   "name": "@pg-nano/plugin-crud",
   "type": "module",
-  "version": "0.1.0-beta.3",
+  "version": "0.1.0-beta.4",
   "sideEffects": false,
   "exports": {
     "./field-mappers": {
@@ -25,7 +25,9 @@
     "url": "git+https://github.com/pg-nano/pg-nano.git",
     "directory": "plugins/crud"
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "dev": "rimraf dist && tsup --watch --sourcemap",
     "build": "rimraf dist && tsup",
