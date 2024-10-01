@@ -152,6 +152,9 @@ export class Query<
 
     if (this.expectedCount) {
       const rows: any[] = await promise
+      if (!isArray(rows)) {
+        throw new QueryError(`Expected array, got ${typeof rows}`)
+      }
       if (rows.length > 1) {
         throw new QueryError(`Expected at most 1 row, got ${rows.length}`)
       }
