@@ -1,3 +1,40 @@
+-- Update a row by primary key
+CREATE FUNCTION "public"."update_course"("p_id" "course"."id"%TYPE, updated_data text[])
+RETURNS "public"."course"
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  _ctid tid;
+  _result "public"."course";
+BEGIN
+  SELECT ctid FROM "public"."course"
+  WHERE "id" = p_id
+  LIMIT 1
+  INTO _ctid;
+
+  SELECT * FROM "public"."course"
+  WHERE ctid = _ctid
+  LIMIT 1
+  INTO _result;
+
+  FOR i IN 1..array_upper(updated_data, 1) BY 2 LOOP
+    CASE updated_data[i]
+    WHEN 'course_name' THEN _result."course_name" := updated_data[i + 1]::varchar;
+
+    ELSE
+      RAISE EXCEPTION 'Unknown column: %', updated_data[i];
+    END CASE;
+  END LOOP;
+
+  UPDATE "public"."course"
+  SET "course_name" = _result."course_name"
+  WHERE ctid = _ctid;
+
+  RETURN _result;
+END;
+$$;
+
+  
 -- Get a row by primary key
 CREATE FUNCTION "public"."get_course"("p_id" "course"."id"%TYPE)
 RETURNS "public"."course"
@@ -10,78 +47,49 @@ BEGIN
     WHERE "id" = p_id
     LIMIT 1
     INTO result;
+
   RETURN result;
 END;
 $$;
 
 -- Insert a new row
-CREATE FUNCTION "public"."create_course"("public"."course")
-RETURNS SETOF "public"."course"
+CREATE FUNCTION "public"."create_course"(text[])
+RETURNS "public"."course"
 LANGUAGE plpgsql
 AS $$
+DECLARE
+  _ctid tid;
+  _result "public"."course";
 BEGIN
-  RETURN QUERY
-    INSERT INTO "public"."course" VALUES ($1.*)
-    RETURNING *;
+  INSERT INTO "public"."course" VALUES ($1[1]::int4, $1[2]::varchar)
+  RETURNING * INTO _result;
+
+  
+
+  RETURN _result;
 END;
 $$;
 
 -- Upsert a row by primary key
-CREATE FUNCTION "public"."upsert_course"("public"."course")
+CREATE FUNCTION "public"."upsert_course"(text[])
 RETURNS "public"."course"
 LANGUAGE plpgsql
 AS $$
 DECLARE
-  result "public"."course";
+  _ctid tid;
+  _result "public"."course";
 BEGIN
-  INSERT INTO "public"."course" VALUES ($1.*)
-  ON CONFLICT ("id") DO UPDATE
-  SET "id" = EXCLUDED."id","course_name" = EXCLUDED."course_name"
-  RETURNING * INTO result;
-  RETURN result;
-END;
-$$;
+  SELECT ctid FROM "public"."course"
+  WHERE "id" = $1[1]::int4
+  LIMIT 1
+  INTO _ctid;
 
--- Update a row by primary key
-CREATE FUNCTION "public"."update_course"("p_id" "course"."id"%TYPE, updated_data text[])
-RETURNS "public"."course"
-LANGUAGE plpgsql
-AS $$
-DECLARE
-  entry_key text;
-  entry_value text;
-  result "public"."course";
-BEGIN
-  SELECT * FROM "public"."course" WHERE "id" = p_id INTO result;
+  IF FOUND THEN
+    DELETE FROM "public"."course" WHERE ctid = _ctid;
+  END IF;
 
-  FOR i IN 1..array_upper(updated_data, 1) BY 2 LOOP
-    entry_key := updated_data[i];
-    entry_value := updated_data[i + 1];
-
-    CASE entry_key
-    WHEN 'id' THEN result."id" := CAST(entry_value AS int4);
-    WHEN 'course_name' THEN result."course_name" := CAST(entry_value AS varchar);
-
-    ELSE
-      RAISE EXCEPTION 'Unknown column: %', entry_key;
-    END CASE;
-  END LOOP;
-  
-  RETURN result;
-END;
-$$;
-
--- Replace a row by primary key
-CREATE FUNCTION "public"."replace_course"("p_id" "course"."id"%TYPE, rec "public"."course")
-RETURNS "public"."course"
-LANGUAGE plpgsql
-AS $$
-DECLARE
-  result "public"."course";
-BEGIN
-  DELETE FROM "public"."course" WHERE "id" = p_id;
-  INSERT INTO "public"."course" VALUES (rec.*) RETURNING * INTO result;
-  RETURN result;
+  SELECT * FROM "public"."create_course"($1) INTO _result;
+  RETURN _result;
 END;
 $$;
 
@@ -90,18 +98,50 @@ CREATE FUNCTION "public"."delete_course"("p_id" "course"."id"%TYPE)
 RETURNS boolean
 LANGUAGE plpgsql
 AS $$
-DECLARE
-  rows_affected integer;
 BEGIN
-  WITH deleted AS (
-    DELETE FROM "public"."course"
-    WHERE "id" = p_id
-    RETURNING *
-  )
-  SELECT COUNT(*) INTO rows_affected FROM deleted;
-  RETURN rows_affected > 0;
+  DELETE FROM "public"."course"
+  WHERE "id" = p_id;
+  RETURN FOUND;
 END;
 $$;
+  
+-- Update a row by primary key
+CREATE FUNCTION "public"."update_course_enrollment"("p_student_id" "course_enrollment"."student_id"%TYPE,"p_course_id" "course_enrollment"."course_id"%TYPE, updated_data text[])
+RETURNS "public"."course_enrollment"
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  _ctid tid;
+  _result "public"."course_enrollment";
+BEGIN
+  SELECT ctid FROM "public"."course_enrollment"
+  WHERE "student_id" = p_student_id AND "course_id" = p_course_id
+  LIMIT 1
+  INTO _ctid;
+
+  SELECT * FROM "public"."course_enrollment"
+  WHERE ctid = _ctid
+  LIMIT 1
+  INTO _result;
+
+  FOR i IN 1..array_upper(updated_data, 1) BY 2 LOOP
+    CASE updated_data[i]
+    WHEN 'enrollment_date' THEN _result."enrollment_date" := updated_data[i + 1]::date;
+      WHEN 'grade' THEN _result."grade" := updated_data[i + 1]::bpchar;
+
+    ELSE
+      RAISE EXCEPTION 'Unknown column: %', updated_data[i];
+    END CASE;
+  END LOOP;
+
+  UPDATE "public"."course_enrollment"
+  SET "enrollment_date" = _result."enrollment_date", "grade" = _result."grade"
+  WHERE ctid = _ctid;
+
+  RETURN _result;
+END;
+$$;
+
   
 -- Get a row by primary key
 CREATE FUNCTION "public"."get_course_enrollment"("p_student_id" "course_enrollment"."student_id"%TYPE,"p_course_id" "course_enrollment"."course_id"%TYPE)
@@ -115,80 +155,49 @@ BEGIN
     WHERE "student_id" = p_student_id AND "course_id" = p_course_id
     LIMIT 1
     INTO result;
+
   RETURN result;
 END;
 $$;
 
 -- Insert a new row
-CREATE FUNCTION "public"."create_course_enrollment"("public"."course_enrollment")
-RETURNS SETOF "public"."course_enrollment"
+CREATE FUNCTION "public"."create_course_enrollment"(text[])
+RETURNS "public"."course_enrollment"
 LANGUAGE plpgsql
 AS $$
+DECLARE
+  _ctid tid;
+  _result "public"."course_enrollment";
 BEGIN
-  RETURN QUERY
-    INSERT INTO "public"."course_enrollment" VALUES ($1.*)
-    RETURNING *;
+  INSERT INTO "public"."course_enrollment" VALUES ($1[1]::int4, $1[2]::int4, $1[3]::date, $1[4]::bpchar)
+  RETURNING * INTO _result;
+
+  
+
+  RETURN _result;
 END;
 $$;
 
 -- Upsert a row by primary key
-CREATE FUNCTION "public"."upsert_course_enrollment"("public"."course_enrollment")
+CREATE FUNCTION "public"."upsert_course_enrollment"(text[])
 RETURNS "public"."course_enrollment"
 LANGUAGE plpgsql
 AS $$
 DECLARE
-  result "public"."course_enrollment";
+  _ctid tid;
+  _result "public"."course_enrollment";
 BEGIN
-  INSERT INTO "public"."course_enrollment" VALUES ($1.*)
-  ON CONFLICT ("student_id","course_id") DO UPDATE
-  SET "student_id" = EXCLUDED."student_id","course_id" = EXCLUDED."course_id","enrollment_date" = EXCLUDED."enrollment_date","grade" = EXCLUDED."grade"
-  RETURNING * INTO result;
-  RETURN result;
-END;
-$$;
+  SELECT ctid FROM "public"."course_enrollment"
+  WHERE "student_id" = $1[1]::int4 AND "course_id" = $1[2]::int4
+  LIMIT 1
+  INTO _ctid;
 
--- Update a row by primary key
-CREATE FUNCTION "public"."update_course_enrollment"("p_student_id" "course_enrollment"."student_id"%TYPE,"p_course_id" "course_enrollment"."course_id"%TYPE, updated_data text[])
-RETURNS "public"."course_enrollment"
-LANGUAGE plpgsql
-AS $$
-DECLARE
-  entry_key text;
-  entry_value text;
-  result "public"."course_enrollment";
-BEGIN
-  SELECT * FROM "public"."course_enrollment" WHERE "student_id" = p_student_id AND "course_id" = p_course_id INTO result;
+  IF FOUND THEN
+    DELETE FROM "public"."course_enrollment" WHERE ctid = _ctid;
+  END IF;
 
-  FOR i IN 1..array_upper(updated_data, 1) BY 2 LOOP
-    entry_key := updated_data[i];
-    entry_value := updated_data[i + 1];
-
-    CASE entry_key
-    WHEN 'student_id' THEN result."student_id" := CAST(entry_value AS int4);
-    WHEN 'course_id' THEN result."course_id" := CAST(entry_value AS int4);
-    WHEN 'enrollment_date' THEN result."enrollment_date" := CAST(entry_value AS date);
-    WHEN 'grade' THEN result."grade" := CAST(entry_value AS bpchar);
-
-    ELSE
-      RAISE EXCEPTION 'Unknown column: %', entry_key;
-    END CASE;
-  END LOOP;
-  
-  RETURN result;
-END;
-$$;
-
--- Replace a row by primary key
-CREATE FUNCTION "public"."replace_course_enrollment"("p_student_id" "course_enrollment"."student_id"%TYPE,"p_course_id" "course_enrollment"."course_id"%TYPE, rec "public"."course_enrollment")
-RETURNS "public"."course_enrollment"
-LANGUAGE plpgsql
-AS $$
-DECLARE
-  result "public"."course_enrollment";
-BEGIN
-  DELETE FROM "public"."course_enrollment" WHERE "student_id" = p_student_id AND "course_id" = p_course_id;
-  INSERT INTO "public"."course_enrollment" VALUES (rec.*) RETURNING * INTO result;
-  RETURN result;
+  SELECT * FROM "public"."create_course_enrollment"($1) INTO _result;
+  RETURN _result;
 END;
 $$;
 
@@ -197,18 +206,50 @@ CREATE FUNCTION "public"."delete_course_enrollment"("p_student_id" "course_enrol
 RETURNS boolean
 LANGUAGE plpgsql
 AS $$
-DECLARE
-  rows_affected integer;
 BEGIN
-  WITH deleted AS (
-    DELETE FROM "public"."course_enrollment"
-    WHERE "student_id" = p_student_id AND "course_id" = p_course_id
-    RETURNING *
-  )
-  SELECT COUNT(*) INTO rows_affected FROM deleted;
-  RETURN rows_affected > 0;
+  DELETE FROM "public"."course_enrollment"
+  WHERE "student_id" = p_student_id AND "course_id" = p_course_id;
+  RETURN FOUND;
 END;
 $$;
+  
+-- Update a row by primary key
+CREATE FUNCTION "public"."update_student"("p_id" "student"."id"%TYPE, updated_data text[])
+RETURNS "public"."student"
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  _ctid tid;
+  _result "public"."student";
+BEGIN
+  SELECT ctid FROM "public"."student"
+  WHERE "id" = p_id
+  LIMIT 1
+  INTO _ctid;
+
+  SELECT * FROM "public"."student"
+  WHERE ctid = _ctid
+  LIMIT 1
+  INTO _result;
+
+  FOR i IN 1..array_upper(updated_data, 1) BY 2 LOOP
+    CASE updated_data[i]
+    WHEN 'first_name' THEN _result."first_name" := updated_data[i + 1]::varchar;
+      WHEN 'last_name' THEN _result."last_name" := updated_data[i + 1]::varchar;
+
+    ELSE
+      RAISE EXCEPTION 'Unknown column: %', updated_data[i];
+    END CASE;
+  END LOOP;
+
+  UPDATE "public"."student"
+  SET "first_name" = _result."first_name", "last_name" = _result."last_name"
+  WHERE ctid = _ctid;
+
+  RETURN _result;
+END;
+$$;
+
   
 -- Get a row by primary key
 CREATE FUNCTION "public"."get_student"("p_id" "student"."id"%TYPE)
@@ -222,79 +263,49 @@ BEGIN
     WHERE "id" = p_id
     LIMIT 1
     INTO result;
+
   RETURN result;
 END;
 $$;
 
 -- Insert a new row
-CREATE FUNCTION "public"."create_student"("public"."student")
-RETURNS SETOF "public"."student"
+CREATE FUNCTION "public"."create_student"(text[])
+RETURNS "public"."student"
 LANGUAGE plpgsql
 AS $$
+DECLARE
+  _ctid tid;
+  _result "public"."student";
 BEGIN
-  RETURN QUERY
-    INSERT INTO "public"."student" VALUES ($1.*)
-    RETURNING *;
+  INSERT INTO "public"."student" VALUES ($1[1]::int4, $1[2]::varchar, $1[3]::varchar)
+  RETURNING * INTO _result;
+
+  
+
+  RETURN _result;
 END;
 $$;
 
 -- Upsert a row by primary key
-CREATE FUNCTION "public"."upsert_student"("public"."student")
+CREATE FUNCTION "public"."upsert_student"(text[])
 RETURNS "public"."student"
 LANGUAGE plpgsql
 AS $$
 DECLARE
-  result "public"."student";
+  _ctid tid;
+  _result "public"."student";
 BEGIN
-  INSERT INTO "public"."student" VALUES ($1.*)
-  ON CONFLICT ("id") DO UPDATE
-  SET "id" = EXCLUDED."id","first_name" = EXCLUDED."first_name","last_name" = EXCLUDED."last_name"
-  RETURNING * INTO result;
-  RETURN result;
-END;
-$$;
+  SELECT ctid FROM "public"."student"
+  WHERE "id" = $1[1]::int4
+  LIMIT 1
+  INTO _ctid;
 
--- Update a row by primary key
-CREATE FUNCTION "public"."update_student"("p_id" "student"."id"%TYPE, updated_data text[])
-RETURNS "public"."student"
-LANGUAGE plpgsql
-AS $$
-DECLARE
-  entry_key text;
-  entry_value text;
-  result "public"."student";
-BEGIN
-  SELECT * FROM "public"."student" WHERE "id" = p_id INTO result;
+  IF FOUND THEN
+    DELETE FROM "public"."student" WHERE ctid = _ctid;
+  END IF;
 
-  FOR i IN 1..array_upper(updated_data, 1) BY 2 LOOP
-    entry_key := updated_data[i];
-    entry_value := updated_data[i + 1];
-
-    CASE entry_key
-    WHEN 'id' THEN result."id" := CAST(entry_value AS int4);
-    WHEN 'first_name' THEN result."first_name" := CAST(entry_value AS varchar);
-    WHEN 'last_name' THEN result."last_name" := CAST(entry_value AS varchar);
-
-    ELSE
-      RAISE EXCEPTION 'Unknown column: %', entry_key;
-    END CASE;
-  END LOOP;
-  
-  RETURN result;
-END;
-$$;
-
--- Replace a row by primary key
-CREATE FUNCTION "public"."replace_student"("p_id" "student"."id"%TYPE, rec "public"."student")
-RETURNS "public"."student"
-LANGUAGE plpgsql
-AS $$
-DECLARE
-  result "public"."student";
-BEGIN
-  DELETE FROM "public"."student" WHERE "id" = p_id;
-  INSERT INTO "public"."student" VALUES (rec.*) RETURNING * INTO result;
-  RETURN result;
+  SELECT * FROM "public"."create_student"($1) INTO _result;
+  RETURN _result;
 END;
 $$;
 
@@ -303,18 +314,70 @@ CREATE FUNCTION "public"."delete_student"("p_id" "student"."id"%TYPE)
 RETURNS boolean
 LANGUAGE plpgsql
 AS $$
-DECLARE
-  rows_affected integer;
 BEGIN
-  WITH deleted AS (
-    DELETE FROM "public"."student"
-    WHERE "id" = p_id
-    RETURNING *
-  )
-  SELECT COUNT(*) INTO rows_affected FROM deleted;
-  RETURN rows_affected > 0;
+  DELETE FROM "public"."student"
+  WHERE "id" = p_id;
+  RETURN FOUND;
 END;
 $$;
+  
+-- Update a row by primary key
+CREATE FUNCTION "public"."update_foo"("p_id" "foo"."id"%TYPE, updated_data text[])
+RETURNS "public"."foo"
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  _ctid tid;
+  _result "public"."foo";
+BEGIN
+  SELECT ctid FROM "public"."foo"
+  WHERE "id" = p_id
+  LIMIT 1
+  INTO _ctid;
+
+  SELECT * FROM "public"."foo"
+  WHERE ctid = _ctid
+  LIMIT 1
+  INTO _result;
+
+  FOR i IN 1..array_upper(updated_data, 1) BY 2 LOOP
+    CASE updated_data[i]
+    WHEN 'name' THEN _result."name" := updated_data[i + 1]::varchar;
+      WHEN 'description' THEN _result."description" := updated_data[i + 1];
+      WHEN 'created_at' THEN _result."created_at" := updated_data[i + 1]::timestamptz;
+      WHEN 'updated_at' THEN _result."updated_at" := updated_data[i + 1]::timestamptz;
+      WHEN 'is_active' THEN _result."is_active" := updated_data[i + 1]::bool;
+      WHEN 'score' THEN _result."score" := updated_data[i + 1]::numeric;
+      WHEN 'tags' THEN _result."tags" := updated_data[i + 1]::text[];
+      WHEN 'matrix' THEN _result."matrix" := updated_data[i + 1]::float8[][];
+      WHEN 'metadata' THEN _result."metadata" := updated_data[i + 1]::jsonb;
+      WHEN 'color_preference' THEN _result."color_preference" := updated_data[i + 1]::varchar;
+      WHEN 'binary_data' THEN _result."binary_data" := updated_data[i + 1]::bytea;
+      WHEN 'coordinates' THEN _result."coordinates" := updated_data[i + 1]::point;
+      WHEN 'ip_address' THEN _result."ip_address" := updated_data[i + 1]::inet;
+      WHEN 'mac_address' THEN _result."mac_address" := updated_data[i + 1]::macaddr;
+      WHEN 'price_range' THEN _result."price_range" := updated_data[i + 1]::int4range;
+      WHEN 'schedule' THEN _result."schedule" := updated_data[i + 1]::tstzrange;
+      WHEN 'priority' THEN _result."priority" := updated_data[i + 1]::int2;
+      WHEN 'uuid' THEN _result."uuid" := updated_data[i + 1]::uuid;
+      WHEN 'search_vector' THEN _result."search_vector" := updated_data[i + 1]::tsvector;
+      WHEN 'status' THEN _result."status" := updated_data[i + 1]::"public"."status_type";
+      WHEN 'address' THEN _result."address" := updated_data[i + 1]::"public"."address_type";
+      WHEN 'product_attributes' THEN _result."product_attributes" := updated_data[i + 1]::"public"."hstore";
+
+    ELSE
+      RAISE EXCEPTION 'Unknown column: %', updated_data[i];
+    END CASE;
+  END LOOP;
+
+  UPDATE "public"."foo"
+  SET "name" = _result."name", "description" = _result."description", "created_at" = _result."created_at", "updated_at" = _result."updated_at", "is_active" = _result."is_active", "score" = _result."score", "tags" = _result."tags", "matrix" = _result."matrix", "metadata" = _result."metadata", "color_preference" = _result."color_preference", "binary_data" = _result."binary_data", "coordinates" = _result."coordinates", "ip_address" = _result."ip_address", "mac_address" = _result."mac_address", "price_range" = _result."price_range", "schedule" = _result."schedule", "priority" = _result."priority", "uuid" = _result."uuid", "search_vector" = _result."search_vector", "status" = _result."status", "address" = _result."address", "product_attributes" = _result."product_attributes"
+  WHERE ctid = _ctid;
+
+  RETURN _result;
+END;
+$$;
+
   
 -- Get a row by primary key
 CREATE FUNCTION "public"."get_foo"("p_id" "foo"."id"%TYPE)
@@ -328,99 +391,54 @@ BEGIN
     WHERE "id" = p_id
     LIMIT 1
     INTO result;
+
   RETURN result;
 END;
 $$;
 
 -- Insert a new row
-CREATE FUNCTION "public"."create_foo"("public"."foo")
-RETURNS SETOF "public"."foo"
+CREATE FUNCTION "public"."create_foo"(text[])
+RETURNS "public"."foo"
 LANGUAGE plpgsql
 AS $$
+DECLARE
+  _ctid tid;
+  _result "public"."foo";
 BEGIN
-  RETURN QUERY
-    INSERT INTO "public"."foo" VALUES ($1.*)
-    RETURNING *;
+  INSERT INTO "public"."foo" VALUES ($1[1]::int4, $1[2]::varchar, $1[3], DEFAULT, DEFAULT, DEFAULT, $1[7]::numeric, $1[8]::text[], $1[9]::float8[][], $1[10]::jsonb, $1[11]::varchar, $1[12]::bytea, $1[13]::point, $1[14]::inet, $1[15]::macaddr, $1[16]::int4range, $1[17]::tstzrange, $1[18]::int2, DEFAULT, $1[20]::tsvector, DEFAULT, $1[22]::"public"."address_type", $1[23]::"public"."hstore")
+  RETURNING ctid INTO _ctid;
+
+  UPDATE "public"."foo"
+SET "created_at" = COALESCE($1[4]::timestamptz, "created_at"), "updated_at" = COALESCE($1[5]::timestamptz, "updated_at"), "is_active" = COALESCE($1[6]::bool, "is_active"), "uuid" = COALESCE($1[19]::uuid, "uuid"), "status" = COALESCE($1[21]::"public"."status_type", "status")
+WHERE ctid = _ctid
+RETURNING *
+INTO _result;
+        
+
+  RETURN _result;
 END;
 $$;
 
 -- Upsert a row by primary key
-CREATE FUNCTION "public"."upsert_foo"("public"."foo")
+CREATE FUNCTION "public"."upsert_foo"(text[])
 RETURNS "public"."foo"
 LANGUAGE plpgsql
 AS $$
 DECLARE
-  result "public"."foo";
+  _ctid tid;
+  _result "public"."foo";
 BEGIN
-  INSERT INTO "public"."foo" VALUES ($1.*)
-  ON CONFLICT ("id") DO UPDATE
-  SET "id" = EXCLUDED."id","name" = EXCLUDED."name","description" = EXCLUDED."description","created_at" = EXCLUDED."created_at","updated_at" = EXCLUDED."updated_at","is_active" = EXCLUDED."is_active","score" = EXCLUDED."score","tags" = EXCLUDED."tags","matrix" = EXCLUDED."matrix","metadata" = EXCLUDED."metadata","color_preference" = EXCLUDED."color_preference","binary_data" = EXCLUDED."binary_data","coordinates" = EXCLUDED."coordinates","ip_address" = EXCLUDED."ip_address","mac_address" = EXCLUDED."mac_address","price_range" = EXCLUDED."price_range","schedule" = EXCLUDED."schedule","priority" = EXCLUDED."priority","uuid" = EXCLUDED."uuid","search_vector" = EXCLUDED."search_vector","status" = EXCLUDED."status","address" = EXCLUDED."address","product_attributes" = EXCLUDED."product_attributes"
-  RETURNING * INTO result;
-  RETURN result;
-END;
-$$;
+  SELECT ctid FROM "public"."foo"
+  WHERE "id" = $1[1]::int4
+  LIMIT 1
+  INTO _ctid;
 
--- Update a row by primary key
-CREATE FUNCTION "public"."update_foo"("p_id" "foo"."id"%TYPE, updated_data text[])
-RETURNS "public"."foo"
-LANGUAGE plpgsql
-AS $$
-DECLARE
-  entry_key text;
-  entry_value text;
-  result "public"."foo";
-BEGIN
-  SELECT * FROM "public"."foo" WHERE "id" = p_id INTO result;
+  IF FOUND THEN
+    DELETE FROM "public"."foo" WHERE ctid = _ctid;
+  END IF;
 
-  FOR i IN 1..array_upper(updated_data, 1) BY 2 LOOP
-    entry_key := updated_data[i];
-    entry_value := updated_data[i + 1];
-
-    CASE entry_key
-    WHEN 'id' THEN result."id" := CAST(entry_value AS int4);
-    WHEN 'name' THEN result."name" := CAST(entry_value AS varchar);
-    WHEN 'description' THEN result."description" := CAST(entry_value AS text);
-    WHEN 'created_at' THEN result."created_at" := CAST(entry_value AS timestamptz);
-    WHEN 'updated_at' THEN result."updated_at" := CAST(entry_value AS timestamptz);
-    WHEN 'is_active' THEN result."is_active" := CAST(entry_value AS bool);
-    WHEN 'score' THEN result."score" := CAST(entry_value AS numeric);
-    WHEN 'tags' THEN result."tags" := CAST(entry_value AS text);
-    WHEN 'matrix' THEN result."matrix" := CAST(entry_value AS float8);
-    WHEN 'metadata' THEN result."metadata" := CAST(entry_value AS jsonb);
-    WHEN 'color_preference' THEN result."color_preference" := CAST(entry_value AS varchar);
-    WHEN 'binary_data' THEN result."binary_data" := CAST(entry_value AS bytea);
-    WHEN 'coordinates' THEN result."coordinates" := CAST(entry_value AS point);
-    WHEN 'ip_address' THEN result."ip_address" := CAST(entry_value AS inet);
-    WHEN 'mac_address' THEN result."mac_address" := CAST(entry_value AS macaddr);
-    WHEN 'price_range' THEN result."price_range" := CAST(entry_value AS int4range);
-    WHEN 'schedule' THEN result."schedule" := CAST(entry_value AS tstzrange);
-    WHEN 'priority' THEN result."priority" := CAST(entry_value AS int2);
-    WHEN 'uuid' THEN result."uuid" := CAST(entry_value AS uuid);
-    WHEN 'search_vector' THEN result."search_vector" := CAST(entry_value AS tsvector);
-    WHEN 'status' THEN result."status" := CAST(entry_value AS "public"."status_type");
-    WHEN 'address' THEN result."address" := CAST(entry_value AS "public"."address_type");
-    WHEN 'product_attributes' THEN result."product_attributes" := CAST(entry_value AS "public"."hstore");
-
-    ELSE
-      RAISE EXCEPTION 'Unknown column: %', entry_key;
-    END CASE;
-  END LOOP;
-  
-  RETURN result;
-END;
-$$;
-
--- Replace a row by primary key
-CREATE FUNCTION "public"."replace_foo"("p_id" "foo"."id"%TYPE, rec "public"."foo")
-RETURNS "public"."foo"
-LANGUAGE plpgsql
-AS $$
-DECLARE
-  result "public"."foo";
-BEGIN
-  DELETE FROM "public"."foo" WHERE "id" = p_id;
-  INSERT INTO "public"."foo" VALUES (rec.*) RETURNING * INTO result;
-  RETURN result;
+  SELECT * FROM "public"."create_foo"($1) INTO _result;
+  RETURN _result;
 END;
 $$;
 
@@ -429,18 +447,59 @@ CREATE FUNCTION "public"."delete_foo"("p_id" "foo"."id"%TYPE)
 RETURNS boolean
 LANGUAGE plpgsql
 AS $$
-DECLARE
-  rows_affected integer;
 BEGIN
-  WITH deleted AS (
-    DELETE FROM "public"."foo"
-    WHERE "id" = p_id
-    RETURNING *
-  )
-  SELECT COUNT(*) INTO rows_affected FROM deleted;
-  RETURN rows_affected > 0;
+  DELETE FROM "public"."foo"
+  WHERE "id" = p_id;
+  RETURN FOUND;
 END;
 $$;
+  
+-- Update a row by primary key
+CREATE FUNCTION "public"."update_account"("p_id" "account"."id"%TYPE, updated_data text[])
+RETURNS "public"."account"
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  _ctid tid;
+  _result "public"."account";
+BEGIN
+  SELECT ctid FROM "public"."account"
+  WHERE "id" = p_id
+  LIMIT 1
+  INTO _ctid;
+
+  SELECT * FROM "public"."account"
+  WHERE ctid = _ctid
+  LIMIT 1
+  INTO _result;
+
+  FOR i IN 1..array_upper(updated_data, 1) BY 2 LOOP
+    CASE updated_data[i]
+    WHEN 'username' THEN _result."username" := updated_data[i + 1]::varchar;
+      WHEN 'email' THEN _result."email" := updated_data[i + 1]::varchar;
+      WHEN 'password_hash' THEN _result."password_hash" := updated_data[i + 1]::varchar;
+      WHEN 'posts_count' THEN _result."posts_count" := updated_data[i + 1]::int4;
+      WHEN 'first_name' THEN _result."first_name" := updated_data[i + 1]::varchar;
+      WHEN 'last_name' THEN _result."last_name" := updated_data[i + 1]::varchar;
+      WHEN 'date_of_birth' THEN _result."date_of_birth" := updated_data[i + 1]::date;
+      WHEN 'created_at' THEN _result."created_at" := updated_data[i + 1]::timestamptz;
+      WHEN 'updated_at' THEN _result."updated_at" := updated_data[i + 1]::timestamptz;
+      WHEN 'last_login' THEN _result."last_login" := updated_data[i + 1]::timestamptz;
+      WHEN 'is_deleted' THEN _result."is_deleted" := updated_data[i + 1]::bool;
+
+    ELSE
+      RAISE EXCEPTION 'Unknown column: %', updated_data[i];
+    END CASE;
+  END LOOP;
+
+  UPDATE "public"."account"
+  SET "username" = _result."username", "email" = _result."email", "password_hash" = _result."password_hash", "posts_count" = _result."posts_count", "first_name" = _result."first_name", "last_name" = _result."last_name", "date_of_birth" = _result."date_of_birth", "created_at" = _result."created_at", "updated_at" = _result."updated_at", "last_login" = _result."last_login", "is_deleted" = _result."is_deleted"
+  WHERE ctid = _ctid;
+
+  RETURN _result;
+END;
+$$;
+
   
 -- Get a row by primary key
 CREATE FUNCTION "public"."get_account"("p_id" "account"."id"%TYPE)
@@ -454,88 +513,54 @@ BEGIN
     WHERE "id" = p_id
     LIMIT 1
     INTO result;
+
   RETURN result;
 END;
 $$;
 
 -- Insert a new row
-CREATE FUNCTION "public"."create_account"("public"."account")
-RETURNS SETOF "public"."account"
+CREATE FUNCTION "public"."create_account"(text[])
+RETURNS "public"."account"
 LANGUAGE plpgsql
 AS $$
+DECLARE
+  _ctid tid;
+  _result "public"."account";
 BEGIN
-  RETURN QUERY
-    INSERT INTO "public"."account" VALUES ($1.*)
-    RETURNING *;
+  INSERT INTO "public"."account" VALUES (DEFAULT, $1[2]::varchar, $1[3]::varchar, $1[4]::varchar, DEFAULT, $1[6]::varchar, $1[7]::varchar, $1[8]::date, DEFAULT, DEFAULT, $1[11]::timestamptz, DEFAULT)
+  RETURNING ctid INTO _ctid;
+
+  UPDATE "public"."account"
+SET "id" = COALESCE($1[1]::int, "id"), "posts_count" = COALESCE($1[5]::int4, "posts_count"), "created_at" = COALESCE($1[9]::timestamptz, "created_at"), "updated_at" = COALESCE($1[10]::timestamptz, "updated_at"), "is_deleted" = COALESCE($1[12]::bool, "is_deleted")
+WHERE ctid = _ctid
+RETURNING *
+INTO _result;
+        
+
+  RETURN _result;
 END;
 $$;
 
 -- Upsert a row by primary key
-CREATE FUNCTION "public"."upsert_account"("public"."account")
+CREATE FUNCTION "public"."upsert_account"(text[])
 RETURNS "public"."account"
 LANGUAGE plpgsql
 AS $$
 DECLARE
-  result "public"."account";
+  _ctid tid;
+  _result "public"."account";
 BEGIN
-  INSERT INTO "public"."account" VALUES ($1.*)
-  ON CONFLICT ("id") DO UPDATE
-  SET "id" = EXCLUDED."id","username" = EXCLUDED."username","email" = EXCLUDED."email","password_hash" = EXCLUDED."password_hash","posts_count" = EXCLUDED."posts_count","first_name" = EXCLUDED."first_name","last_name" = EXCLUDED."last_name","date_of_birth" = EXCLUDED."date_of_birth","created_at" = EXCLUDED."created_at","updated_at" = EXCLUDED."updated_at","last_login" = EXCLUDED."last_login","is_deleted" = EXCLUDED."is_deleted"
-  RETURNING * INTO result;
-  RETURN result;
-END;
-$$;
+  SELECT ctid FROM "public"."account"
+  WHERE "id" = $1[1]::int
+  LIMIT 1
+  INTO _ctid;
 
--- Update a row by primary key
-CREATE FUNCTION "public"."update_account"("p_id" "account"."id"%TYPE, updated_data text[])
-RETURNS "public"."account"
-LANGUAGE plpgsql
-AS $$
-DECLARE
-  entry_key text;
-  entry_value text;
-  result "public"."account";
-BEGIN
-  SELECT * FROM "public"."account" WHERE "id" = p_id INTO result;
+  IF FOUND THEN
+    DELETE FROM "public"."account" WHERE ctid = _ctid;
+  END IF;
 
-  FOR i IN 1..array_upper(updated_data, 1) BY 2 LOOP
-    entry_key := updated_data[i];
-    entry_value := updated_data[i + 1];
-
-    CASE entry_key
-    WHEN 'id' THEN result."id" := CAST(entry_value AS "public"."serial");
-    WHEN 'username' THEN result."username" := CAST(entry_value AS varchar);
-    WHEN 'email' THEN result."email" := CAST(entry_value AS varchar);
-    WHEN 'password_hash' THEN result."password_hash" := CAST(entry_value AS varchar);
-    WHEN 'posts_count' THEN result."posts_count" := CAST(entry_value AS int4);
-    WHEN 'first_name' THEN result."first_name" := CAST(entry_value AS varchar);
-    WHEN 'last_name' THEN result."last_name" := CAST(entry_value AS varchar);
-    WHEN 'date_of_birth' THEN result."date_of_birth" := CAST(entry_value AS date);
-    WHEN 'created_at' THEN result."created_at" := CAST(entry_value AS timestamptz);
-    WHEN 'updated_at' THEN result."updated_at" := CAST(entry_value AS timestamptz);
-    WHEN 'last_login' THEN result."last_login" := CAST(entry_value AS timestamptz);
-    WHEN 'is_deleted' THEN result."is_deleted" := CAST(entry_value AS bool);
-
-    ELSE
-      RAISE EXCEPTION 'Unknown column: %', entry_key;
-    END CASE;
-  END LOOP;
-  
-  RETURN result;
-END;
-$$;
-
--- Replace a row by primary key
-CREATE FUNCTION "public"."replace_account"("p_id" "account"."id"%TYPE, rec "public"."account")
-RETURNS "public"."account"
-LANGUAGE plpgsql
-AS $$
-DECLARE
-  result "public"."account";
-BEGIN
-  DELETE FROM "public"."account" WHERE "id" = p_id;
-  INSERT INTO "public"."account" VALUES (rec.*) RETURNING * INTO result;
-  RETURN result;
+  SELECT * FROM "public"."create_account"($1) INTO _result;
+  RETURN _result;
 END;
 $$;
 
@@ -544,18 +569,53 @@ CREATE FUNCTION "public"."delete_account"("p_id" "account"."id"%TYPE)
 RETURNS boolean
 LANGUAGE plpgsql
 AS $$
-DECLARE
-  rows_affected integer;
 BEGIN
-  WITH deleted AS (
-    DELETE FROM "public"."account"
-    WHERE "id" = p_id
-    RETURNING *
-  )
-  SELECT COUNT(*) INTO rows_affected FROM deleted;
-  RETURN rows_affected > 0;
+  DELETE FROM "public"."account"
+  WHERE "id" = p_id;
+  RETURN FOUND;
 END;
 $$;
+  
+-- Update a row by primary key
+CREATE FUNCTION "public"."update_post"("p_id" "post"."id"%TYPE, updated_data text[])
+RETURNS "public"."post"
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  _ctid tid;
+  _result "public"."post";
+BEGIN
+  SELECT ctid FROM "public"."post"
+  WHERE "id" = p_id
+  LIMIT 1
+  INTO _ctid;
+
+  SELECT * FROM "public"."post"
+  WHERE ctid = _ctid
+  LIMIT 1
+  INTO _result;
+
+  FOR i IN 1..array_upper(updated_data, 1) BY 2 LOOP
+    CASE updated_data[i]
+    WHEN 'title' THEN _result."title" := updated_data[i + 1]::varchar;
+      WHEN 'content' THEN _result."content" := updated_data[i + 1];
+      WHEN 'author_id' THEN _result."author_id" := updated_data[i + 1]::int4;
+      WHEN 'created_at' THEN _result."created_at" := updated_data[i + 1]::timestamptz;
+      WHEN 'updated_at' THEN _result."updated_at" := updated_data[i + 1]::timestamptz;
+
+    ELSE
+      RAISE EXCEPTION 'Unknown column: %', updated_data[i];
+    END CASE;
+  END LOOP;
+
+  UPDATE "public"."post"
+  SET "title" = _result."title", "content" = _result."content", "author_id" = _result."author_id", "created_at" = _result."created_at", "updated_at" = _result."updated_at"
+  WHERE ctid = _ctid;
+
+  RETURN _result;
+END;
+$$;
+
   
 -- Get a row by primary key
 CREATE FUNCTION "public"."get_post"("p_id" "post"."id"%TYPE)
@@ -569,82 +629,54 @@ BEGIN
     WHERE "id" = p_id
     LIMIT 1
     INTO result;
+
   RETURN result;
 END;
 $$;
 
 -- Insert a new row
-CREATE FUNCTION "public"."create_post"("public"."post")
-RETURNS SETOF "public"."post"
+CREATE FUNCTION "public"."create_post"(text[])
+RETURNS "public"."post"
 LANGUAGE plpgsql
 AS $$
+DECLARE
+  _ctid tid;
+  _result "public"."post";
 BEGIN
-  RETURN QUERY
-    INSERT INTO "public"."post" VALUES ($1.*)
-    RETURNING *;
+  INSERT INTO "public"."post" VALUES (DEFAULT, $1[2]::varchar, $1[3], $1[4]::int4, DEFAULT, DEFAULT)
+  RETURNING ctid INTO _ctid;
+
+  UPDATE "public"."post"
+SET "id" = COALESCE($1[1]::int, "id"), "created_at" = COALESCE($1[5]::timestamptz, "created_at"), "updated_at" = COALESCE($1[6]::timestamptz, "updated_at")
+WHERE ctid = _ctid
+RETURNING *
+INTO _result;
+        
+
+  RETURN _result;
 END;
 $$;
 
 -- Upsert a row by primary key
-CREATE FUNCTION "public"."upsert_post"("public"."post")
+CREATE FUNCTION "public"."upsert_post"(text[])
 RETURNS "public"."post"
 LANGUAGE plpgsql
 AS $$
 DECLARE
-  result "public"."post";
+  _ctid tid;
+  _result "public"."post";
 BEGIN
-  INSERT INTO "public"."post" VALUES ($1.*)
-  ON CONFLICT ("id") DO UPDATE
-  SET "id" = EXCLUDED."id","title" = EXCLUDED."title","content" = EXCLUDED."content","author_id" = EXCLUDED."author_id","created_at" = EXCLUDED."created_at","updated_at" = EXCLUDED."updated_at"
-  RETURNING * INTO result;
-  RETURN result;
-END;
-$$;
+  SELECT ctid FROM "public"."post"
+  WHERE "id" = $1[1]::int
+  LIMIT 1
+  INTO _ctid;
 
--- Update a row by primary key
-CREATE FUNCTION "public"."update_post"("p_id" "post"."id"%TYPE, updated_data text[])
-RETURNS "public"."post"
-LANGUAGE plpgsql
-AS $$
-DECLARE
-  entry_key text;
-  entry_value text;
-  result "public"."post";
-BEGIN
-  SELECT * FROM "public"."post" WHERE "id" = p_id INTO result;
+  IF FOUND THEN
+    DELETE FROM "public"."post" WHERE ctid = _ctid;
+  END IF;
 
-  FOR i IN 1..array_upper(updated_data, 1) BY 2 LOOP
-    entry_key := updated_data[i];
-    entry_value := updated_data[i + 1];
-
-    CASE entry_key
-    WHEN 'id' THEN result."id" := CAST(entry_value AS "public"."serial");
-    WHEN 'title' THEN result."title" := CAST(entry_value AS varchar);
-    WHEN 'content' THEN result."content" := CAST(entry_value AS text);
-    WHEN 'author_id' THEN result."author_id" := CAST(entry_value AS int4);
-    WHEN 'created_at' THEN result."created_at" := CAST(entry_value AS timestamptz);
-    WHEN 'updated_at' THEN result."updated_at" := CAST(entry_value AS timestamptz);
-
-    ELSE
-      RAISE EXCEPTION 'Unknown column: %', entry_key;
-    END CASE;
-  END LOOP;
-  
-  RETURN result;
-END;
-$$;
-
--- Replace a row by primary key
-CREATE FUNCTION "public"."replace_post"("p_id" "post"."id"%TYPE, rec "public"."post")
-RETURNS "public"."post"
-LANGUAGE plpgsql
-AS $$
-DECLARE
-  result "public"."post";
-BEGIN
-  DELETE FROM "public"."post" WHERE "id" = p_id;
-  INSERT INTO "public"."post" VALUES (rec.*) RETURNING * INTO result;
-  RETURN result;
+  SELECT * FROM "public"."create_post"($1) INTO _result;
+  RETURN _result;
 END;
 $$;
 
@@ -653,16 +685,10 @@ CREATE FUNCTION "public"."delete_post"("p_id" "post"."id"%TYPE)
 RETURNS boolean
 LANGUAGE plpgsql
 AS $$
-DECLARE
-  rows_affected integer;
 BEGIN
-  WITH deleted AS (
-    DELETE FROM "public"."post"
-    WHERE "id" = p_id
-    RETURNING *
-  )
-  SELECT COUNT(*) INTO rows_affected FROM deleted;
-  RETURN rows_affected > 0;
+  DELETE FROM "public"."post"
+  WHERE "id" = p_id;
+  RETURN FOUND;
 END;
 $$;
   
