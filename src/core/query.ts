@@ -45,8 +45,10 @@ export class Query<
    *
    * Note: This must be called before the query is awaited.
    */
-  cancelWithSignal(signal: AbortSignal) {
-    this.signal = signal
+  cancelWithSignal(signal: AbortSignal | null | undefined) {
+    if (signal) {
+      this.signal = signal
+    }
     return this
   }
 
