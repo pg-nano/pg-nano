@@ -44,6 +44,12 @@ export default async function dev(cwd: string, options: Options = {}) {
     })
   })
 
+  let filesAdded = 0
+  watcher.once('ready', () => {
+    log(`Found ${filesAdded} SQL file${filesAdded === 1 ? '' : 's'}`)
+    filesAdded = -1
+  })
+
   watcher.on('all', (event, file) => {
     if (event === 'addDir' || event === 'unlinkDir') {
       return
@@ -58,10 +64,14 @@ export default async function dev(cwd: string, options: Options = {}) {
       }
     } else {
       const skipped = event === 'add' && statSync(file).size === 0
-      log.magenta(
-        event,
-        skipped ? gray(strikethrough(file) + ' (empty)') : file,
-      )
+      if (filesAdded < 0) {
+        log.magenta(
+          event,
+          skipped ? gray(strikethrough(file) + ' (empty)') : file,
+        )
+      } else if (event === 'add') {
+        filesAdded++
+      }
       if (!skipped) {
         regenerate()
       }
