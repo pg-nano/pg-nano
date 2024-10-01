@@ -747,6 +747,8 @@ export async function generate(
   // Step 8: Write the TypeScript schema to a file.
   fs.writeFileSync(outFile, code.replace(/\s+$/, '\n'))
 
+  events.emit('generate-end')
+
   // Step 9: Warn about any unsupported types.
   for (const typeOid of unsupportedTypes) {
     const typeName = await pg.queryValue<string>(sql`
@@ -769,8 +771,6 @@ export async function generate(
       proc.on('error', reject)
     })
   }
-
-  events.emit('generate-end')
 }
 
 function indent(text: string, count = 2) {
