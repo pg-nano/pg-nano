@@ -1,0 +1,24 @@
+diff --git a/dist/index.js b/dist/index.js
+index 8e4ed41ad65f13a6e3e1a3d6401d445d7c76d4c9..917cb4072d2ad7715c41238490f5f4abcb1a0837 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -7235,6 +7235,7 @@ function esbuildPluginLicense(options = {}) {
+           });
+         }
+         if (thirdPartyLicenseResult) {
++          import_fs.default.mkdirSync(import_path.default.dirname(outputFile), { recursive: true });
+           import_fs.default.writeFileSync(outputFile, thirdPartyLicenseResult, {
+             encoding: "utf-8"
+           });
+diff --git a/dist/index.mjs b/dist/index.mjs
+index e2d7d39a79ffd0a01978db0df2793855f7241b59..bf49cc15e399628a4d952496f53a2d4999dcf794 100644
+--- a/dist/index.mjs
++++ b/dist/index.mjs
+@@ -10124,6 +10124,7 @@ function esbuildPluginLicense(options = {}) {
+           });
+         }
+         if (thirdPartyLicenseResult) {
++          fs4.mkdirSync(path6.dirname(outputFile), { recursive: true });
+           fs4.writeFileSync(outputFile, thirdPartyLicenseResult, {
+             encoding: "utf-8"
+           });

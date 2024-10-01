@@ -69,5 +69,10 @@
     "esbuild": "^0.23.1",
     "strict-event-emitter-types": "^2.0.0",
     "string-argv": "^0.3.2"
+  },
+  "pnpm": {
+    "patchedDependencies": {
+      "esbuild-plugin-license": "patches/esbuild-plugin-license.patch"
+    }
   }
 }
