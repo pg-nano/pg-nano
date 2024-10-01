@@ -1,11 +1,5 @@
 import type { Client } from 'pg-nano'
-import {
-  type QueryHook,
-  type Result,
-  type SQLTemplate,
-  buildResult,
-  sql,
-} from 'pg-native'
+import { type SQLTemplate, sql } from 'pg-native'
 import { uid } from 'radashi'
 import type { PgViewStmt } from '../parser/types.js'
 import { parseViewSubquery } from './parseViewSubquery.js'
@@ -53,7 +47,7 @@ export async function inspectNamespaces(client: Client, signal?: AbortSignal) {
   return namespaces
 }
 
-export function inspectRoutines(pg: Client, signal?: AbortSignal) {
+export function inspectRoutines(client: Client, signal?: AbortSignal) {
   /**
    * Find the procs that are:
    *   - not built-in
@@ -85,10 +79,10 @@ export function inspectRoutines(pg: Client, signal?: AbortSignal) {
     ORDER BY n.nspname, p.proname
   `
 
-  return pg.queryRowList<PgRoutine>(query, { signal })
+  return client.queryRowList<PgRoutine>(query).cancelWithSignal(signal)
 }
 
-// export async function inspectViews(pg: Client, signal?: AbortSignal) {
+// export async function inspectViews(client: Client, signal?: AbortSignal) {
 //   const query = sql`
 //     SELECT
 //       n.nspname,
@@ -113,7 +107,7 @@ export function inspectBaseTypes(client: Client, signal?: AbortSignal) {
       AND t.typnamespace = 'pg_catalog'::regnamespace
   `
 
-  return client.queryRowList<PgBaseType>(query, { signal })
+  return client.queryRowList<PgBaseType>(query).cancelWithSignal(signal)
 }
 
 export function inspectEnumTypes(client: Client, signal?: AbortSignal) {
@@ -135,7 +129,7 @@ export function inspectEnumTypes(client: Client, signal?: AbortSignal) {
     WHERE t.typtype = 'e'
   `
 
-  return client.queryRowList<PgEnumType>(query, { signal })
+  return client.queryRowList<PgEnumType>(query).cancelWithSignal(signal)
 }
 
 export function inspectCompositeTypes(client: Client, signal?: AbortSignal) {
@@ -169,7 +163,7 @@ export function inspectCompositeTypes(client: Client, signal?: AbortSignal) {
       AND n.nspname NOT IN ('pg_catalog', 'information_schema')
   `
 
-  return client.queryRowList<PgCompositeType>(query, { signal })
+  return client.queryRowList<PgCompositeType>(query).cancelWithSignal(signal)
 }
 
 export function inspectTables(client: Client, signal?: AbortSignal) {
@@ -205,53 +199,38 @@ export function inspectTables(client: Client, signal?: AbortSignal) {
       AND n.nspname NOT IN ('pg_catalog', 'information_schema')
   `
 
-  return client.queryRowList<PgTable>(query, { signal })
+  return client.queryRowList<PgTable>(query).cancelWithSignal(signal)
 }
 
 export async function inspectViewFields(
-  pg: Client,
+  client: Client,
   view: PgViewStmt,
   signal?: AbortSignal,
 ) {
-  return inspectResultSet(pg, sql.unsafe(parseViewSubquery(view)), 0, signal)
+  return inspectResultSet(client, sql.unsafe(parseViewSubquery(view)), signal)
 }
 
 export async function inspectResultSet(
-  pg: Client,
+  client: Client,
   command: SQLTemplate,
-  paramCount = 0,
   signal?: AbortSignal,
 ) {
-  const stmtName = 'pg_nano_' + uid(12)
-  const commandText = await pg.stringify(command)
+  const name = 'pg_nano_' + uid(12)
+  await client
+    .query(sql`PREPARE ${sql.id(name)} AS ${command}`)
+    .cancelWithSignal(signal)
 
-  await sendCommand(
-    pg,
-    libpq => libpq.sendPrepare(stmtName, commandText, paramCount),
-    signal,
-  )
+  const [description] = await client
+    .query(pq => {
+      pq.describePrepared(name)
+      setImmediate(() => pq.emit('readable'))
+      return true
+    })
+    .cancelWithSignal(signal)
 
-  const description = await sendCommand(
-    pg,
-    libpq => {
-      libpq.describePrepared(stmtName)
-      return async () => buildResult(libpq, pg.config.fieldCase)
-    },
-    signal,
-  )
+  console.log('inspectResultSet', { description })
 
-  await pg.query(sql`DEALLOCATE ${sql.id(stmtName)}`).withOptions({ signal })
+  await client.query(sql`DEALLOCATE ${sql.id(name)}`).cancelWithSignal(signal)
 
   return description.fields
-}
-
-async function sendCommand<TResult = Result[]>(
-  client: Client,
-  hook: QueryHook<TResult>,
-  signal?: AbortSignal,
-) {
-  // biome-ignore lint/complexity/useLiteralKeys: Protected access
-  const connection = client['getConnection'](signal)
-  // biome-ignore lint/complexity/useLiteralKeys: Protected access
-  return client['dispatchQuery'](connection, hook, signal)
 }
