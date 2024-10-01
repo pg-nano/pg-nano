@@ -133,9 +133,9 @@ export interface PluginContext {
   mapField: PgFieldContext & GenerateContext
 }
 
-export type * from '@pg-nano/pg-parser'
 export { $, select, walk } from '@pg-nano/pg-parser'
-export { sql } from 'pg-native'
+export * from '@pg-nano/pg-parser/ast'
+export { sql, type SQLTemplate, type SQLTemplateValue } from 'pg-native'
 export * from '../inspector/types.js'
 export type { SQLIdentifier } from '../parser/identifier.js'
 export * from '../parser/types.js'
