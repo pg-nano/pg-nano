@@ -1,17 +1,52 @@
-import { camelToSnake, defineFieldMapper, FieldCase } from 'pg-nano'
+import {
+  camelToSnake,
+  defineFieldMapper,
+  FieldCase,
+  snakeToCamel,
+  toPostgresText,
+  type RowMapper,
+} from 'pg-nano'
+
+export const insert_mapper = (table: RowMapper) =>
+  defineFieldMapper(
+    (input: Record<string, unknown>, client) => {
+      const values: unknown[] = []
+      for (let i = table.keys.length, key: string, value: unknown; --i >= 0; ) {
+        key = table.keys[i]
+        if (client.config.fieldCase === FieldCase.camel) {
+          key = snakeToCamel(key)
+        }
+
+        value = Object.prototype.hasOwnProperty.call(input, key)
+          ? input[key]
+          : undefined
+
+        if (value !== undefined) {
+          values[i] = toPostgresText(value)
+        } else if (i < values.length) {
+          values[i] = null
+        }
+      }
+      return values
+    },
+    // Not an output mapper.
+    null,
+  )
 
 export const update_mapper = defineFieldMapper(
-  (value: Record<string, unknown>, client) => {
+  (input: Record<string, unknown>, client) => {
     const entries: unknown[] = []
-    for (const key of Object.keys(value)) {
-      entries.push(
-        client.config.fieldCase === FieldCase.camel ? camelToSnake(key) : key,
-        value[key],
-      )
+    for (const key of Object.keys(input)) {
+      const value = input[key]
+      if (value !== undefined) {
+        entries.push(
+          client.config.fieldCase === FieldCase.camel ? camelToSnake(key) : key,
+          toPostgresText(value),
+        )
+      }
     }
     return entries
   },
-  // Since this is only used for the updated_data parameter of an update
-  // function, we don't need to map output values.
+  // Not an output mapper.
   null,
 )
