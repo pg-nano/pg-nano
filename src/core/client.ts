@@ -170,6 +170,11 @@ export class Client {
       dbname = process.env.PGDATABASE ?? 'postgres',
     } = parseConnectionString(dsn)
 
+    // Assume no custom types have been created in the `postgres` database.
+    if (dbname === 'postgres') {
+      return
+    }
+
     // Generate type parsers for custom types discovered by introspection. This
     // can't be done at compile-time, since it depends on type OIDs, which are
     // not stable across Postgres databases.
