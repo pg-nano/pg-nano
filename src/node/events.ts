@@ -133,7 +133,9 @@ export function enableEventLogging(verbose?: boolean) {
   })
 
   events.on('generate-end', () => {
-    // log.eraseLine()
+    if (!process.env.DEBUG) {
+      log.eraseLine()
+    }
     log.success('Generating type definitions... done')
   })
 
