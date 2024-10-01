@@ -3,13 +3,23 @@ import { sql } from 'pg-native'
 import { unique } from 'radashi'
 
 export class SQLIdentifier {
-  public field?: string
   constructor(
     public name: string,
     public schema: string | undefined = undefined,
     public start?: number | undefined,
     public end?: number | undefined,
   ) {}
+
+  /** Optional field name being referenced */
+  public field?: string
+
+  /**
+   * Exists if referencing an array type. One element indicates a 1-dimensional
+   * array, two elements indicates a 2-dimensional array, etc. If a dimension is
+   * null, then the array is unbounded in that dimension. Otherwise, the value
+   * is the upper bound of the array in that dimension.
+   */
+  public arrayBounds?: (number | null)[]
 
   /**
    * Returns a literal string containing the identifier name (not including the
@@ -33,9 +43,16 @@ export class SQLIdentifier {
    */
   toSQL(defaultSchema?: string) {
     const schema = this.schema ?? defaultSchema ?? 'public'
-    return schema === 'pg_catalog'
-      ? sql.unsafe(this.name)
-      : sql.id(schema, this.name)
+    const id =
+      schema === 'pg_catalog'
+        ? sql.unsafe(this.name)
+        : sql.id(schema, this.name)
+
+    const arrayBounds =
+      this.arrayBounds &&
+      sql.unsafe(this.arrayBounds.map(bound => `[${bound ?? ''}]`).join(''))
+
+    return arrayBounds ? [id, arrayBounds] : id
   }
 
   /**
@@ -100,7 +117,16 @@ export class SQLIdentifier {
   }
 
   static fromTypeName(typeName: TypeName) {
-    return SQLIdentifier.fromQualifiedName(typeName.names, typeName.pct_type)
+    const id = SQLIdentifier.fromQualifiedName(
+      typeName.names,
+      typeName.pct_type,
+    )
+    if (typeName.arrayBounds) {
+      id.arrayBounds = typeName.arrayBounds.map(
+        bound => bound.Integer.ival ?? null,
+      )
+    }
+    return id
   }
 }
 
