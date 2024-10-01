@@ -83,7 +83,29 @@ export function bindQueryValue<TArgs extends object, TResult>(
   return buildRoutine('queryValue', name, build) as any
 }
 
-function bindRoutine(
+/**
+ * Create a dedicated query function for a Postgres routine that returns a
+ * single row or nothing.
+ */
+export function bindQueryRowOrNull<TArgs extends object, TRow extends Row>(
+  name: string | string[],
+  build: (builder: RoutineBuilder) => typeof builder,
+): Routine<TArgs, Query<TRow | null>> {
+  return buildRoutine('queryRowOrNull', name, build) as any
+}
+
+/**
+ * Create a dedicated query function for a Postgres routine that returns a
+ * single value (i.e. one row with one column) or nothing.
+ */
+export function bindQueryValueOrNull<TArgs extends object, TResult>(
+  name: string | string[],
+  build: (builder: RoutineBuilder) => typeof builder,
+): Routine<TArgs, Query<TResult, TResult>> {
+  return buildRoutine('queryValueOrNull', name, build) as any
+}
+
+function buildRoutine(
   method: keyof Client,
   name: string | string[],
   build: (builder: RoutineBuilder) => typeof builder,
