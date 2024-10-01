@@ -44,7 +44,7 @@ export async function* streamResults<TResult>(
 
         if (error) {
           query.error = error
-        } else {
+        } else if (result !== undefined) {
           yield result
         }
       }
@@ -101,6 +101,9 @@ function receiveResult(pq: Libpq, query: IQuery, field: FieldDescription) {
   }
 
   if (status === 'PGRES_TUPLES_OK') {
+    if (query.singleRowMode && query.type !== QueryType.full) {
+      return
+    }
     if (query.type === QueryType.value && !assertSingleField(fieldCount)) {
       return
     }
