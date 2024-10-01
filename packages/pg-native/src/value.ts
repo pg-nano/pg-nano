@@ -5,8 +5,6 @@ import { Tuple } from './tuple.js'
 
 const noEscape = <T>(x: T) => x
 
-const objectToString = Object.prototype.toString as (this: unknown) => string
-
 const call = <This, Args extends any[], Return>(
   fn: (this: This, ...args: Args) => Return,
   ctx: This,
@@ -51,11 +49,9 @@ export function escapeValue(value: unknown, escape: Escape = noEscape): string {
           return escape((obj as Interval).toISOStringShort(), 'interval')
         case Range:
           return escape(stringifyRange(obj as Range<any>), 'range')
-      }
-      switch (call(objectToString, obj).slice(8, -1)) {
-        case 'Date':
+        case Date:
           return escape((obj as Date).toISOString(), 'date')
-        case 'RegExp':
+        case RegExp:
           return escape((obj as RegExp).source, 'pattern')
       }
       if (isTypedArray(obj)) {
