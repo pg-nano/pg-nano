@@ -8,14 +8,15 @@ DECLARE
   _result "public"."course";
 BEGIN
   SELECT ctid FROM "public"."course"
-  WHERE "id" = p_id
-  LIMIT 1
-  INTO _ctid;
+    WHERE "id" = p_id
+    LIMIT 1
+    INTO _ctid;
 
   SELECT * FROM "public"."course"
-  WHERE ctid = _ctid
-  LIMIT 1
-  INTO _result;
+    WHERE ctid = _ctid
+    LIMIT 1
+    INTO _result
+    FOR UPDATE;
 
   FOR i IN 1..array_upper(updated_data, 1) BY 2 LOOP
     CASE updated_data[i]
@@ -27,8 +28,8 @@ BEGIN
   END LOOP;
 
   UPDATE "public"."course"
-  SET "course_name" = _result."course_name"
-  WHERE ctid = _ctid;
+    SET "course_name" = _result."course_name"
+    WHERE ctid = _ctid;
 
   RETURN _result;
 END;
@@ -61,8 +62,9 @@ DECLARE
   _ctid tid;
   _result "public"."course";
 BEGIN
-  INSERT INTO "public"."course" VALUES ($1[1]::int4, $1[2]::varchar)
-  RETURNING * INTO _result;
+  INSERT INTO "public"."course"
+    VALUES ($1[1]::int4, $1[2]::varchar)
+    RETURNING * INTO _result;
 
   
 
@@ -80,9 +82,10 @@ DECLARE
   _result "public"."course";
 BEGIN
   SELECT ctid FROM "public"."course"
-  WHERE "id" = $1[1]::int4
-  LIMIT 1
-  INTO _ctid;
+    WHERE "id" = $1[1]::int4
+    LIMIT 1
+    INTO _ctid
+    FOR UPDATE;
 
   IF FOUND THEN
     DELETE FROM "public"."course" WHERE ctid = _ctid;
@@ -100,7 +103,8 @@ LANGUAGE plpgsql
 AS $$
 BEGIN
   DELETE FROM "public"."course"
-  WHERE "id" = p_id;
+    WHERE "id" = p_id;
+
   RETURN FOUND;
 END;
 $$;
@@ -115,14 +119,15 @@ DECLARE
   _result "public"."course_enrollment";
 BEGIN
   SELECT ctid FROM "public"."course_enrollment"
-  WHERE "student_id" = p_student_id AND "course_id" = p_course_id
-  LIMIT 1
-  INTO _ctid;
+    WHERE "student_id" = p_student_id AND "course_id" = p_course_id
+    LIMIT 1
+    INTO _ctid;
 
   SELECT * FROM "public"."course_enrollment"
-  WHERE ctid = _ctid
-  LIMIT 1
-  INTO _result;
+    WHERE ctid = _ctid
+    LIMIT 1
+    INTO _result
+    FOR UPDATE;
 
   FOR i IN 1..array_upper(updated_data, 1) BY 2 LOOP
     CASE updated_data[i]
@@ -135,8 +140,8 @@ BEGIN
   END LOOP;
 
   UPDATE "public"."course_enrollment"
-  SET "enrollment_date" = _result."enrollment_date", "grade" = _result."grade"
-  WHERE ctid = _ctid;
+    SET "enrollment_date" = _result."enrollment_date", "grade" = _result."grade"
+    WHERE ctid = _ctid;
 
   RETURN _result;
 END;
@@ -169,8 +174,9 @@ DECLARE
   _ctid tid;
   _result "public"."course_enrollment";
 BEGIN
-  INSERT INTO "public"."course_enrollment" VALUES ($1[1]::int4, $1[2]::int4, $1[3]::date, $1[4]::bpchar)
-  RETURNING * INTO _result;
+  INSERT INTO "public"."course_enrollment"
+    VALUES ($1[1]::int4, $1[2]::int4, $1[3]::date, $1[4]::bpchar)
+    RETURNING * INTO _result;
 
   
 
@@ -188,9 +194,10 @@ DECLARE
   _result "public"."course_enrollment";
 BEGIN
   SELECT ctid FROM "public"."course_enrollment"
-  WHERE "student_id" = $1[1]::int4 AND "course_id" = $1[2]::int4
-  LIMIT 1
-  INTO _ctid;
+    WHERE "student_id" = $1[1]::int4 AND "course_id" = $1[2]::int4
+    LIMIT 1
+    INTO _ctid
+    FOR UPDATE;
 
   IF FOUND THEN
     DELETE FROM "public"."course_enrollment" WHERE ctid = _ctid;
@@ -208,7 +215,8 @@ LANGUAGE plpgsql
 AS $$
 BEGIN
   DELETE FROM "public"."course_enrollment"
-  WHERE "student_id" = p_student_id AND "course_id" = p_course_id;
+    WHERE "student_id" = p_student_id AND "course_id" = p_course_id;
+
   RETURN FOUND;
 END;
 $$;
@@ -223,14 +231,15 @@ DECLARE
   _result "public"."student";
 BEGIN
   SELECT ctid FROM "public"."student"
-  WHERE "id" = p_id
-  LIMIT 1
-  INTO _ctid;
+    WHERE "id" = p_id
+    LIMIT 1
+    INTO _ctid;
 
   SELECT * FROM "public"."student"
-  WHERE ctid = _ctid
-  LIMIT 1
-  INTO _result;
+    WHERE ctid = _ctid
+    LIMIT 1
+    INTO _result
+    FOR UPDATE;
 
   FOR i IN 1..array_upper(updated_data, 1) BY 2 LOOP
     CASE updated_data[i]
@@ -243,8 +252,8 @@ BEGIN
   END LOOP;
 
   UPDATE "public"."student"
-  SET "first_name" = _result."first_name", "last_name" = _result."last_name"
-  WHERE ctid = _ctid;
+    SET "first_name" = _result."first_name", "last_name" = _result."last_name"
+    WHERE ctid = _ctid;
 
   RETURN _result;
 END;
@@ -277,8 +286,9 @@ DECLARE
   _ctid tid;
   _result "public"."student";
 BEGIN
-  INSERT INTO "public"."student" VALUES ($1[1]::int4, $1[2]::varchar, $1[3]::varchar)
-  RETURNING * INTO _result;
+  INSERT INTO "public"."student"
+    VALUES ($1[1]::int4, $1[2]::varchar, $1[3]::varchar)
+    RETURNING * INTO _result;
 
   
 
@@ -296,9 +306,10 @@ DECLARE
   _result "public"."student";
 BEGIN
   SELECT ctid FROM "public"."student"
-  WHERE "id" = $1[1]::int4
-  LIMIT 1
-  INTO _ctid;
+    WHERE "id" = $1[1]::int4
+    LIMIT 1
+    INTO _ctid
+    FOR UPDATE;
 
   IF FOUND THEN
     DELETE FROM "public"."student" WHERE ctid = _ctid;
@@ -316,7 +327,8 @@ LANGUAGE plpgsql
 AS $$
 BEGIN
   DELETE FROM "public"."student"
-  WHERE "id" = p_id;
+    WHERE "id" = p_id;
+
   RETURN FOUND;
 END;
 $$;
@@ -331,14 +343,15 @@ DECLARE
   _result "public"."foo";
 BEGIN
   SELECT ctid FROM "public"."foo"
-  WHERE "id" = p_id
-  LIMIT 1
-  INTO _ctid;
+    WHERE "id" = p_id
+    LIMIT 1
+    INTO _ctid;
 
   SELECT * FROM "public"."foo"
-  WHERE ctid = _ctid
-  LIMIT 1
-  INTO _result;
+    WHERE ctid = _ctid
+    LIMIT 1
+    INTO _result
+    FOR UPDATE;
 
   FOR i IN 1..array_upper(updated_data, 1) BY 2 LOOP
     CASE updated_data[i]
@@ -371,8 +384,8 @@ BEGIN
   END LOOP;
 
   UPDATE "public"."foo"
-  SET "name" = _result."name", "description" = _result."description", "created_at" = _result."created_at", "updated_at" = _result."updated_at", "is_active" = _result."is_active", "score" = _result."score", "tags" = _result."tags", "matrix" = _result."matrix", "metadata" = _result."metadata", "color_preference" = _result."color_preference", "binary_data" = _result."binary_data", "coordinates" = _result."coordinates", "ip_address" = _result."ip_address", "mac_address" = _result."mac_address", "price_range" = _result."price_range", "schedule" = _result."schedule", "priority" = _result."priority", "uuid" = _result."uuid", "search_vector" = _result."search_vector", "status" = _result."status", "address" = _result."address", "product_attributes" = _result."product_attributes"
-  WHERE ctid = _ctid;
+    SET "name" = _result."name", "description" = _result."description", "created_at" = _result."created_at", "updated_at" = _result."updated_at", "is_active" = _result."is_active", "score" = _result."score", "tags" = _result."tags", "matrix" = _result."matrix", "metadata" = _result."metadata", "color_preference" = _result."color_preference", "binary_data" = _result."binary_data", "coordinates" = _result."coordinates", "ip_address" = _result."ip_address", "mac_address" = _result."mac_address", "price_range" = _result."price_range", "schedule" = _result."schedule", "priority" = _result."priority", "uuid" = _result."uuid", "search_vector" = _result."search_vector", "status" = _result."status", "address" = _result."address", "product_attributes" = _result."product_attributes"
+    WHERE ctid = _ctid;
 
   RETURN _result;
 END;
@@ -405,14 +418,15 @@ DECLARE
   _ctid tid;
   _result "public"."foo";
 BEGIN
-  INSERT INTO "public"."foo" VALUES ($1[1]::int4, $1[2]::varchar, $1[3], DEFAULT, DEFAULT, DEFAULT, $1[7]::numeric, $1[8]::text[], $1[9]::float8[][], $1[10]::jsonb, $1[11]::varchar, $1[12]::bytea, $1[13]::point, $1[14]::inet, $1[15]::macaddr, $1[16]::int4range, $1[17]::tstzrange, $1[18]::int2, DEFAULT, $1[20]::tsvector, DEFAULT, $1[22]::"public"."address_type", $1[23]::"public"."hstore")
-  RETURNING ctid INTO _ctid;
+  INSERT INTO "public"."foo"
+    VALUES ($1[1]::int4, $1[2]::varchar, $1[3], DEFAULT, DEFAULT, DEFAULT, $1[7]::numeric, $1[8]::text[], $1[9]::float8[][], $1[10]::jsonb, $1[11]::varchar, $1[12]::bytea, $1[13]::point, $1[14]::inet, $1[15]::macaddr, $1[16]::int4range, $1[17]::tstzrange, $1[18]::int2, DEFAULT, $1[20]::tsvector, DEFAULT, $1[22]::"public"."address_type", $1[23]::"public"."hstore")
+    RETURNING ctid INTO _ctid;
 
   UPDATE "public"."foo"
-SET "created_at" = COALESCE($1[4]::timestamptz, "created_at"), "updated_at" = COALESCE($1[5]::timestamptz, "updated_at"), "is_active" = COALESCE($1[6]::bool, "is_active"), "uuid" = COALESCE($1[19]::uuid, "uuid"), "status" = COALESCE($1[21]::"public"."status_type", "status")
-WHERE ctid = _ctid
-RETURNING *
-INTO _result;
+  SET "created_at" = COALESCE($1[4]::timestamptz, "created_at"), "updated_at" = COALESCE($1[5]::timestamptz, "updated_at"), "is_active" = COALESCE($1[6]::bool, "is_active"), "uuid" = COALESCE($1[19]::uuid, "uuid"), "status" = COALESCE($1[21]::"public"."status_type", "status")
+  WHERE ctid = _ctid
+  RETURNING *
+  INTO _result;
         
 
   RETURN _result;
@@ -429,9 +443,10 @@ DECLARE
   _result "public"."foo";
 BEGIN
   SELECT ctid FROM "public"."foo"
-  WHERE "id" = $1[1]::int4
-  LIMIT 1
-  INTO _ctid;
+    WHERE "id" = $1[1]::int4
+    LIMIT 1
+    INTO _ctid
+    FOR UPDATE;
 
   IF FOUND THEN
     DELETE FROM "public"."foo" WHERE ctid = _ctid;
@@ -449,7 +464,8 @@ LANGUAGE plpgsql
 AS $$
 BEGIN
   DELETE FROM "public"."foo"
-  WHERE "id" = p_id;
+    WHERE "id" = p_id;
+
   RETURN FOUND;
 END;
 $$;
@@ -464,14 +480,15 @@ DECLARE
   _result "public"."account";
 BEGIN
   SELECT ctid FROM "public"."account"
-  WHERE "id" = p_id
-  LIMIT 1
-  INTO _ctid;
+    WHERE "id" = p_id
+    LIMIT 1
+    INTO _ctid;
 
   SELECT * FROM "public"."account"
-  WHERE ctid = _ctid
-  LIMIT 1
-  INTO _result;
+    WHERE ctid = _ctid
+    LIMIT 1
+    INTO _result
+    FOR UPDATE;
 
   FOR i IN 1..array_upper(updated_data, 1) BY 2 LOOP
     CASE updated_data[i]
@@ -493,8 +510,8 @@ BEGIN
   END LOOP;
 
   UPDATE "public"."account"
-  SET "username" = _result."username", "email" = _result."email", "password_hash" = _result."password_hash", "posts_count" = _result."posts_count", "first_name" = _result."first_name", "last_name" = _result."last_name", "date_of_birth" = _result."date_of_birth", "created_at" = _result."created_at", "updated_at" = _result."updated_at", "last_login" = _result."last_login", "is_deleted" = _result."is_deleted"
-  WHERE ctid = _ctid;
+    SET "username" = _result."username", "email" = _result."email", "password_hash" = _result."password_hash", "posts_count" = _result."posts_count", "first_name" = _result."first_name", "last_name" = _result."last_name", "date_of_birth" = _result."date_of_birth", "created_at" = _result."created_at", "updated_at" = _result."updated_at", "last_login" = _result."last_login", "is_deleted" = _result."is_deleted"
+    WHERE ctid = _ctid;
 
   RETURN _result;
 END;
@@ -527,14 +544,15 @@ DECLARE
   _ctid tid;
   _result "public"."account";
 BEGIN
-  INSERT INTO "public"."account" VALUES (DEFAULT, $1[2]::varchar, $1[3]::varchar, $1[4]::varchar, DEFAULT, $1[6]::varchar, $1[7]::varchar, $1[8]::date, DEFAULT, DEFAULT, $1[11]::timestamptz, DEFAULT)
-  RETURNING ctid INTO _ctid;
+  INSERT INTO "public"."account"
+    VALUES (DEFAULT, $1[2]::varchar, $1[3]::varchar, $1[4]::varchar, DEFAULT, $1[6]::varchar, $1[7]::varchar, $1[8]::date, DEFAULT, DEFAULT, $1[11]::timestamptz, DEFAULT)
+    RETURNING ctid INTO _ctid;
 
   UPDATE "public"."account"
-SET "id" = COALESCE($1[1]::int, "id"), "posts_count" = COALESCE($1[5]::int4, "posts_count"), "created_at" = COALESCE($1[9]::timestamptz, "created_at"), "updated_at" = COALESCE($1[10]::timestamptz, "updated_at"), "is_deleted" = COALESCE($1[12]::bool, "is_deleted")
-WHERE ctid = _ctid
-RETURNING *
-INTO _result;
+  SET "id" = COALESCE($1[1]::int, "id"), "posts_count" = COALESCE($1[5]::int4, "posts_count"), "created_at" = COALESCE($1[9]::timestamptz, "created_at"), "updated_at" = COALESCE($1[10]::timestamptz, "updated_at"), "is_deleted" = COALESCE($1[12]::bool, "is_deleted")
+  WHERE ctid = _ctid
+  RETURNING *
+  INTO _result;
         
 
   RETURN _result;
@@ -551,9 +569,10 @@ DECLARE
   _result "public"."account";
 BEGIN
   SELECT ctid FROM "public"."account"
-  WHERE "id" = $1[1]::int
-  LIMIT 1
-  INTO _ctid;
+    WHERE "id" = $1[1]::int
+    LIMIT 1
+    INTO _ctid
+    FOR UPDATE;
 
   IF FOUND THEN
     DELETE FROM "public"."account" WHERE ctid = _ctid;
@@ -571,7 +590,8 @@ LANGUAGE plpgsql
 AS $$
 BEGIN
   DELETE FROM "public"."account"
-  WHERE "id" = p_id;
+    WHERE "id" = p_id;
+
   RETURN FOUND;
 END;
 $$;
@@ -586,14 +606,15 @@ DECLARE
   _result "public"."post";
 BEGIN
   SELECT ctid FROM "public"."post"
-  WHERE "id" = p_id
-  LIMIT 1
-  INTO _ctid;
+    WHERE "id" = p_id
+    LIMIT 1
+    INTO _ctid;
 
   SELECT * FROM "public"."post"
-  WHERE ctid = _ctid
-  LIMIT 1
-  INTO _result;
+    WHERE ctid = _ctid
+    LIMIT 1
+    INTO _result
+    FOR UPDATE;
 
   FOR i IN 1..array_upper(updated_data, 1) BY 2 LOOP
     CASE updated_data[i]
@@ -609,8 +630,8 @@ BEGIN
   END LOOP;
 
   UPDATE "public"."post"
-  SET "title" = _result."title", "content" = _result."content", "author_id" = _result."author_id", "created_at" = _result."created_at", "updated_at" = _result."updated_at"
-  WHERE ctid = _ctid;
+    SET "title" = _result."title", "content" = _result."content", "author_id" = _result."author_id", "created_at" = _result."created_at", "updated_at" = _result."updated_at"
+    WHERE ctid = _ctid;
 
   RETURN _result;
 END;
@@ -643,14 +664,15 @@ DECLARE
   _ctid tid;
   _result "public"."post";
 BEGIN
-  INSERT INTO "public"."post" VALUES (DEFAULT, $1[2]::varchar, $1[3], $1[4]::int4, DEFAULT, DEFAULT)
-  RETURNING ctid INTO _ctid;
+  INSERT INTO "public"."post"
+    VALUES (DEFAULT, $1[2]::varchar, $1[3], $1[4]::int4, DEFAULT, DEFAULT)
+    RETURNING ctid INTO _ctid;
 
   UPDATE "public"."post"
-SET "id" = COALESCE($1[1]::int, "id"), "created_at" = COALESCE($1[5]::timestamptz, "created_at"), "updated_at" = COALESCE($1[6]::timestamptz, "updated_at")
-WHERE ctid = _ctid
-RETURNING *
-INTO _result;
+  SET "id" = COALESCE($1[1]::int, "id"), "created_at" = COALESCE($1[5]::timestamptz, "created_at"), "updated_at" = COALESCE($1[6]::timestamptz, "updated_at")
+  WHERE ctid = _ctid
+  RETURNING *
+  INTO _result;
         
 
   RETURN _result;
@@ -667,9 +689,10 @@ DECLARE
   _result "public"."post";
 BEGIN
   SELECT ctid FROM "public"."post"
-  WHERE "id" = $1[1]::int
-  LIMIT 1
-  INTO _ctid;
+    WHERE "id" = $1[1]::int
+    LIMIT 1
+    INTO _ctid
+    FOR UPDATE;
 
   IF FOUND THEN
     DELETE FROM "public"."post" WHERE ctid = _ctid;
@@ -687,7 +710,8 @@ LANGUAGE plpgsql
 AS $$
 BEGIN
   DELETE FROM "public"."post"
-  WHERE "id" = p_id;
+    WHERE "id" = p_id;
+
   RETURN FOUND;
 END;
 $$;
