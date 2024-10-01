@@ -136,6 +136,39 @@ export class Connection extends ConnectionEmitter {
   }
 
   /**
+   * Stream each result from the query as it comes in. Query errors are not
+   * propagated through this method.
+   */
+  async *stream<TResult = CommandResult>() {
+    let current = Promise.withResolvers<boolean>()
+
+    const buffer: TResult[] = []
+    const onResult = (result: unknown) => {
+      buffer.push(result as TResult)
+      current.resolve(false)
+      current = Promise.withResolvers()
+    }
+
+    this.on('result', onResult)
+    this.once('end', () => {
+      this.off('result', onResult)
+      current.resolve(true)
+    })
+
+    while (true) {
+      const done = await current.promise
+      if (buffer.length > 0) {
+        const results = [...buffer]
+        buffer.length = 0
+        yield* results
+      }
+      if (done) {
+        return
+      }
+    }
+  }
+
+  /**
    * Close the database connection.
    */
   close() {

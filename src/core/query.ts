@@ -169,31 +169,15 @@ export class Query<
   protected async *stream(
     conn: Connection | Promise<Connection>,
     queryPromise: Promise<any>,
-  ): AsyncGenerator<any, void, unknown> {
+  ) {
     if (isPromise(conn)) {
       conn = await conn
     }
-    const endSymbol: any = Symbol('end')
-    while (true) {
-      const { promise, resolve, reject } = Promise.withResolvers<any>()
-      const end = () => queryPromise.then(() => resolve(endSymbol), reject)
-      conn.on('result', resolve)
-      conn.on('end', end)
 
-      const result = await promise.finally(() => {
-        conn.off('result', resolve)
-        conn.off('end', end)
-      })
+    yield* conn.stream()
 
-      if (result === endSymbol) {
-        return
-      }
-      if (isArray(result)) {
-        yield* result as any
-      } else {
-        yield result
-      }
-    }
+    // Propagate any errors from the query.
+    await queryPromise
   }
 }
 
