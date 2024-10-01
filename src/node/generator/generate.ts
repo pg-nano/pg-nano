@@ -627,8 +627,8 @@ export async function generate(
           ? `[${quoteName(routine.schema)}, ${quoteName(routine.name)}]`
           : quoteName(routine.name)
 
-      const constructor =
-        routine.constructor ??
+      const bindingFunction =
+        routine.bindingFunction ??
         (returnsRow
           ? routine.returnSet
             ? 'bindQueryRowList'
@@ -637,7 +637,7 @@ export async function generate(
             ? 'bindQueryValueList'
             : 'bindQueryValue')
 
-      imports.add(constructor)
+      imports.add(bindingFunction)
 
       const routineScript = dedent`
         export declare namespace ${jsName} {
@@ -645,7 +645,7 @@ export async function generate(
           type Result = ${jsResultType}
         }
 
-        export const ${jsName} = /* @__PURE__ */ ${constructor}<${jsName}.Params, ${jsName}.Result>(${pgName}, ${builder})\n\n
+        export const ${jsName} = /* @__PURE__ */ ${bindingFunction}<${jsName}.Params, ${jsName}.Result>(${pgName}, ${builder})\n\n
       `
 
       renderedObjects.set(routine, routineScript)

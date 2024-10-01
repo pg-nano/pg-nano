@@ -102,10 +102,11 @@ export type PgRoutine = {
    * This can be set by a plugin to override the inferred constructor used to
    * declare the routine proxy in TypeScript.
    */
-  constructor?: PgRoutineConstructor
+  bindingFunction?: PgRoutineBindingFunction
 }
 
-export type PgRoutineConstructor = keyof typeof import('../../core/routines.js')
+export type PgRoutineBindingFunction =
+  keyof typeof import('../../core/routines.js')
 
 export type PgNamespace = {
   schema: string
