@@ -180,8 +180,6 @@ export class Client {
       dbname,
     )
 
-    console.log(customTypeParsers)
-
     if (this.dsn === dsn) {
       this.parseText = createTextParser({
         ...baseTypeParsers,
