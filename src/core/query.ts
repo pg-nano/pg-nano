@@ -1,7 +1,6 @@
 import { isPromise } from 'node:util/types'
 import {
   type Connection,
-  FieldCase,
   type PgNativeError,
   type PgResultError,
   type QueryHook,
@@ -10,7 +9,7 @@ import {
   SQLTemplate,
 } from 'pg-native'
 import { isArray, noop } from 'radashi'
-import { snakeToCamel } from './casing.js'
+import { FieldCase, snakeToCamel } from './casing.js'
 import type { Client } from './client.js'
 import { QueryError } from './error.js'
 
