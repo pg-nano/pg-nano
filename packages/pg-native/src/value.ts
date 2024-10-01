@@ -1,7 +1,6 @@
 import { isTypedArray } from 'node:util/types'
 import Interval from 'postgres-interval'
 import { Range, serialize as stringifyRange } from 'postgres-range'
-import { isArray } from 'radashi'
 import { Tuple } from './tuple.js'
 
 const noEscape = <T>(x: T) => x
@@ -40,10 +39,9 @@ export function escapeValue(value: unknown, escape: Escape = noEscape): string {
       return value.toString()
     case 'object': {
       let obj = value as object
-      if (isArray(obj)) {
-        return escape(escapeArray(obj), 'array')
-      }
       switch (obj.constructor) {
+        case Array:
+          return escape(escapeArray(obj as any[]), 'array')
         case Tuple:
           return escape(
             `(${(obj as Tuple).map(value => escapeValue(value, escape)).join(',')})`,
