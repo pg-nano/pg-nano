@@ -90,21 +90,14 @@ export class Connection extends ConnectionEmitter {
       singleRowMode: options?.singleRowMode,
     }
 
-    const promise = sendQuery(conn, query) as QueryPromise<TResult>
+    const promise = sendQuery(conn, query).finally(() => {
+      reset(conn, ConnectionStatus.IDLE)
 
-    promise.finally(() => {
-      try {
-        reset(conn, ConnectionStatus.IDLE)
-        conn.emit('end')
-
-        if (Number.isFinite(this.idleTimeout)) {
-          clearTimeout(this.idleTimeoutId)
-          this.idleTimeoutId = setTimeout(() => this.close(), this.idleTimeout)
-        }
-      } catch (error) {
-        console.error(error)
+      if (Number.isFinite(this.idleTimeout)) {
+        clearTimeout(this.idleTimeoutId)
+        this.idleTimeoutId = setTimeout(() => this.close(), this.idleTimeout)
       }
-    })
+    }) as QueryPromise<TResult>
 
     promise.cancel = () => {
       promise.cancel = noop
@@ -213,7 +206,10 @@ function setStatus(conn: IConnection, newStatus: ConnectionStatus): void {
 
 function reset(conn: IConnection, newStatus: ConnectionStatus): void {
   stopReading(conn, newStatus)
-  conn.currentQuery = null
+  if (conn.currentQuery) {
+    conn.currentQuery = null
+    conn.emit('end')
+  }
 }
 
 /**
