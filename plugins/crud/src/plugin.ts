@@ -227,15 +227,15 @@ function renderTableQueries(table: Readonly<PgTableStmt>) {
         _result ${tableId};
       BEGIN
         SELECT ctid FROM ${tableId}
-        WHERE ${pkParamsMatch}
-        LIMIT 1
-        INTO _ctid;
+          WHERE ${pkParamsMatch}
+          LIMIT 1
+          INTO _ctid;
 
         SELECT * FROM ${tableId}
-        WHERE ctid = _ctid
-        LIMIT 1
-        INTO _result
-        FOR UPDATE;
+          WHERE ctid = _ctid
+          LIMIT 1
+          INTO _result
+          FOR UPDATE;
 
         FOR i IN 1..array_upper(updated_data, 1) BY 2 LOOP
           CASE updated_data[i]
@@ -248,15 +248,15 @@ function renderTableQueries(table: Readonly<PgTableStmt>) {
         END LOOP;
 
         UPDATE ${tableId}
-        SET ${sql.join(
-          sql.unsafe(', '),
-          columnsExceptPKs.map(col => [
-            sql.id(col.name),
-            sql.unsafe(' = _result.'),
-            sql.id(col.name),
-          ]),
-        )}
-        WHERE ctid = _ctid;
+          SET ${sql.join(
+            sql.unsafe(', '),
+            columnsExceptPKs.map(col => [
+              sql.id(col.name),
+              sql.unsafe(' = _result.'),
+              sql.id(col.name),
+            ]),
+          )}
+          WHERE ctid = _ctid;
 
         RETURN _result;
       END;
@@ -293,44 +293,45 @@ function renderTableQueries(table: Readonly<PgTableStmt>) {
       _ctid tid;
       _result ${tableId};
     BEGIN
-      INSERT INTO ${tableId} VALUES (${sql.join(
-        sql.unsafe(', '),
-        table.columns.map((col, index) => {
-          if (columnsWithDefault.includes(col)) {
-            // Use the default value for now. We'll check if the given value is
-            // non-null and update the record if it is. Sadly, we can't use the
-            // DEFAULT keyword in a conditional expression.
-            return sql.unsafe('DEFAULT')
-          }
-          return castColumnFromText(arrayAccess(sql.unsafe('$1'), index), col)
-        }),
-      )})
-      ${
-        columnsWithDefaultNotAlwaysGenerated.length > 0
-          ? sql`RETURNING ctid INTO _ctid`
-          : sql`RETURNING * INTO _result`
-      };
+      INSERT INTO ${tableId}
+        VALUES (${sql.join(
+          sql.unsafe(', '),
+          table.columns.map((col, index) => {
+            if (columnsWithDefault.includes(col)) {
+              // Use the default value for now. We'll check if the given value is
+              // non-null and update the record if it is. Sadly, we can't use the
+              // DEFAULT keyword in a conditional expression.
+              return sql.unsafe('DEFAULT')
+            }
+            return castColumnFromText(arrayAccess(sql.unsafe('$1'), index), col)
+          }),
+        )})
+        ${
+          columnsWithDefaultNotAlwaysGenerated.length > 0
+            ? sql`RETURNING ctid INTO _ctid`
+            : sql`RETURNING * INTO _result`
+        };
 
       ${
         columnsWithDefaultNotAlwaysGenerated.length > 0
           ? sql`
               UPDATE ${table.id.toSQL()}
-              SET ${sql.join(
-                sql.unsafe(', '),
-                columnsWithDefaultNotAlwaysGenerated.map(col => {
-                  const index = table.columns.indexOf(col)
-                  const column = sql.id(col.name)
-                  const givenValue = castColumnFromText(
-                    arrayAccess(sql.unsafe('$1'), index),
-                    col,
-                  )
+                SET ${sql.join(
+                  sql.unsafe(', '),
+                  columnsWithDefaultNotAlwaysGenerated.map(col => {
+                    const index = table.columns.indexOf(col)
+                    const column = sql.id(col.name)
+                    const givenValue = castColumnFromText(
+                      arrayAccess(sql.unsafe('$1'), index),
+                      col,
+                    )
 
-                  return sql`${column} = COALESCE(${givenValue}, ${column})`
-                }),
-              )}
-              WHERE ctid = _ctid
-              RETURNING *
-              INTO _result;
+                    return sql`${column} = COALESCE(${givenValue}, ${column})`
+                  }),
+                )}
+                WHERE ctid = _ctid
+                RETURNING *
+                INTO _result;
             `
           : ''
       }
@@ -349,20 +350,20 @@ function renderTableQueries(table: Readonly<PgTableStmt>) {
       _result ${tableId};
     BEGIN
       SELECT ctid FROM ${tableId}
-      WHERE ${sql.join(
-        sql.unsafe(' AND '),
-        table.primaryKeyColumns.map(pk => {
-          const index = table.columns.findIndex(col => col.name === pk)
+        WHERE ${sql.join(
+          sql.unsafe(' AND '),
+          table.primaryKeyColumns.map(pk => {
+            const index = table.columns.findIndex(col => col.name === pk)
 
-          return sql`${sql.id(pk)} = ${castColumnFromText(
-            arrayAccess(sql.unsafe('$1'), index),
-            table.columns[index],
-          )}`
-        }),
-      )}
-      LIMIT 1
-      INTO _ctid
-      FOR UPDATE;
+            return sql`${sql.id(pk)} = ${castColumnFromText(
+              arrayAccess(sql.unsafe('$1'), index),
+              table.columns[index],
+            )}`
+          }),
+        )}
+        LIMIT 1
+        INTO _ctid
+        FOR UPDATE;
 
       IF FOUND THEN
         DELETE FROM ${tableId} WHERE ctid = _ctid;
@@ -380,7 +381,8 @@ function renderTableQueries(table: Readonly<PgTableStmt>) {
     AS $$
     BEGIN
       DELETE FROM ${tableId}
-      WHERE ${pkParamsMatch};
+        WHERE ${pkParamsMatch};
+
       RETURN FOUND;
     END;
     $$;
