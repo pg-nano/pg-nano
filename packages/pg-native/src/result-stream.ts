@@ -136,7 +136,7 @@ function receiveResult(pq: Libpq, query: IQuery, field: FieldDescription) {
       return rows
     }
     return new CommandResult(
-      pq.cmdStatus(),
+      pq.cmdStatus().match(/^\w+/)![0],
       Number.parseInt(pq.cmdTuples(), 10),
       fields as Field[],
       rows as Record<string, unknown>[],
@@ -150,7 +150,7 @@ function receiveResult(pq: Libpq, query: IQuery, field: FieldDescription) {
     if (query.type === QueryType.row) {
       return []
     }
-    return new CommandResult(pq.cmdStatus(), 0, [], [])
+    return new CommandResult(pq.cmdStatus().match(/^\w+/)![0], 0, [], [])
   }
 
   error = new PgNativeError(`Unsupported result status: ${status}`)
