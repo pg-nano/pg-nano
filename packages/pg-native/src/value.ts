@@ -1,6 +1,7 @@
 import { isTypedArray } from 'node:util/types'
 import Interval from 'postgres-interval'
 import { Range, serialize as stringifyRange } from 'postgres-range'
+import { isFunction } from 'radashi'
 import { Tuple } from './tuple.js'
 
 const noEscape = <T>(x: T) => x
@@ -60,10 +61,20 @@ export function escapeValue(value: unknown, escape: Escape = noEscape): string {
       if (Buffer.isBuffer(obj)) {
         return escape('\\x' + obj.toString('hex'), 'hex')
       }
-      return escape(JSON.stringify(obj), 'json')
+      if (canJsonStringify(obj)) {
+        return escape(JSON.stringify(obj), 'json')
+      }
     }
   }
   throw new Error(`Unsupported type: ${type}`)
+}
+
+function canJsonStringify(obj: any): obj is { toJSON: () => string } {
+  return (
+    obj.constructor === Object ||
+    (Object.prototype.hasOwnProperty.call(obj, 'toJSON') &&
+      isFunction(obj.toJSON))
+  )
 }
 
 function escapeArray(array: any[]) {
