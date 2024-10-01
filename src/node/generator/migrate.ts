@@ -70,11 +70,18 @@ function pgSchemaDiff(env: Env, command: 'apply' | 'plan') {
     )
   }
 
-  const binaryPath = path.join(
-    new URL(import.meta.resolve('@pg-nano/pg-schema-diff/package.json'))
-      .pathname,
-    '../pg-schema-diff',
-  )
+  const pkgSpecifier = '@pg-nano/pg-schema-diff/package.json'
+
+  // Once Vite supports import.meta.resolve, we can remove the require.resolve
+  // fallback. See: https://github.com/vitejs/vite/discussions/15871
+  let pkgPath: string
+  if (typeof import.meta.resolve === 'function') {
+    pkgPath = new URL(import.meta.resolve(pkgSpecifier)).pathname
+  } else {
+    pkgPath = require.resolve(pkgSpecifier)
+  }
+
+  const binaryPath = path.resolve(pkgPath, '../pg-schema-diff')
 
   return spawn(binaryPath, [
     command,
