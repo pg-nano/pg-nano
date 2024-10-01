@@ -63,11 +63,14 @@ export interface Plugin {
    *   (e.g. nodejs, bun, deno). The resolved module is expected to have an
    *   export of the same `name` with its value set to a `defineFieldMapper`
    *   result.
+   *
+   * - `args` – An optional string of comma-separated JS expressions that will
+   *   be passed into the field mapper.
    */
   mapField?: (
     ctx: PluginContext['mapField'],
     config: Readonly<ResolvedConfig>,
-  ) => { name: string; path: string } | null | void
+  ) => { name: string; path: string; args?: string } | null | void
 }
 
 export interface GenerateContext {
