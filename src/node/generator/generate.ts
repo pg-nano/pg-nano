@@ -54,6 +54,11 @@ export async function generate(
     env,
   )
 
+  const tableStmts = mapify(
+    allObjects.filter(obj => obj.kind === 'table'),
+    obj => obj.id.toQualifiedName(),
+  )
+
   const routineStmts = mapify(
     allObjects.filter(obj => obj.kind === 'routine'),
     obj => obj.id.toQualifiedName(),
@@ -207,8 +212,11 @@ export async function generate(
       }\n\n
     `
 
-  const renderTableType = (table: PgTable) =>
-    dedent`
+  const renderTableType = (table: PgTable) => {
+    const tableId = new SQLIdentifier(table.name, table.schema)
+    const tableStmt = tableStmts.get(tableId.toQualifiedName())!
+
+    return dedent`
       export type ${pascal(table.name)} = {
         ${table.fields
           .map(field => {
@@ -250,8 +258,19 @@ export async function generate(
             })
             .join('\n')}
         }
+        type UpsertParams = InsertParams & {
+          ${tableStmt.primaryKeyColumns
+            .map(fieldName => {
+              const jsName = formatFieldName(fieldName)
+              const field = table.fields.find(f => f.name === fieldName)!
+
+              return `${jsName}: ${renderTypeReference(field.typeOid, table, PgParamKind.In, null, field.name, field)}`
+            })
+            .join('\n')}
+        }
       }\n\n
     `
+  }
 
   type FieldMapperPlugin = Plugin & { mapField: Function }
 
