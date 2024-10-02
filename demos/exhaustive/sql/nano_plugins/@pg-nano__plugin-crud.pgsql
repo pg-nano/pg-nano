@@ -10,13 +10,13 @@ BEGIN
   SELECT ctid FROM "public"."course"
     WHERE "id" = p_id
     LIMIT 1
-    INTO _ctid;
+    INTO _ctid
+    FOR UPDATE;
 
   SELECT * FROM "public"."course"
     WHERE ctid = _ctid
     LIMIT 1
-    INTO _result
-    FOR UPDATE;
+    INTO _result;
 
   FOR i IN 1..array_upper(updated_data, 1) BY 2 LOOP
     CASE updated_data[i]
@@ -121,13 +121,13 @@ BEGIN
   SELECT ctid FROM "public"."course_enrollment"
     WHERE "student_id" = p_student_id AND "course_id" = p_course_id
     LIMIT 1
-    INTO _ctid;
+    INTO _ctid
+    FOR UPDATE;
 
   SELECT * FROM "public"."course_enrollment"
     WHERE ctid = _ctid
     LIMIT 1
-    INTO _result
-    FOR UPDATE;
+    INTO _result;
 
   FOR i IN 1..array_upper(updated_data, 1) BY 2 LOOP
     CASE updated_data[i]
@@ -233,13 +233,13 @@ BEGIN
   SELECT ctid FROM "public"."student"
     WHERE "id" = p_id
     LIMIT 1
-    INTO _ctid;
+    INTO _ctid
+    FOR UPDATE;
 
   SELECT * FROM "public"."student"
     WHERE ctid = _ctid
     LIMIT 1
-    INTO _result
-    FOR UPDATE;
+    INTO _result;
 
   FOR i IN 1..array_upper(updated_data, 1) BY 2 LOOP
     CASE updated_data[i]
@@ -345,13 +345,13 @@ BEGIN
   SELECT ctid FROM "public"."foo"
     WHERE "id" = p_id
     LIMIT 1
-    INTO _ctid;
+    INTO _ctid
+    FOR UPDATE;
 
   SELECT * FROM "public"."foo"
     WHERE ctid = _ctid
     LIMIT 1
-    INTO _result
-    FOR UPDATE;
+    INTO _result;
 
   FOR i IN 1..array_upper(updated_data, 1) BY 2 LOOP
     CASE updated_data[i]
@@ -482,13 +482,13 @@ BEGIN
   SELECT ctid FROM "public"."account"
     WHERE "id" = p_id
     LIMIT 1
-    INTO _ctid;
+    INTO _ctid
+    FOR UPDATE;
 
   SELECT * FROM "public"."account"
     WHERE ctid = _ctid
     LIMIT 1
-    INTO _result
-    FOR UPDATE;
+    INTO _result;
 
   FOR i IN 1..array_upper(updated_data, 1) BY 2 LOOP
     CASE updated_data[i]
@@ -608,13 +608,13 @@ BEGIN
   SELECT ctid FROM "public"."post"
     WHERE "id" = p_id
     LIMIT 1
-    INTO _ctid;
+    INTO _ctid
+    FOR UPDATE;
 
   SELECT * FROM "public"."post"
     WHERE ctid = _ctid
     LIMIT 1
-    INTO _result
-    FOR UPDATE;
+    INTO _result;
 
   FOR i IN 1..array_upper(updated_data, 1) BY 2 LOOP
     CASE updated_data[i]
