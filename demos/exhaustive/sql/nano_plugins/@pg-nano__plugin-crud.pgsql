@@ -20,7 +20,7 @@ BEGIN
 
   FOR i IN 1..array_upper(updated_data, 1) BY 2 LOOP
     CASE updated_data[i]
-    WHEN 'course_name' THEN _result."course_name" := updated_data[i + 1]::varchar;
+    WHEN 'course_name' THEN _result."course_name" := updated_data[i + 1]::varchar(100);
 
     ELSE
       RAISE EXCEPTION 'Unknown column: %', updated_data[i];
@@ -63,7 +63,7 @@ DECLARE
   _result "public"."course";
 BEGIN
   INSERT INTO "public"."course"
-    VALUES ($1[1]::int4, $1[2]::varchar)
+    VALUES ($1[1]::int4, $1[2]::varchar(100))
     RETURNING * INTO _result;
 
   
@@ -132,7 +132,7 @@ BEGIN
   FOR i IN 1..array_upper(updated_data, 1) BY 2 LOOP
     CASE updated_data[i]
     WHEN 'enrollment_date' THEN _result."enrollment_date" := updated_data[i + 1]::date;
-      WHEN 'grade' THEN _result."grade" := updated_data[i + 1]::bpchar;
+      WHEN 'grade' THEN _result."grade" := updated_data[i + 1]::bpchar(1);
 
     ELSE
       RAISE EXCEPTION 'Unknown column: %', updated_data[i];
@@ -175,7 +175,7 @@ DECLARE
   _result "public"."course_enrollment";
 BEGIN
   INSERT INTO "public"."course_enrollment"
-    VALUES ($1[1]::int4, $1[2]::int4, $1[3]::date, $1[4]::bpchar)
+    VALUES ($1[1]::int4, $1[2]::int4, $1[3]::date, $1[4]::bpchar(1))
     RETURNING * INTO _result;
 
   
@@ -243,8 +243,8 @@ BEGIN
 
   FOR i IN 1..array_upper(updated_data, 1) BY 2 LOOP
     CASE updated_data[i]
-    WHEN 'first_name' THEN _result."first_name" := updated_data[i + 1]::varchar;
-      WHEN 'last_name' THEN _result."last_name" := updated_data[i + 1]::varchar;
+    WHEN 'first_name' THEN _result."first_name" := updated_data[i + 1]::varchar(50);
+      WHEN 'last_name' THEN _result."last_name" := updated_data[i + 1]::varchar(50);
 
     ELSE
       RAISE EXCEPTION 'Unknown column: %', updated_data[i];
@@ -287,7 +287,7 @@ DECLARE
   _result "public"."student";
 BEGIN
   INSERT INTO "public"."student"
-    VALUES ($1[1]::int4, $1[2]::varchar, $1[3]::varchar)
+    VALUES ($1[1]::int4, $1[2]::varchar(50), $1[3]::varchar(50))
     RETURNING * INTO _result;
 
   
@@ -355,16 +355,16 @@ BEGIN
 
   FOR i IN 1..array_upper(updated_data, 1) BY 2 LOOP
     CASE updated_data[i]
-    WHEN 'name' THEN _result."name" := updated_data[i + 1]::varchar;
+    WHEN 'name' THEN _result."name" := updated_data[i + 1]::varchar(100);
       WHEN 'description' THEN _result."description" := updated_data[i + 1];
       WHEN 'created_at' THEN _result."created_at" := updated_data[i + 1]::timestamptz;
       WHEN 'updated_at' THEN _result."updated_at" := updated_data[i + 1]::timestamptz;
       WHEN 'is_active' THEN _result."is_active" := updated_data[i + 1]::bool;
-      WHEN 'score' THEN _result."score" := updated_data[i + 1]::numeric;
+      WHEN 'score' THEN _result."score" := updated_data[i + 1]::numeric(5, 2);
       WHEN 'tags' THEN _result."tags" := updated_data[i + 1]::text[];
       WHEN 'matrix' THEN _result."matrix" := updated_data[i + 1]::float8[][];
       WHEN 'metadata' THEN _result."metadata" := updated_data[i + 1]::jsonb;
-      WHEN 'color_preference' THEN _result."color_preference" := updated_data[i + 1]::varchar;
+      WHEN 'color_preference' THEN _result."color_preference" := updated_data[i + 1]::varchar(20);
       WHEN 'binary_data' THEN _result."binary_data" := updated_data[i + 1]::bytea;
       WHEN 'coordinates' THEN _result."coordinates" := updated_data[i + 1]::point;
       WHEN 'ip_address' THEN _result."ip_address" := updated_data[i + 1]::inet;
@@ -419,7 +419,7 @@ DECLARE
   _result "public"."foo";
 BEGIN
   INSERT INTO "public"."foo"
-    VALUES ($1[1]::int4, $1[2]::varchar, $1[3], DEFAULT, DEFAULT, DEFAULT, $1[7]::numeric, $1[8]::text[], $1[9]::float8[][], $1[10]::jsonb, $1[11]::varchar, $1[12]::bytea, $1[13]::point, $1[14]::inet, $1[15]::macaddr, $1[16]::int4range, $1[17]::tstzrange, $1[18]::int2, DEFAULT, $1[20]::tsvector, DEFAULT, $1[22]::"public"."address_type", $1[23]::"public"."hstore")
+    VALUES ($1[1]::int4, $1[2]::varchar(100), $1[3], DEFAULT, DEFAULT, DEFAULT, $1[7]::numeric(5, 2), $1[8]::text[], $1[9]::float8[][], $1[10]::jsonb, $1[11]::varchar(20), $1[12]::bytea, $1[13]::point, $1[14]::inet, $1[15]::macaddr, $1[16]::int4range, $1[17]::tstzrange, $1[18]::int2, DEFAULT, $1[20]::tsvector, DEFAULT, $1[22]::"public"."address_type", $1[23]::"public"."hstore")
     RETURNING ctid INTO _ctid;
 
   UPDATE "public"."foo"
@@ -492,12 +492,12 @@ BEGIN
 
   FOR i IN 1..array_upper(updated_data, 1) BY 2 LOOP
     CASE updated_data[i]
-    WHEN 'username' THEN _result."username" := updated_data[i + 1]::varchar;
-      WHEN 'email' THEN _result."email" := updated_data[i + 1]::varchar;
-      WHEN 'password_hash' THEN _result."password_hash" := updated_data[i + 1]::varchar;
+    WHEN 'username' THEN _result."username" := updated_data[i + 1]::varchar(50);
+      WHEN 'email' THEN _result."email" := updated_data[i + 1]::varchar(100);
+      WHEN 'password_hash' THEN _result."password_hash" := updated_data[i + 1]::varchar(255);
       WHEN 'posts_count' THEN _result."posts_count" := updated_data[i + 1]::int4;
-      WHEN 'first_name' THEN _result."first_name" := updated_data[i + 1]::varchar;
-      WHEN 'last_name' THEN _result."last_name" := updated_data[i + 1]::varchar;
+      WHEN 'first_name' THEN _result."first_name" := updated_data[i + 1]::varchar(50);
+      WHEN 'last_name' THEN _result."last_name" := updated_data[i + 1]::varchar(50);
       WHEN 'date_of_birth' THEN _result."date_of_birth" := updated_data[i + 1]::date;
       WHEN 'created_at' THEN _result."created_at" := updated_data[i + 1]::timestamptz;
       WHEN 'updated_at' THEN _result."updated_at" := updated_data[i + 1]::timestamptz;
@@ -545,7 +545,7 @@ DECLARE
   _result "public"."account";
 BEGIN
   INSERT INTO "public"."account"
-    VALUES (DEFAULT, $1[2]::varchar, $1[3]::varchar, $1[4]::varchar, DEFAULT, $1[6]::varchar, $1[7]::varchar, $1[8]::date, DEFAULT, DEFAULT, $1[11]::timestamptz, DEFAULT)
+    VALUES (DEFAULT, $1[2]::varchar(50), $1[3]::varchar(100), $1[4]::varchar(255), DEFAULT, $1[6]::varchar(50), $1[7]::varchar(50), $1[8]::date, DEFAULT, DEFAULT, $1[11]::timestamptz, DEFAULT)
     RETURNING ctid INTO _ctid;
 
   UPDATE "public"."account"
@@ -618,7 +618,7 @@ BEGIN
 
   FOR i IN 1..array_upper(updated_data, 1) BY 2 LOOP
     CASE updated_data[i]
-    WHEN 'title' THEN _result."title" := updated_data[i + 1]::varchar;
+    WHEN 'title' THEN _result."title" := updated_data[i + 1]::varchar(255);
       WHEN 'content' THEN _result."content" := updated_data[i + 1];
       WHEN 'author_id' THEN _result."author_id" := updated_data[i + 1]::int4;
       WHEN 'created_at' THEN _result."created_at" := updated_data[i + 1]::timestamptz;
@@ -665,7 +665,7 @@ DECLARE
   _result "public"."post";
 BEGIN
   INSERT INTO "public"."post"
-    VALUES (DEFAULT, $1[2]::varchar, $1[3], $1[4]::int4, DEFAULT, DEFAULT)
+    VALUES (DEFAULT, $1[2]::varchar(255), $1[3], $1[4]::int4, DEFAULT, DEFAULT)
     RETURNING ctid INTO _ctid;
 
   UPDATE "public"."post"

@@ -1,4 +1,4 @@
-import type { QualifiedName, TypeName } from '@pg-nano/pg-parser'
+import { select, type QualifiedName, type TypeName } from '@pg-nano/pg-parser'
 import { sql } from 'pg-native'
 import { unique } from 'radashi'
 
@@ -20,6 +20,13 @@ export class SQLIdentifier {
    * is the upper bound of the array in that dimension.
    */
   public arrayBounds?: (number | null)[]
+
+  /**
+   * Exists if referencing a type with type modifiers.
+   *
+   * @example varchar(10) => [10]
+   */
+  public typeModifiers?: number[]
 
   /**
    * Returns a literal string containing the identifier name (not including the
@@ -48,11 +55,18 @@ export class SQLIdentifier {
         ? sql.unsafe(this.name)
         : sql.id(schema, this.name)
 
-    const arrayBounds =
-      this.arrayBounds &&
-      sql.unsafe(this.arrayBounds.map(bound => `[${bound ?? ''}]`).join(''))
+    const typeModifiers = this.typeModifiers
+      ? sql.unsafe(`(${this.typeModifiers.join(', ')})`)
+      : ''
 
-    return arrayBounds ? [id, arrayBounds] : id
+    const arrayBounds = this.arrayBounds
+      ? sql.unsafe(this.arrayBounds.map(bound => `[${bound ?? ''}]`).join(''))
+      : ''
+
+    if (typeModifiers || arrayBounds) {
+      return [id, typeModifiers, arrayBounds]
+    }
+    return id
   }
 
   /**
@@ -121,6 +135,15 @@ export class SQLIdentifier {
       typeName.names,
       typeName.pct_type,
     )
+    if (typeName.typmods) {
+      id.typeModifiers = typeName.typmods.map(typmod => {
+        const ival = select(typmod, 'ival.ival')
+        if (ival === undefined) {
+          throw new Error('expected ival')
+        }
+        return ival
+      })
+    }
     if (typeName.arrayBounds) {
       id.arrayBounds = typeName.arrayBounds.map(
         bound => bound.Integer.ival ?? null,
