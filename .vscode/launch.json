@@ -13,6 +13,20 @@
       "sourceMaps": true,
       "console": "integratedTerminal",
       "internalConsoleOptions": "neverOpen"
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Debug Exhaustive Demo",
+      "cwd": "${workspaceFolder}/demos/exhaustive",
+      "program": "${workspaceFolder}/demos/exhaustive/node_modules/pg-nano/dist/cli/main.js",
+      "args": ["dev"],
+      "skipFiles": ["<node_internals>/**"],
+      "outFiles": ["${workspaceFolder}/dist/**/*.js"],
+      "resolveSourceMapLocations": [],
+      "sourceMaps": true,
+      "console": "integratedTerminal",
+      "internalConsoleOptions": "neverOpen"
     }
   ]
 }
