@@ -1,5 +1,5 @@
 import { select, type QualifiedName, type TypeName } from '@pg-nano/pg-parser'
-import { sql } from 'pg-native'
+import { sql, type SQLTemplateValue } from 'pg-native'
 import { unique } from 'radashi'
 
 export class SQLIdentifier {
@@ -48,7 +48,7 @@ export class SQLIdentifier {
    * Returns a SQL token for the identifier (for use in a `sql` template). This
    * will be safely escaped by libpq.
    */
-  toSQL(defaultSchema?: string) {
+  toSQL(defaultSchema?: string): SQLTemplateValue {
     const schema = this.schema ?? defaultSchema ?? 'public'
     const id =
       schema === 'pg_catalog'
