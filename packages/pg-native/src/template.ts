@@ -1,3 +1,5 @@
+import { isObject } from 'radashi'
+
 export const sql = /* @__PURE__ */ (() => {
   function sql(strings: TemplateStringsArray, ...values: SQLTemplateValue[]) {
     return new SQLTemplate(strings, values)
@@ -33,6 +35,8 @@ export type SQLTemplateValue =
   | readonly SQLTemplateValue[]
   | ''
 
+const kSQLTemplateKind = Symbol.for('pg-nano:SQLTemplate')
+
 export class SQLTemplate {
   ddl?: string = undefined
   readonly indent: string
@@ -41,6 +45,14 @@ export class SQLTemplate {
     readonly values: SQLTemplateValue[],
   ) {
     this.indent = (values.length && detectIndent(strings[0])) || ''
+  }
+  protected readonly [kSQLTemplateKind] = true
+  /**
+   * Prefer this method over `instanceof` for checking if a value is an
+   * `SQLTemplate`.
+   */
+  static isTemplate(value: unknown): value is SQLTemplate {
+    return isObject(value) && kSQLTemplateKind in value
   }
 }
 

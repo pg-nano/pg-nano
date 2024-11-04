@@ -60,7 +60,7 @@ export function stringifyTemplateValue(
       .map(value => stringifyTemplateValue(value, pq, options, parentIndent))
       .join('')
   }
-  if (arg instanceof SQLTemplate) {
+  if (SQLTemplate.isTemplate(arg)) {
     return stringifyTemplate(arg, pq, options, parentIndent)
   }
   switch (arg.type) {

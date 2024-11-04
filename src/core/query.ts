@@ -105,7 +105,7 @@ export class Query<
           : undefined),
     })
       .catch(error => {
-        if (this.input instanceof SQLTemplate) {
+        if (SQLTemplate.isTemplate(this.input)) {
           error.ddl = this.input.ddl
         }
         Error.captureStackTrace(error, this.send)
