@@ -15,8 +15,8 @@ import {
   QueryType,
 } from './query.js'
 import { streamResults } from './result-stream.js'
-import { stringifyTemplate } from './stringify'
 import type { SQLTemplate } from './template'
+import { renderTemplate } from './template/render'
 
 interface ConnectionEvents {
   result: (result: unknown) => void
@@ -232,13 +232,18 @@ async function sendQuery(conn: IConnection, query: IQuery): Promise<any> {
   if (isFunction(input)) {
     sent = input(conn.pq)
   } else {
-    const ddl = (input.ddl = stringifyTemplate(input, conn.pq))
+    input.params = []
+    input.command = renderTemplate(input, conn.pq)
+
     if (process.env.NODE_ENV !== 'production' && debugQuery.enabled) {
       debugQuery(
         `query:${query.id} writing\n${input.command.replace(/^|\n/g, '$&  ')}`,
       )
     }
-    sent = conn.pq.sendQuery(ddl)
+
+    sent = input.params.length
+      ? conn.pq.sendQueryParams(input.command, input.params)
+      : conn.pq.sendQuery(input.command)
   }
 
   if (!sent) {

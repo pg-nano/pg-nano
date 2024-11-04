@@ -1,4 +1,4 @@
-import { escapeValue, Tuple } from 'pg-native'
+import { stringifyValue, Tuple } from 'pg-native'
 import { isString } from 'radashi'
 import type { Client } from '../client.js'
 
@@ -109,5 +109,5 @@ export const defineArrayMapper = (type: FieldMapper) =>
  * their Postgres functions. This helps with implementing polymorphic behavior.
  */
 export function toPostgresText(value: unknown): string | null | undefined {
-  return value == null || isString(value) ? value : escapeValue(value)
+  return value == null || isString(value) ? value : stringifyValue(value)
 }

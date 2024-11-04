@@ -173,7 +173,7 @@ class RoutineBuilder {
 
 function sqlRoutineCall(id: SQLToken, values: any[], endClause?: SQLTemplate) {
   return sql`
-    SELECT * FROM ${id}(${sql.join(',', values.map(sql.val))}) res
+    SELECT * FROM ${id}(${sql.join(',', values.map(sql.param))}) res
     ${endClause ?? ''}
   `
 }

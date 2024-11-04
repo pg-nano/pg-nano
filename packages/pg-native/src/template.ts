@@ -1,44 +1,12 @@
 import { isObject } from 'radashi'
-
-export const sql = /* @__PURE__ */ (() => {
-  function sql(strings: TemplateStringsArray, ...values: SQLTemplateValue[]) {
-    return new SQLTemplate(strings, values)
-  }
-
-  /** A database identifier, escaped with double quotes. */
-  sql.id = (...ids: string[]): SQLToken =>
-    ids.length === 1
-      ? { type: 'id', id: ids[0] }
-      : sql.join(
-          '.',
-          ids.map(id => ({ type: 'id', id })),
-        )
-
-  /** A literal value, escaped with single quotes. */
-  sql.val = (value: unknown): SQLToken => ({ type: 'val', value })
-
-  /** Joins an array of SQLTemplateValues with a separator. */
-  sql.join = (
-    separator: SQLTokenJoinSeparator | SQLTemplateValue,
-    list: SQLTemplateValue[],
-  ): SQLToken => ({ type: 'join', list, separator })
-
-  /** Raw SQL syntax, dynamically inserted into the template. */
-  sql.unsafe = (str: string) => new SQLTemplate([str], [])
-
-  return sql
-})()
-
-export type SQLTemplateValue =
-  | SQLTemplate
-  | SQLToken
-  | readonly SQLTemplateValue[]
-  | ''
+import type { SQLToken } from './template/token.js'
+import { detectIndent } from './template/whitespace.js'
 
 const kSQLTemplateKind = Symbol.for('pg-nano:SQLTemplate')
 
 export class SQLTemplate {
-  ddl?: string = undefined
+  command?: string = undefined
+  params?: (string | null)[] = undefined
   readonly indent: string
   constructor(
     readonly strings: readonly string[],
@@ -56,28 +24,51 @@ export class SQLTemplate {
   }
 }
 
-type SQLTokenType = string & keyof SQLTokenValue
-type SQLTokenJoinSeparator = ';' | ',' | '.' | ' ' | '\n' | ''
-type SQLTokenValue = {
-  id: {
-    id: string
-  }
-  val: {
-    value: unknown
-  }
-  join: {
-    list: SQLTemplateValue[]
-    separator: SQLTokenJoinSeparator | SQLTemplateValue
-  }
-}
+export type SQLTemplateValue =
+  | SQLTemplate
+  | SQLToken
+  | readonly SQLTemplateValue[]
+  | ''
 
-export type SQLToken = SQLTokenType extends infer Type
-  ? Type extends SQLTokenType
-    ? { type: Type } & SQLTokenValue[Type]
-    : never
-  : never
+/**
+ * Create a `SQLTemplate` object. The client is responsible for serializing the
+ * template to a SQL string and binding the parameters.
+ */
+export const sql = /* @__PURE__ */ (() => {
+  function sql(strings: TemplateStringsArray, ...values: SQLTemplateValue[]) {
+    return new SQLTemplate(strings, values)
+  }
 
-// Find the indentation of the first non-empty line.
-function detectIndent(text: string) {
-  return text.match(/\n([ \t]+)(?:\S|$)/)?.[1]
-}
+  /** A database identifier, escaped with double quotes. */
+  sql.id = (...ids: string[]): SQLToken =>
+    ids.length === 1
+      ? { type: 'id', id: ids[0] }
+      : sql.join(
+          '.',
+          ids.map(id => ({ type: 'id', id })),
+        )
+
+  /** A literal value, escaped with single quotes. */
+  sql.val = (value: unknown): SQLToken => ({ type: 'val', value, inline: true })
+
+  /**
+   * A value to be parameterized. If a `SQLTemplate` contains a `sql.param`
+   * token, it must not contain multiple statements.
+   */
+  sql.param = (value: unknown): SQLToken => ({
+    type: 'val',
+    value,
+    inline: false,
+  })
+
+  /** Joins an array of SQLTemplateValues with a separator. */
+  sql.join = (
+    separator: SQLToken.JoinSeparator | SQLTemplateValue,
+    list: SQLTemplateValue[],
+  ): SQLToken => ({ type: 'join', list, separator })
+
+  /** Raw SQL syntax, dynamically inserted into the template. */
+  sql.unsafe = (str: string) => new SQLTemplate([str], [])
+
+  return sql
+})()

@@ -2,11 +2,11 @@ export * from './connect-options.js'
 export * from './connection.js'
 export * from './error.js'
 export * from './pg-types.js'
-export * from './stringify.js'
 export * from './template.js'
+export * from './template/render.js'
 export * from './tuple.js'
 
-export { escapeValue } from './value.js'
+export { stringifyValue } from './value.js'
 
 export {
   QueryType,

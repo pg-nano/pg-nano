@@ -1,32 +1,39 @@
 import type Libpq from '@pg-nano/libpq'
 import { isArray, isString } from 'radashi'
-import { PgNativeError } from './error.js'
-import { SQLTemplate, type SQLTemplateValue } from './template'
-import { escapeValue } from './value.js'
+import { PgNativeError } from '../error.js'
+import { SQLTemplate, type SQLTemplateValue } from '../template.js'
+import { stringifyValue } from '../value.js'
+import {
+  INDENT_RE,
+  removeLeadingEmptyLines,
+  replaceIndent,
+  stripIndent,
+} from './whitespace.js'
 
-export function stringifyTemplate(
+export function renderTemplate(
   template: SQLTemplate,
   pq: Libpq,
-  options?: { reindent?: boolean },
+  options?: { reindent?: boolean; cache?: boolean },
   parentIndent?: string,
 ): string {
-  let ddl = ''
+  let command = ''
 
   for (let i = 0; i < template.strings.length; i++) {
-    ddl += template.strings[i]
+    command += template.strings[i]
 
     if (i < template.values.length) {
-      const hasIndent =
-        options?.reindent && /(^|\n) +$/.test(template.strings[i])
+      const needsReindent =
+        options?.reindent && INDENT_RE.test(template.strings[i])
 
-      const valueString = stringifyTemplateValue(
+      const valueString = renderTemplateValue(
         template.values[i],
         pq,
         options,
-        hasIndent ? template.indent : undefined,
+        needsReindent ? template.indent : undefined,
+        template,
       )
 
-      ddl += hasIndent ? valueString.replace(/^[ \t]+/, '') : valueString
+      command += needsReindent ? stripIndent(valueString) : valueString
     }
   }
 
@@ -35,33 +42,33 @@ export function stringifyTemplate(
     template.values.length &&
     template.indent !== (parentIndent ?? '')
   ) {
-    ddl = ddl.replace(
-      new RegExp('^' + template.indent, 'gm'),
-      parentIndent ?? '',
-    )
-    // Remove leading empty lines from multi-line template strings.
-    ddl = ddl.replace(/^\s*\n(?= *\S)/, '')
+    command = replaceIndent(command, template.indent, parentIndent ?? '')
+    command = removeLeadingEmptyLines(command)
   }
 
-  return ddl
+  return command
 }
 
-export function stringifyTemplateValue(
+export function renderTemplateValue(
   arg: SQLTemplateValue,
   pq: Libpq,
   options?: { reindent?: boolean },
   parentIndent?: string,
+  parentTemplate?: SQLTemplate,
 ): string {
   if (!arg) {
     return ''
   }
   if (isArray(arg)) {
     return arg
-      .map(value => stringifyTemplateValue(value, pq, options, parentIndent))
+      .map(value => renderTemplateValue(value, pq, options, parentIndent))
       .join('')
   }
   if (SQLTemplate.isTemplate(arg)) {
-    return stringifyTemplate(arg, pq, options, parentIndent)
+    if (parentTemplate) {
+      arg.params = parentTemplate.params
+    }
+    return renderTemplate(arg, pq, options, parentIndent)
   }
   switch (arg.type) {
     case 'id': {
@@ -72,7 +79,10 @@ export function stringifyTemplateValue(
       return escapedId
     }
     case 'val':
-      return escapeValue(arg.value, str => {
+      if (parentTemplate?.params && !arg.inline) {
+        return '$' + parentTemplate.params.push(stringifyValue(arg.value))
+      }
+      return stringifyValue(arg.value, str => {
         const escapedStr = pq.escapeLiteral(str)
         if (escapedStr === null) {
           throw new PgNativeError(pq.getLastErrorMessage())
@@ -85,10 +95,10 @@ export function stringifyTemplateValue(
         ? arg.separator.length <= 1
           ? arg.separator
           : ''
-        : stringifyTemplateValue(arg.separator, pq)
+        : renderTemplateValue(arg.separator, pq)
 
       for (const value of arg.list) {
-        const valueString = stringifyTemplateValue(
+        const valueString = renderTemplateValue(
           value,
           pq,
           options,

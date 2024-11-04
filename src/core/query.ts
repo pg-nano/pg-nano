@@ -74,7 +74,7 @@ export class Query<
   catch<TCatchResult = TPromiseResult>(
     onrejected?:
       | ((
-          reason: (Error | PgNativeError | PgResultError) & { ddl: string },
+          reason: (Error | PgNativeError | PgResultError) & { command: string },
         ) => TCatchResult | PromiseLike<TCatchResult>)
       | undefined
       | null,
@@ -122,7 +122,7 @@ export class Query<
           error = this.trace
         }
         if (SQLTemplate.isTemplate(this.input)) {
-          error.ddl = this.input.ddl
+          error.command = this.input.command
         }
         throw error
       })

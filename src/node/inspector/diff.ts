@@ -132,7 +132,7 @@ export async function hasRoutineSignatureChanged(
         appendCodeFrame(
           error,
           +error.statementPosition,
-          error.ddl,
+          error.command,
           fn.line - 2,
           fn.file,
         )

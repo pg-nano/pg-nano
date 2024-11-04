@@ -6,8 +6,8 @@ import {
   createTextParser,
   parseConnectionString,
   QueryType,
+  renderTemplateValue,
   stringifyConnectOptions,
-  stringifyTemplateValue,
   type CommandResult,
   type ConnectOptions,
   type QueryHook,
@@ -472,7 +472,7 @@ export class Client {
       throw new ConnectionError('Postgres is not connected')
     }
     // biome-ignore lint/complexity/useLiteralKeys: Protected access
-    return stringifyTemplateValue(input, connection['pq'], options)
+    return renderTemplateValue(input, connection['pq'], options)
   }
 }
 

@@ -6,12 +6,6 @@ import { Tuple } from './tuple.js'
 
 const noEscape = <T>(x: T) => x
 
-const call = <This, Args extends any[], Return>(
-  fn: (this: This, ...args: Args) => Return,
-  ctx: This,
-  ...args: Args
-): Return => fn.call(ctx, ...args)
-
 type Escape = (value: string, type: EscapedType) => string
 type EscapedType =
   | 'array'
@@ -24,14 +18,17 @@ type EscapedType =
   | 'string'
   | 'tuple'
 
-export function escapeValue(value: unknown, escape: Escape = noEscape): string {
+export function stringifyValue(
+  value: unknown,
+  escape: Escape = noEscape,
+): string {
   if (value == null) {
     return 'null'
   }
   const type = typeof value
   switch (type) {
     case 'string':
-      return escape(value.toString(), type)
+      return escape(value as string, type)
     case 'number':
     case 'boolean':
     case 'bigint':
@@ -40,10 +37,10 @@ export function escapeValue(value: unknown, escape: Escape = noEscape): string {
       let obj = value as object
       switch (obj.constructor) {
         case Array:
-          return escape(escapeArray(obj as any[]), 'array')
+          return escape(stringifyArray(obj as any[]), 'array')
         case Tuple:
           return escape(
-            `(${(obj as Tuple).map(value => escapeValue(value, escape)).join(',')})`,
+            `(${(obj as Tuple).map(value => stringifyValue(value, escape)).join(',')})`,
             'tuple',
           )
         case Interval:
@@ -77,13 +74,13 @@ function canJsonStringify(obj: any): obj is { toJSON: () => string } {
   )
 }
 
-function escapeArray(array: any[]) {
+function stringifyArray(array: any[]) {
   let sql = '{'
   for (const value of array) {
     if (sql.length > 1) {
       sql += ','
     }
-    sql += escapeValue(value, escapeArrayElement)
+    sql += stringifyValue(value, stringifyArrayElement)
   }
   return sql + '}'
 }
@@ -92,7 +89,7 @@ const BACKSLASH_RE = /\\/g
 const DOUBLE_QUOTE_RE = /"/g
 const SINGLE_QUOTE_RE = /'/g
 
-function escapeArrayElement(str: string, type: EscapedType) {
+function stringifyArrayElement(str: string, type: EscapedType) {
   switch (type) {
     case 'array':
     case 'hex':
