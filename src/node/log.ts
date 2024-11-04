@@ -5,6 +5,7 @@ import {
   cyan,
   gray,
   green,
+  italic,
   magenta,
   red,
   yellow,
@@ -14,9 +15,12 @@ import { isString } from 'radashi'
 
 let logTimestampsEnabled = false
 
-const createLog =
-  (color: Colorize, prefix = '•', method: 'log' | 'trace' = 'log') =>
-  (message: string, ...args: any[]) => {
+const createLog = (
+  color: Colorize,
+  prefix = '•',
+  method: 'log' | 'trace' = 'log',
+) =>
+  function log(message: string, ...args: any[]) {
     message = color(prefix + ' ' + message)
     if (logTimestampsEnabled) {
       const timestamp = new Date().toLocaleTimeString('en-US', {
@@ -28,7 +32,10 @@ const createLog =
     }
     console.log(message, ...relativizePathArgs(args))
     if (method === 'trace') {
-      console.log(color(new Error().stack!.replace(/^.*?\n/, '')))
+      const trace = new Error()
+      Error.captureStackTrace(trace, log)
+      console.log(`    ――― ${italic('Log statement trace')} ―――`)
+      console.log(color(trace.stack!.replace(/^.*?\n/, '')))
     }
   }
 
