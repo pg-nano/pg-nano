@@ -71,7 +71,7 @@ export class Connection extends ConnectionEmitter {
    */
   query<TResult = CommandResult[]>(
     type: QueryType,
-    command: SQLTemplate | QueryHook<TResult>,
+    input: SQLTemplate | QueryHook<TResult>,
     parseText?: ((value: string, dataTypeID: number) => unknown) | null,
     options?: QueryOptions | null,
   ): QueryPromise<TResult> {
@@ -79,7 +79,7 @@ export class Connection extends ConnectionEmitter {
     const query: IQuery = {
       id: uid(8),
       type,
-      command,
+      input,
       parseText: parseText || createTextParser(baseTypeParsers),
       ctrl: new AbortController(),
       error: null,
@@ -225,16 +225,18 @@ async function sendQuery(conn: IConnection, query: IQuery): Promise<any> {
     throw new PgNativeError('Unable to set non-blocking to true')
   }
 
-  const { command } = query
+  const { input } = query
 
   let sent: boolean | (() => Promise<any>)
 
-  if (isFunction(command)) {
-    sent = command(conn.pq)
+  if (isFunction(input)) {
+    sent = input(conn.pq)
   } else {
-    const ddl = (command.ddl = stringifyTemplate(command, conn.pq))
+    const ddl = (input.ddl = stringifyTemplate(input, conn.pq))
     if (process.env.NODE_ENV !== 'production' && debugQuery.enabled) {
-      debugQuery(`query:${query.id} writing\n${ddl.replace(/^|\n/g, '$&  ')}`)
+      debugQuery(
+        `query:${query.id} writing\n${input.command.replace(/^|\n/g, '$&  ')}`,
+      )
     }
     sent = conn.pq.sendQuery(ddl)
   }

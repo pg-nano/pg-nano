@@ -44,7 +44,7 @@ export interface QueryOptions {
 export interface IQuery extends QueryOptions {
   id: string
   type: QueryType
-  command: SQLTemplate | QueryHook<any>
+  input: SQLTemplate | QueryHook<any>
   parseText: (text: string, dataTypeID: number) => unknown
   ctrl: AbortController
   error: Error | null

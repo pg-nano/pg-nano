@@ -212,12 +212,12 @@ export async function inspectViewFields(
 
 export async function inspectResultSet(
   client: Client,
-  command: SQLTemplate,
+  input: SQLTemplate,
   signal?: AbortSignal,
 ) {
   const name = 'pg_nano_' + uid(12)
   await client
-    .query(sql`PREPARE ${sql.id(name)} AS ${command}`)
+    .query(sql`PREPARE ${sql.id(name)} AS ${input}`)
     .cancelWithSignal(signal)
 
   const [description] = await client

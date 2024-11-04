@@ -320,10 +320,10 @@ export class Client {
    * Execute one or more commands.
    */
   query<TRow extends Row>(
-    sql: SQLTemplate | QueryHook<CommandResult<TRow>[]>,
+    input: SQLTemplate | QueryHook<CommandResult<TRow>[]>,
     options?: Query.Options | null,
   ): Query<CommandResult<TRow>[]> {
-    return new Query(this, QueryType.full, sql, options)
+    return new Query(this, QueryType.full, input, options)
   }
 
   /**
@@ -335,10 +335,10 @@ export class Client {
    *   sequentially. The result sets are concatenated.
    */
   queryRowList<TRow extends Row>(
-    sql: SQLTemplate | QueryHook<TRow[]>,
+    input: SQLTemplate | QueryHook<TRow[]>,
     options?: Query.Options | null,
   ): Query<TRow[]> {
-    return new Query(this, QueryType.row, sql, options)
+    return new Query(this, QueryType.row, input, options)
   }
 
   /**
@@ -350,10 +350,10 @@ export class Client {
    *   sequentially. The result sets are concatenated.
    */
   queryValueList<T>(
-    sql: SQLTemplate | QueryHook<T[]>,
+    input: SQLTemplate | QueryHook<T[]>,
     options?: Query.Options | null,
   ): Query<T[]> {
-    return new Query(this, QueryType.value, sql, options)
+    return new Query(this, QueryType.value, input, options)
   }
 
   /**
@@ -364,20 +364,20 @@ export class Client {
    * You may define the row type using generics.
    */
   queryRowOrNull<TRow extends Row>(
-    sql: SQLTemplate | QueryHook<TRow[]>,
+    input: SQLTemplate | QueryHook<TRow[]>,
     options?: Query.Options | null,
   ): Query<TRow | null, TRow> {
-    return new Query(this, QueryType.row, sql, options, '[0,1]')
+    return new Query(this, QueryType.row, input, options, '[0,1]')
   }
 
   /**
    * Like `queryRowOrNull`, but throws an error if the result is null.
    */
   queryRow<TRow extends Row>(
-    sql: SQLTemplate | QueryHook<TRow[]>,
+    input: SQLTemplate | QueryHook<TRow[]>,
     options?: Query.Options | null,
   ): Query<TRow> {
-    return new Query(this, QueryType.row, sql, options, '[1,1]')
+    return new Query(this, QueryType.row, input, options, '[1,1]')
   }
 
   /**
@@ -386,20 +386,20 @@ export class Client {
    *
    */
   queryValueOrNull<T>(
-    sql: SQLTemplate | QueryHook<T[]>,
+    input: SQLTemplate | QueryHook<T[]>,
     options?: Query.Options | null,
   ): Query<T | null, T> {
-    return new Query(this, QueryType.value, sql, options, '[0,1]')
+    return new Query(this, QueryType.value, input, options, '[0,1]')
   }
 
   /**
    * Like `queryValueOrNull`, but throws an error if the result is null.
    */
   queryValue<T>(
-    sql: SQLTemplate | QueryHook<T[]>,
+    input: SQLTemplate | QueryHook<T[]>,
     options?: Query.Options | null,
   ): Query<T, T> {
-    return new Query(this, QueryType.value, sql, options, '[1,1]')
+    return new Query(this, QueryType.value, input, options, '[1,1]')
   }
 
   // Signals an idle connection.
@@ -464,7 +464,7 @@ export class Client {
    * Returns a stringified version of the template. It's async because it uses
    * libpq's escaping functions.
    */
-  stringify(sql: SQLTemplateValue, options: { reindent?: boolean } = {}) {
+  stringify(input: SQLTemplateValue, options: { reindent?: boolean } = {}) {
     // Since we're not sending anything to the server, it's perfectly fine to
     // use a non-idle connection.
     const connection = this.pool[0]
@@ -472,7 +472,7 @@ export class Client {
       throw new ConnectionError('Postgres is not connected')
     }
     // biome-ignore lint/complexity/useLiteralKeys: Protected access
-    return stringifyTemplateValue(sql, connection['pq'], options)
+    return stringifyTemplateValue(input, connection['pq'], options)
   }
 }
 
