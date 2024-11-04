@@ -85,7 +85,8 @@ export class Connection extends ConnectionEmitter {
       error: null,
 
       // Options
-      mapFieldName: options?.mapFieldName,
+      mapFieldName:
+        type !== QueryType.value ? options?.mapFieldName : undefined,
       mapFieldValue: options?.mapFieldValue,
       singleRowMode: options?.singleRowMode,
     }
