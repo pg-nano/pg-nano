@@ -85,6 +85,16 @@ export interface ClientConfig {
    * user-defined composite types.
    */
   textParsers: Record<number, TextParser> | null
+
+  /**
+   * Pre-allocate an `Error` for each query, thereby capturing a stack trace
+   * from where the query was constructed. This is useful when an error isn't
+   * providing an actionable stack trace, but it's not recommended for
+   * production due to performance impact.
+   *
+   * @default false
+   */
+  debug: boolean
 }
 
 /**
@@ -116,6 +126,7 @@ export class Client {
     fieldCase = FieldCase.camel,
     postConnectDDL = null,
     textParsers = null,
+    debug = false,
   }: Partial<ClientConfig> = {}) {
     this.config = {
       minConnections,
@@ -127,6 +138,7 @@ export class Client {
       fieldCase,
       postConnectDDL,
       textParsers,
+      debug,
     }
   }
 

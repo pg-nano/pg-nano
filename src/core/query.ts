@@ -23,13 +23,19 @@ export class Query<
   TPromiseResult,
   TIteratorResult = UnwrapArray<TPromiseResult>,
 > {
+  protected trace?: Error = undefined
   constructor(
     protected client: Client,
     protected type: QueryType,
     protected input: SQLTemplate | QueryHook<any>,
     protected options?: Query.Options | null,
     protected expectedCount?: '[0,1]' | '[1,1]' | null,
-  ) {}
+  ) {
+    if (client.config.debug) {
+      this.trace = new Error()
+      Error.captureStackTrace(this.trace, Query)
+    }
+  }
 
   /**
    * Request that the query be cancelled and stop all processing. Does nothing
@@ -105,10 +111,19 @@ export class Query<
           : undefined),
     })
       .catch(error => {
+        if (this.trace) {
+          this.trace.stack =
+            error.stack +
+            '\n    ――― Query constructor trace ―――\n' +
+            this.trace.stack!.replace(/^.*?\n/, '')
+
+          Object.assign(this.trace, error)
+          this.trace.message = error.message
+          error = this.trace
+        }
         if (SQLTemplate.isTemplate(this.input)) {
           error.ddl = this.input.ddl
         }
-        Error.captureStackTrace(error, this.send)
         throw error
       })
       .finally(() => {

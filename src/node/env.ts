@@ -123,6 +123,7 @@ async function loadEnv(cwd: string, options: EnvOptions) {
         events.emit('connecting', config.dev.connection)
 
         const client = new Client({
+          debug: true,
           maxRetries: 2,
           postConnectDDL: sql`
             SET client_min_messages TO ${sql.unsafe(process.env.TEST ? 'NOTICE' : 'WARNING')};
