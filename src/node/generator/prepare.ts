@@ -201,10 +201,14 @@ export async function prepareDatabase(
               ? object.columns[siblingIndex].node
               : undefined
 
-          const colExpr = object.query.slice(
-            column.node.location,
-            siblingNode?.location ?? object.query.lastIndexOf(')'),
-          )
+          const colExpr = siblingNode
+            ? object.query
+                .slice(column.node.location, siblingNode.location)
+                .replace(/,\s*$/, '')
+            : object.query.slice(
+                column.node.location,
+                object.query.lastIndexOf(')'),
+              )
 
           return sql`
             ALTER TABLE ${object.id.toSQL()} ADD COLUMN ${sql.unsafe(colExpr)};
