@@ -7,10 +7,11 @@ import {
   getEnv,
   log,
   type EnvOptions,
+  type GenerateOptions,
 } from 'pg-nano/node'
 import { debounce, select } from 'radashi'
 
-type Options = EnvOptions & {}
+type Options = EnvOptions & Omit<GenerateOptions, 'signal'>
 
 export default async function dev(cwd: string, options: Options = {}) {
   enableEventLogging(options.verbose)
@@ -38,6 +39,7 @@ export default async function dev(cwd: string, options: Options = {}) {
     )
 
     generate(env, filePaths, {
+      ...options,
       signal: controller.signal,
     }).catch(error => {
       log.error(error.stack)

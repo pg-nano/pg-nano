@@ -38,6 +38,10 @@ import { prepareDatabase } from './prepare.js'
 
 export type GenerateOptions = {
   signal?: AbortSignal
+  /**
+   * When true, no files are emitted, but the database is still migrated.
+   */
+  noEmit?: boolean
 }
 
 export async function generate(
@@ -54,6 +58,14 @@ export async function generate(
     env,
   )
 
+  events.emit('migrate-start')
+
+  await migrate(env)
+
+  if (options.noEmit) {
+    return
+  }
+
   const tableStmts = mapify(
     allObjects.filter(obj => obj.kind === 'table'),
     obj => obj.id.toQualifiedName(),
@@ -63,10 +75,6 @@ export async function generate(
     allObjects.filter(obj => obj.kind === 'routine'),
     obj => obj.id.toQualifiedName(),
   )
-
-  events.emit('migrate-start')
-
-  await migrate(env)
 
   events.emit('generate-start')
 
