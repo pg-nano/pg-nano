@@ -12,6 +12,13 @@ Try `pg-nano` out for yourself with this exhaustive demo.
 
 ### Setup
 
+> [!NOTE]
+> The following instructions install `pg-nano` from NPM. If you plan to edit `pg-nano` itself, skip running `pnpm start` and do the following instead:
+> ```sh
+> pnpm install
+> pnpm dev
+> ```
+
 ```sh
 git clone https://github.com/pg-nano/pg-nano.git
 cd pg-nano/demos/exhaustive
