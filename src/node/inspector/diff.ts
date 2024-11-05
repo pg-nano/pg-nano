@@ -1,6 +1,6 @@
 import { type Client, isPgResultError, sql } from 'pg-nano'
 import { select } from 'radashi'
-import { debug } from '../debug.js'
+import { traceChecks } from '../debug.js'
 import type { SQLIdentifier } from '../parser/identifier.js'
 import type {
   PgCompositeTypeStmt,
@@ -17,8 +17,8 @@ export async function findAddedTableColumns(
   client: Client,
   table: PgTableStmt,
 ) {
-  if (debug.enabled) {
-    debug('did %s have columns added?', table.id.toQualifiedName())
+  if (traceChecks.enabled) {
+    traceChecks('did %s have columns added?', table.id.toQualifiedName())
   }
 
   const existingNames = await client.queryValueList<string>(sql`
@@ -51,8 +51,8 @@ export async function hasCompositeTypeChanged(
   client: Client,
   type: PgCompositeTypeStmt,
 ) {
-  if (debug.enabled) {
-    debug('did %s change?', type.id.toQualifiedName())
+  if (traceChecks.enabled) {
+    traceChecks('did %s change?', type.id.toQualifiedName())
   }
 
   type ExistingColumn = {
@@ -155,8 +155,8 @@ export async function hasRoutineSignatureChanged(
       AND p.pronamespace = ${id.schemaVal}::regnamespace
   `
 
-  if (debug.enabled) {
-    debug('did %s change?', fn.id.toQualifiedName())
+  if (traceChecks.enabled) {
+    traceChecks('did %s change?', fn.id.toQualifiedName())
   }
 
   const hasChanges = await client.queryValue<boolean>(sql`

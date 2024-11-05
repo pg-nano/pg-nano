@@ -9,7 +9,7 @@ import {
   walk,
 } from '@pg-nano/pg-parser'
 import { select, tryit } from 'radashi'
-import { debug } from '../debug.js'
+import { traceParser } from '../debug.js'
 import { events } from '../events.js'
 import type { PgBaseType } from '../inspector/types.js'
 import { appendCodeFrame } from '../util/codeFrame.js'
@@ -50,7 +50,7 @@ export async function parseObjectStatements(
       continue
     }
 
-    debug('parsing statement on line', line)
+    traceParser('parsing statement on line', line)
     const [parseError, parseResult] = await tryit(parseQuery)(query)
 
     if (parseError) {

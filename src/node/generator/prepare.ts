@@ -3,7 +3,7 @@ import path from 'node:path'
 import { PgResultError, sql } from 'pg-nano'
 import { map, memo, sift } from 'radashi'
 import type { Plugin } from '../config/plugin.js'
-import { debug } from '../debug.js'
+import { debug, traceChecks, traceDepends, traceParser } from '../debug.js'
 import type { Env } from '../env.js'
 import { events } from '../events.js'
 import {
@@ -25,11 +25,11 @@ export async function prepareDatabase(
 ) {
   const pg = await env.client
 
-  debug('parsing SQL files')
+  traceParser('parsing SQL files')
 
   const parsedFiles = await map(sqlFiles, async file => {
     const content = fs.readFileSync(file, 'utf8')
-    debug('parsing SQL file:', file)
+    traceParser('parsing SQL file:', file)
     const objects = await parseObjectStatements(content, file, baseTypes)
     return { file, objects }
   })
@@ -81,7 +81,9 @@ export async function prepareDatabase(
       return false
     }
 
-    debug('does %s exist?', id.toQualifiedName())
+    if (traceChecks.enabled) {
+      traceChecks('does %s exist?', id.toQualifiedName())
+    }
 
     const { from, schemaKey, nameKey } = objectExistence[type]
 
@@ -118,10 +120,10 @@ export async function prepareDatabase(
     CREATE SCHEMA nano;
   `)
 
-  if (debug.enabled) {
+  if (traceDepends.enabled) {
     for (const object of sortedObjects) {
       if (object.dependencies.size > 0) {
-        debug(
+        traceDepends(
           '%s %s depends on %s',
           object.kind,
           object.id.toQualifiedName(),
@@ -130,7 +132,7 @@ export async function prepareDatabase(
             .join(', '),
         )
       } else {
-        debug(
+        traceDepends(
           '%s %s has no dependencies',
           object.kind,
           object.id.toQualifiedName(),
