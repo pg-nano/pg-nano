@@ -13,7 +13,7 @@ Try `pg-nano` out for yourself with this exhaustive demo.
 ### Setup
 
 > [!NOTE]
-> The following instructions install `pg-nano` from NPM. If you plan to edit `pg-nano` itself, skip running `pnpm start` and do the following instead:
+> The following instructions install `pg-nano` from NPM. If you plan to edit `pg-nano` itself or you want to try unreleased changes, skip running `pnpm start` and do the following instead:
 > ```sh
 > pnpm install
 > pnpm dev
