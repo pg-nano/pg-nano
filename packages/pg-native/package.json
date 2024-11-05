@@ -5,7 +5,8 @@
   "private": true,
   "scripts": {
     "dev": "DEV=1 tsup --watch --sourcemap",
-    "build": "tsup"
+    "build": "tsup",
+    "lint": "tsc -p . --outDir node_modules/.tmp"
   },
   "devDependencies": {
     "postgres-array": "workspace:^",
