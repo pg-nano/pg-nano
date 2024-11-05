@@ -191,7 +191,15 @@ export async function prepareDatabase(
       if (addedColumns.length > 0) {
         events.emit('update-object', { object })
 
-        const alterStmts = addedColumns.map(name => {
+        if (debug.enabled) {
+          debug(
+            'found new columns in "%s" table:',
+            object.id.toQualifiedName(),
+            addedColumns,
+          )
+        }
+
+        const alterStmts = await map(addedColumns, async name => {
           const index = object.columns.findIndex(c => c.name === name)
           const column = object.columns[index]
 
@@ -209,6 +217,25 @@ export async function prepareDatabase(
                 column.node.location,
                 object.query.lastIndexOf(')'),
               )
+
+          if (/ primary key/i.test(colExpr)) {
+            const oldPrimaryKey = await pg.queryValue<string>(sql`
+                SELECT c.conname
+                FROM pg_constraint c
+                JOIN pg_class t ON t.oid = c.conrelid
+                WHERE
+                  t.relname = ${object.id.nameVal}
+                  AND t.relnamespace = ${object.id.schemaVal}::regnamespace
+                  AND c.contype = 'p'
+            `)
+
+            if (oldPrimaryKey) {
+              await pg.query(sql`
+                ALTER TABLE ${object.id.toSQL()}
+                DROP CONSTRAINT ${sql.id(oldPrimaryKey)};
+              `)
+            }
+          }
 
           return sql`
             ALTER TABLE ${object.id.toSQL()} ADD COLUMN ${sql.unsafe(colExpr)};
