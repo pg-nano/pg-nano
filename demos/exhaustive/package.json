@@ -13,7 +13,6 @@
     "format": "biome check --fix"
   },
   "devDependencies": {
-    "@pg-nano/cli": "workspace:^",
     "magic-string": "^0.30.11",
     "tinyspawn": "^1.3.3"
   }
