@@ -4,6 +4,7 @@ export * from './error.js'
 export * from './pg-types.js'
 export * from './template.js'
 export * from './template/render.js'
+export * from './template/token.js'
 export * from './tuple.js'
 
 export { stringifyValue } from './value.js'
