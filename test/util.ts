@@ -10,6 +10,7 @@ import { Client, sql } from 'pg-nano'
 import type { UserConfig } from 'pg-nano/config'
 import { events, generate, getEnv } from 'pg-nano/node'
 import { select, shake, uid } from 'radashi'
+import type { GenerateOptions } from '../src/node/generator/generate.js'
 import { dedent } from '../src/node/util/dedent.js'
 
 export function spawn(
@@ -45,7 +46,7 @@ export async function initPostgres() {
   await proc
 }
 
-async function bufferReadable<T extends Buffer | string>(
+export async function bufferReadable<T extends Buffer | string>(
   readable: Readable,
   encoding?: BufferEncoding | null,
 ): Promise<T> {
@@ -150,7 +151,7 @@ export async function createProject(
   return {
     env,
     eventLog,
-    async generate() {
+    async generate(options?: GenerateOptions) {
       eventLog.length = 0
       await generate(
         env,
@@ -159,7 +160,11 @@ export async function createProject(
           file => path.join(env.root, file),
           file => file.endsWith('.sql'),
         ),
+        options,
       )
+    },
+    writeFile(name: string, content: string) {
+      fs.writeFileSync(path.join(fixtureDir, name), content)
     },
     get generatedFiles() {
       return shake({
