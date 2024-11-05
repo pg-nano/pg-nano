@@ -16,7 +16,7 @@ import { appendCodeFrame } from '../util/codeFrame.js'
 import { SQLIdentifier, toUniqueIdList } from './identifier.js'
 import type { PgColumnDef, PgObjectStmt, PgParamDef } from './types.js'
 
-const whitespace = ' \n\t\r'
+const whitespace = ' \n\t\r'.split('').map(c => c.charCodeAt(0))
 
 export async function parseObjectStatements(
   content: string,
@@ -28,24 +28,16 @@ export async function parseObjectStatements(
   const objects: PgObjectStmt[] = []
   const lineBreaks = getLineBreakLocations(content)
 
-  for (let { location, length } of stmts) {
-    // Skip comments and empty lines.
-    let i = location
-    while (
-      whitespace.includes(content[i]) ||
-      content.slice(i, i + 2) === '--'
-    ) {
-      i = content.indexOf('\n', i + 1) + 1
-    }
-    length -= i - location
-    location = i
+  for (const { location, length } of stmts) {
+    const end = location + length
+    const start = findStatementStart(content, location, end)
 
     // Get the line number.
     const line =
-      lineBreaks.findIndex(lineBreak => location < lineBreak) + 1 ||
+      lineBreaks.findIndex(lineBreak => start < lineBreak) + 1 ||
       lineBreaks.length
 
-    const query = content.slice(location, location + length)
+    const query = content.slice(start, end)
     if (!query) {
       continue
     }
@@ -306,4 +298,26 @@ type ParseError = Error & { cursorPosition: number }
 
 function isParseError(error: Error): error is ParseError {
   return 'cursorPosition' in error
+}
+
+function findStatementStart(content: string, start: number, end: number) {
+  let i = start
+  while (true) {
+    // Skip whitespace.
+    if (whitespace.includes(content.charCodeAt(i))) {
+      i++
+    }
+    // Skip single-line comments.
+    else if (content.slice(i, i + 2) === '--') {
+      i = content.indexOf('\n', i + 2) + 1
+    }
+    // Skip multi-line comments.
+    else if (content.slice(i, i + 2) === '/*') {
+      i = content.indexOf('*/', i + 2) + 2
+    }
+    // Otherwise, we've found the start of the statement.
+    else {
+      return Math.min(i, end)
+    }
+  }
 }
