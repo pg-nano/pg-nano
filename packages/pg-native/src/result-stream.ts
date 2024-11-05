@@ -4,15 +4,12 @@ import { debugQuery } from './debug.js'
 import { PgNativeError, PgResultError } from './error.js'
 import { CommandResult, QueryType, type Field, type IQuery } from './query.js'
 
-type FieldDescription = [name: string, dataTypeID: number, index: number]
+type FieldBuffer = [name: string, dataTypeID: number, index: number]
+type PayloadBuffer = [error: Error | undefined, result: unknown]
 
-const field: FieldDescription = ['', 0, 0]
-
-/**
- * Set by `receiveResult` when an error occurs. Errors must not be thrown, so
- * the current query can have its output fully processed.
- */
-let error: Error | null = null
+// These exist to reduce the number of heap allocations.
+const field: FieldBuffer = ['', 0, 0]
+const payload: PayloadBuffer = [undefined, undefined]
 
 /**
  * Call this before `pq.startRead()` to set up a result stream that will
@@ -24,33 +21,39 @@ export async function* streamResults<TResult>(
 ): AsyncGenerator<TResult, void, unknown> {
   pq.startRead()
 
-  read: while (true) {
+  while (true) {
     await promisedEvent(pq, 'readable', query.ctrl.signal)
     query.ctrl.signal.throwIfAborted()
 
     // Attempt to buffer available data from the server.
     if (!pq.consumeInput()) {
       debugQuery(`query:${query.id} failed to consumeInput`)
-      throw new PgNativeError(pq.getLastErrorMessage())
+      query.error = new PgNativeError(pq.getLastErrorMessage())
+      return
     }
 
     // Process results unless the query is waiting for more data.
     while (!pq.isBusy()) {
       if (!pq.getResult()) {
-        break read // Query completed.
+        // Free the last result before ending the stream.
+        return pq.clear()
       }
-      if (!error) {
-        const result = receiveResult(pq, query, field) as TResult
+
+      // After an error, we flush results but don't yield them.
+      if (!query.error) {
+        const [error, result] = receiveResult(pq, query)
 
         if (error) {
           query.error = error
+          payload[0] = undefined
         } else if (result !== undefined) {
-          yield result
+          yield result as TResult
+          payload[1] = undefined
         }
       }
     }
 
-    // Free the last processed result, if any.
+    // Free the last result before waiting for more data.
     pq.clear()
   }
 }
@@ -71,41 +74,42 @@ function promisedEvent(
   })
 }
 
-function receiveResult(pq: Libpq, query: IQuery, field: FieldDescription) {
+function receiveResult(pq: Libpq, query: IQuery): PayloadBuffer {
   const status = pq.resultStatus()
 
   if (status === 'PGRES_FATAL_ERROR') {
-    error = new PgResultError(pq.resultErrorMessage())
-    Object.assign(error, pq.resultErrorFields())
-    return
+    return oof(
+      new PgResultError(pq.resultErrorMessage()),
+      pq.resultErrorFields(),
+    )
   }
 
   const fieldCount = pq.nfields()
 
   if (status === 'PGRES_SINGLE_TUPLE') {
     if (query.type === QueryType.value) {
-      if (!assertSingleField(fieldCount)) {
-        return
+      if (fieldCount !== 1) {
+        return oof(singleFieldError(fieldCount))
       }
-      for (const _ of receiveFields(pq, query, field, fieldCount)) {
-        return parseFieldValue(pq, query, 0, field)
+      for (const _ of receiveFields(pq, query, fieldCount)) {
+        return ok(parseFieldValue(pq, query, 0, field))
       }
-      return null
+      return payload // no-op
     }
 
     const row: Record<string, unknown> = {}
-    for (const [fieldName] of receiveFields(pq, query, field, fieldCount)) {
+    for (const [fieldName] of receiveFields(pq, query, fieldCount)) {
       row[fieldName] = parseFieldValue(pq, query, 0, field)
     }
-    return row
+    return ok(row)
   }
 
   if (status === 'PGRES_TUPLES_OK') {
     if (query.singleRowMode && query.type !== QueryType.full) {
-      return
+      return payload // no-op
     }
-    if (query.type === QueryType.value && !assertSingleField(fieldCount)) {
-      return
+    if (query.type === QueryType.value && fieldCount !== 1) {
+      return oof(singleFieldError(fieldCount))
     }
 
     const rows = new Array<any>(pq.ntuples())
@@ -118,7 +122,7 @@ function receiveResult(pq: Libpq, query: IQuery, field: FieldDescription) {
     const fields =
       query.type === QueryType.full ? new Array<Field>(fieldCount) : null
 
-    for (const [fieldName] of receiveFields(pq, query, field, fieldCount)) {
+    for (const [fieldName] of receiveFields(pq, query, fieldCount)) {
       if (fields) {
         fields[field[2]] = { name: fieldName, dataTypeID: field[1] }
       }
@@ -133,43 +137,36 @@ function receiveResult(pq: Libpq, query: IQuery, field: FieldDescription) {
     }
 
     if (query.type !== QueryType.full) {
-      return rows
+      return ok(rows)
     }
-    return new CommandResult(
-      pq.cmdStatus().match(/^\w+/)![0],
-      Number.parseInt(pq.cmdTuples(), 10),
-      fields as Field[],
-      rows as Record<string, unknown>[],
+    return ok(
+      new CommandResult(
+        pq.cmdStatus().match(/^\w+/)![0],
+        Number.parseInt(pq.cmdTuples(), 10),
+        fields as Field[],
+        rows as Record<string, unknown>[],
+      ),
     )
   }
 
   if (status === 'PGRES_COMMAND_OK') {
     if (query.type === QueryType.value) {
-      return null
+      return ok(null)
     }
     if (query.type === QueryType.row) {
-      return []
+      return ok([])
     }
-    return new CommandResult(pq.cmdStatus().match(/^\w+/)![0], 0, [], [])
+    return ok(new CommandResult(pq.cmdStatus().match(/^\w+/)![0], 0, [], []))
   }
 
-  error = new PgNativeError(`Unsupported result status: ${status}`)
+  return oof(new PgNativeError(`Unsupported result status: ${status}`))
 }
 
-function assertSingleField(fieldCount: number) {
-  if (fieldCount === 1) {
-    return true
-  }
-  error = new PgNativeError(`Expected a single field, but got ${fieldCount}`)
-  return false
+function singleFieldError(fieldCount: number) {
+  return new PgNativeError(`Expected a single field, but got ${fieldCount}`)
 }
 
-function* receiveFields(
-  pq: Libpq,
-  query: IQuery,
-  field: FieldDescription,
-  count: number,
-) {
+function* receiveFields(pq: Libpq, query: IQuery, count: number) {
   for (let index = 0; index < count; index++) {
     let name = pq.fname(index)
     if (query.mapFieldName) {
@@ -186,7 +183,7 @@ function parseFieldValue(
   pq: Libpq,
   query: IQuery,
   rowIndex: number,
-  [fieldName, dataTypeID, fieldIndex]: FieldDescription,
+  [fieldName, dataTypeID, fieldIndex]: FieldBuffer,
 ) {
   const text = pq.getvalue(rowIndex, fieldIndex)
   if (text.length === 0 && pq.getisnull(rowIndex, fieldIndex)) {
@@ -194,4 +191,14 @@ function parseFieldValue(
   }
   const value = query.parseText(text, dataTypeID)
   return query.mapFieldValue ? query.mapFieldValue(value, fieldName) : value
+}
+
+function ok(result: unknown): PayloadBuffer {
+  payload[1] = result
+  return payload
+}
+
+function oof(error: Error, properties?: object): PayloadBuffer {
+  payload[0] = Object.assign(error, properties)
+  return payload
 }
