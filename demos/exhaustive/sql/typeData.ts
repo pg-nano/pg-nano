@@ -36,6 +36,7 @@ export const foo = /* @__PURE__ */ t.row(
     'tags',
     'matrix',
     'metadata',
+    'color_preference',
     'binary_data',
     'coordinates',
     'ip_address',
@@ -48,7 +49,6 @@ export const foo = /* @__PURE__ */ t.row(
     'status',
     'address',
     'product_attributes',
-    'color_preference',
   ],
   { address: t.address_type },
 )
