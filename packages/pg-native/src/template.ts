@@ -29,6 +29,8 @@ export type SQLTemplateValue =
   | SQLToken
   | readonly SQLTemplateValue[]
   | ''
+  | null
+  | undefined
 
 /**
  * Create a `SQLTemplate` object. The client is responsible for serializing the
