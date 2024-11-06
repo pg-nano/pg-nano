@@ -4,7 +4,13 @@ import { defineConfig } from 'pg-nano/config'
 
 export default defineConfig({
   dev: {
-    connectionString: 'postgres://postgres:postgres@localhost:54322/postgres',
+    connection: {
+      host: process.env.DEV_CONTAINER === 'pg-nano' ? 'postgres' : 'localhost',
+      port: 5432,
+      dbname: 'postgres',
+      user: 'postgres',
+      password: 'postgres',
+    },
   },
   schema: {
     include: ['**/*.pgsql'],

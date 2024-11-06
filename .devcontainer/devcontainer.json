@@ -1,0 +1,7 @@
+{
+  "name": "pg-nano dev environment",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "app",
+  "workspaceFolder": "/workspace",
+  "forwardPorts": [54322]
+}

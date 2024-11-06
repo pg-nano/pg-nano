@@ -1,0 +1,36 @@
+version: '3'
+
+services:
+  app:
+    container_name: devcontainer_app
+    depends_on:
+      - postgres
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      SHELL: /bin/bash
+      GO_VERSION: "1.21"
+      DEV_CONTAINER: pg-nano
+    volumes:
+      - ..:/workspace:cached
+    working_dir: /workspace
+    restart: unless-stopped
+    stdin_open: true
+    tty: true
+
+  postgres:
+    container_name: devcontainer_postgres
+    image: postgres:15
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    ports:
+      - 54322:5432
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
