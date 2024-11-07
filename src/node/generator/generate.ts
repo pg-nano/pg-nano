@@ -58,7 +58,7 @@ export async function generate(
     env,
   )
 
-  events.emit('migrate-start')
+  events.emit('migrate:start')
 
   await migrate(env)
 
@@ -76,7 +76,7 @@ export async function generate(
     obj => obj.id.toQualifiedName(),
   )
 
-  events.emit('generate-start')
+  events.emit('generate:start')
 
   // Step 1: Collect type information from the database.
   const namespaces = await inspectNamespaces(pg, options.signal)
@@ -755,7 +755,7 @@ export async function generate(
   // Step 8: Write the TypeScript schema to a file.
   fs.writeFileSync(outFile, code.replace(/\s+$/, '\n'))
 
-  events.emit('generate-end')
+  events.emit('generate:end')
 
   // Step 9: Warn about any unsupported types.
   for (const typeOid of unsupportedTypes) {
