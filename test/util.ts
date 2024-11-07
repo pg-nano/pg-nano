@@ -138,6 +138,7 @@ export async function createProject(
   const eventLog: any[][] = []
   events.emit = (...args: any[]) => {
     eventLog.push(args)
+    return true
   }
 
   const readFile = (name: string) => {

@@ -42,6 +42,10 @@ export type GenerateOptions = {
    * When true, no files are emitted, but the database is still migrated.
    */
   noEmit?: boolean
+  /**
+   * Called right before pg-schema-diff is invoked.
+   */
+  preMigrate?: () => any
 }
 
 export async function generate(
@@ -57,6 +61,10 @@ export async function generate(
     baseTypes,
     env,
   )
+
+  if (options.preMigrate) {
+    await options.preMigrate()
+  }
 
   events.emit('migrate:start')
 

@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { PgResultError, sql } from 'pg-nano'
 import { map, memo, sift } from 'radashi'
-import type { Plugin } from '../config/plugin.js'
+import type { Plugin, SQLTemplate } from '../config/plugin.js'
 import { debug, traceChecks, traceDepends, traceParser } from '../debug.js'
 import type { Env } from '../env.js'
 import { events } from '../events.js'
@@ -162,64 +162,64 @@ export async function prepareDatabase(
       )
     }
 
-    if (!exists) {
-      events.emit('create-object', { object })
-      return pg.query(sql.unsafe(object.query))
-    }
+    let query: SQLTemplate | undefined
 
-    if (object.kind === 'type') {
-      if (object.subkind === 'composite') {
-        if (await hasCompositeTypeChanged(pg, object)) {
+    if (exists) {
+      if (object.kind === 'type') {
+        if (object.subkind === 'composite') {
+          if (await hasCompositeTypeChanged(pg, object)) {
+            events.emit('update-object', { object })
+            query = sql`
+              DROP TYPE ${object.id.toSQL()} CASCADE;
+              ${sql.unsafe(object.query)}
+            `
+          }
+        }
+      } else if (object.kind === 'routine') {
+        if (await hasRoutineSignatureChanged(pg, object)) {
           events.emit('update-object', { object })
-          return pg.query(sql`
-            DROP TYPE ${object.id.toSQL()} CASCADE;
+          query = sql`
+            DROP ROUTINE ${object.id.toSQL()} CASCADE;
             ${sql.unsafe(object.query)}
-          `)
+          `
         }
-      }
-    } else if (object.kind === 'routine') {
-      if (await hasRoutineSignatureChanged(pg, object)) {
-        events.emit('update-object', { object })
-        return pg.query(sql`
-          DROP ROUTINE ${object.id.toSQL()} CASCADE;
-          ${sql.unsafe(object.query)}
-        `)
-      }
-    } else if (object.kind === 'table') {
-      const addedColumns = await findAddedTableColumns(pg, object)
+      } else if (object.kind === 'table') {
+        const addedColumns = await findAddedTableColumns(pg, object)
 
-      if (addedColumns.length > 0) {
-        events.emit('update-object', { object })
+        if (addedColumns.length > 0) {
+          events.emit('update-object', { object })
 
-        if (debug.enabled) {
-          debug(
-            'found new columns in "%s" table:',
-            object.id.toQualifiedName(),
-            addedColumns,
-          )
-        }
+          if (debug.enabled) {
+            debug(
+              'found new columns in "%s" table:',
+              object.id.toQualifiedName(),
+              addedColumns,
+            )
+          }
 
-        const alterStmts = await map(addedColumns, async name => {
-          const index = object.columns.findIndex(c => c.name === name)
-          const column = object.columns[index]
+          const alterStmts = await map(addedColumns, async name => {
+            const index = object.columns.findIndex(c => c.name === name)
+            const column = object.columns[index]
 
-          const siblingIndex = index + 1
-          const siblingNode =
-            siblingIndex < object.columns.length
-              ? object.columns[siblingIndex].node
-              : undefined
+            const siblingIndex = index + 1
+            const siblingNode =
+              siblingIndex < object.columns.length
+                ? object.columns[siblingIndex].node
+                : undefined
 
-          const colExpr = siblingNode
-            ? object.query
-                .slice(column.node.location, siblingNode.location)
-                .replace(/,\s*$/, '')
-            : object.query.slice(
+            const colExpr = object.query
+              .slice(
                 column.node.location,
-                object.query.lastIndexOf(')'),
+                siblingNode?.location ?? object.query.lastIndexOf(')'),
               )
+              .replace(/,?\s*$/, '')
 
-          if (/ primary key/i.test(colExpr)) {
-            const oldPrimaryKey = await pg.queryValue<string>(sql`
+            // If the primary key is being changed, we need to drop the constraint
+            // for the old primary key first.
+            let precondition: SQLTemplate | undefined
+
+            if (/ primary key/i.test(colExpr)) {
+              const oldPrimaryKey = await pg.queryValue<string>(sql`
                 SELECT c.conname
                 FROM pg_constraint c
                 JOIN pg_class t ON t.oid = c.conrelid
@@ -227,23 +227,38 @@ export async function prepareDatabase(
                   t.relname = ${object.id.nameVal}
                   AND t.relnamespace = ${object.id.schemaVal}::regnamespace
                   AND c.contype = 'p'
-            `)
-
-            if (oldPrimaryKey) {
-              await pg.query(sql`
-                ALTER TABLE ${object.id.toSQL()}
-                DROP CONSTRAINT ${sql.id(oldPrimaryKey)};
               `)
+
+              if (oldPrimaryKey) {
+                precondition = sql`
+                  ALTER TABLE ${object.id.toSQL()}
+                  DROP CONSTRAINT ${sql.id(oldPrimaryKey)} CASCADE;
+                `
+              }
             }
-          }
 
-          return sql`
-            ALTER TABLE ${object.id.toSQL()} ADD COLUMN ${sql.unsafe(colExpr)};
-          `
-        })
+            const addColumnStmt = sql`
+              ALTER TABLE ${object.id.toSQL()} ADD COLUMN ${sql.unsafe(colExpr)};
+            `
 
-        return pg.query(sql`${sql.join('\n', alterStmts)}`)
+            return sql`
+              ${precondition}
+              ${addColumnStmt}
+            `
+          })
+
+          query = sql`${sql.join('\n', alterStmts)}`
+        }
       }
+    } else {
+      events.emit('create-object', { object })
+      query = sql.unsafe(object.query)
+    }
+
+    if (query) {
+      const result = await pg.query(query)
+      events.emit('prepare:mutation', { query: query.command! })
+      return result
     }
   }
 

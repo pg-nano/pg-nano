@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs'
 import { join, resolve } from 'node:path'
+import './inspect.js'
 import { initPostgres, spawn } from './util.js'
 
 const epgRootDir = resolve('test/ephemeralpg')

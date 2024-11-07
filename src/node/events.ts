@@ -19,6 +19,7 @@ type EventMap = {
   'unsupported-object': [event: { object: PgObjectStmt }]
   'create-object': [event: { object: PgObjectStmt }]
   'update-object': [event: { object: PgObjectStmt }]
+  'prepare:mutation': [event: { query: string }]
   'name-collision': [event: { object: PgObjectStmt }]
   'plugin:statements': [event: { plugin: Plugin }]
   'parser:skip-column': [event: { columnDef: ColumnDef }]

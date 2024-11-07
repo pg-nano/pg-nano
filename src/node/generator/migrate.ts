@@ -5,15 +5,22 @@ import type { Env } from '../env.js'
 import { events } from '../events.js'
 import { cwdRelative } from '../util/path.js'
 
-export async function migrate(env: Env) {
-  const proc = pgSchemaDiff(env, 'apply')
+export async function migrate(env: Env, opts: { dryRun?: boolean } = {}) {
+  const proc = pgSchemaDiff(env, opts.dryRun ? 'plan' : 'apply')
+
+  let stdout = ''
+  if (opts.dryRun) {
+    proc.stdout?.on('data', data => {
+      stdout += data
+    })
+  }
 
   let stderr = ''
   proc.stderr?.on('data', data => {
     stderr += data
   })
 
-  if (env.verbose) {
+  if (env.verbose && !opts.dryRun) {
     events.emit('pg-schema-diff:apply', { proc })
   }
 
@@ -52,21 +59,18 @@ export async function migrate(env: Env) {
     }
     throw new Error(message)
   }
+
+  return stdout
 }
 
 function pgSchemaDiff(env: Env, command: 'apply' | 'plan') {
   const applyArgs: string[] = []
   if (command === 'apply') {
-    // const prePlanFile = path.join(env.untrackedDir, 'pre-plan.sql')
-    // fs.writeFileSync(prePlanFile, 'SET check_function_bodies = off;')
-
     applyArgs.push(
       '--skip-confirm-prompt',
       '--allow-hazards',
       env.config.migration.allowHazards.join(','),
       '--disable-plan-validation',
-      // '--pre-plan-file',
-      // prePlanFile,
     )
   }
 

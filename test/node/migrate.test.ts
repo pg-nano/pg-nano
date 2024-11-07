@@ -1,11 +1,23 @@
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+import { select } from 'radashi'
 import { globSync } from 'tinyglobby'
-import { bufferReadable, createProject, spawn } from '../util.js'
+import { migrate } from '../../src/node/generator/migrate.js'
+import {
+  bufferReadable,
+  createProject,
+  dedent,
+  resetPublicSchema,
+  spawn,
+} from '../util.js'
 
 const cwd = join(__dirname, '__fixtures__')
 
 describe('migrate', () => {
+  beforeEach(async () => {
+    await resetPublicSchema()
+  })
+
   for (const beforeFile of globSync('**/before.sql', { cwd })) {
     const afterFile = beforeFile.replace('before', 'after')
     const caseName = dirname(beforeFile)
@@ -22,10 +34,29 @@ describe('migrate', () => {
         readFileSync(join(cwd, afterFile), 'utf8'),
       )
 
-      await project.generate({ noEmit: true })
+      let migrationPlan = ''
+      await project.generate({
+        noEmit: true,
+        async preMigrate() {
+          migrationPlan = await migrate(project.env, { dryRun: true })
+        },
+      })
 
-      expect(await dumpSchema()).toMatchFileSnapshot(
-        join(__dirname, '__snapshots__', caseName + '.sql'),
+      await expect(
+        '-- noqa: disable=all\n' +
+          select(
+            project.eventLog,
+            event => dedent(event[1].query),
+            event => event[0] === 'prepare:mutation',
+          ).join('\n') +
+          '\n' +
+          migrationPlan,
+      ).toMatchFileSnapshot(
+        join(__dirname, '__snapshots__', caseName + '.diff.sql'),
+      )
+
+      await expect(await dumpSchema()).toMatchFileSnapshot(
+        join(__dirname, '__snapshots__', caseName + '.dump.sql'),
       )
     })
   }
