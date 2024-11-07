@@ -68,7 +68,6 @@
     "chokidar": "^3.6.0",
     "debug": "^4.3.7",
     "esbuild": "^0.23.1",
-    "strict-event-emitter-types": "^2.0.0",
     "string-argv": "^0.3.2"
   },
   "pnpm": {

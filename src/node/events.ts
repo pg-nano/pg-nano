@@ -5,35 +5,31 @@ import type { Readable } from 'node:stream'
 import util from 'node:util'
 import { stringifyConnectOptions, type ConnectOptions } from 'pg-native'
 import { capitalize } from 'radashi'
-import type { StrictEventEmitter } from 'strict-event-emitter-types'
 import type { Plugin } from './config/plugin.js'
 import { debug } from './debug.js'
 import { parseMigrationPlan } from './generator/parseMigrationPlan.js'
 import { log } from './log.js'
 import type { PgObjectStmt } from './parser/types.js'
 
-export type Events = {
-  connecting: (options: ConnectOptions) => void
-  'create-database': (dbname: string) => void
-  'load-config': (event: { configFilePath: string }) => void
-  'unsupported-type': (event: { typeOid: number; typeName: string }) => void
-  'unsupported-object': (event: { object: PgObjectStmt }) => void
-  'create-object': (event: { object: PgObjectStmt }) => void
-  'update-object': (event: { object: PgObjectStmt }) => void
-  'name-collision': (event: { object: PgObjectStmt }) => void
-  'plugin:statements': (event: { plugin: Plugin }) => void
-  'parser:skip-column': (event: { columnDef: ColumnDef }) => void
-  'parser:unhandled-statement': (event: { query: string; node: Node }) => void
-  'migrate-start': () => void
-  'generate-start': () => void
-  'generate-end': () => void
-  'pg-schema-diff:apply': (event: { proc: ChildProcess }) => void
+type EventMap = {
+  connecting: [options: ConnectOptions]
+  'create-database': [dbname: string]
+  'load-config': [event: { configFilePath: string }]
+  'unsupported-type': [event: { typeOid: number; typeName: string }]
+  'unsupported-object': [event: { object: PgObjectStmt }]
+  'create-object': [event: { object: PgObjectStmt }]
+  'update-object': [event: { object: PgObjectStmt }]
+  'name-collision': [event: { object: PgObjectStmt }]
+  'plugin:statements': [event: { plugin: Plugin }]
+  'parser:skip-column': [event: { columnDef: ColumnDef }]
+  'parser:unhandled-statement': [event: { query: string; node: Node }]
+  'migrate-start': []
+  'generate-start': []
+  'generate-end': []
+  'pg-schema-diff:apply': [event: { proc: ChildProcess }]
 }
 
-export const events = new EventEmitter() as StrictEventEmitter<
-  EventEmitter,
-  Events
->
+export const events = new EventEmitter<EventMap>()
 
 export function enableEventLogging(verbose?: boolean) {
   events.on('connecting', options => {
