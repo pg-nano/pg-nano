@@ -30,6 +30,10 @@ export function isLocalHost(host: string): boolean {
     return true
   }
 
+  if (process.env.DEV_CONTAINER === 'pg-nano' && host === 'postgres') {
+    return true
+  }
+
   if (net.isIP(host)) {
     for (const line of readHostsFile()) {
       if (/^(127\.0\.0\.1|::1)/.test(line.trim())) {
