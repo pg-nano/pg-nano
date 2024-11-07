@@ -173,6 +173,19 @@ export async function parseObjectStatements(
             for (const key of $(elt).keys!) {
               primaryKeyColumns.push($(key).sval)
             }
+          } else if (contype === ConstrType.CONSTR_FOREIGN) {
+            const { pktable, fk_attrs = [] } = $(elt)
+            if (!pktable) {
+              continue
+            }
+            for (const attr of fk_attrs) {
+              const column = columns.find(c => c.name === attr.String.sval)
+              if (column) {
+                column.refs!.push(
+                  new SQLIdentifier(pktable.relname, pktable.schemaname),
+                )
+              }
+            }
           }
         }
       }
