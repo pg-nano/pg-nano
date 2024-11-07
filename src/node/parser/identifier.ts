@@ -16,8 +16,8 @@ export class SQLIdentifier {
   /**
    * Exists if referencing an array type. One element indicates a 1-dimensional
    * array, two elements indicates a 2-dimensional array, etc. If a dimension is
-   * null, then the array is unbounded in that dimension. Otherwise, the value
-   * is the upper bound of the array in that dimension.
+   * `-1` or `null`, then the array is unbounded in that dimension. Otherwise,
+   * the value is the upper bound of the array in that dimension.
    */
   public arrayBounds?: (number | null)[]
 
@@ -60,7 +60,11 @@ export class SQLIdentifier {
       : ''
 
     const arrayBounds = this.arrayBounds
-      ? sql.unsafe(this.arrayBounds.map(bound => `[${bound ?? ''}]`).join(''))
+      ? sql.unsafe(
+          this.arrayBounds
+            .map(bound => `[${bound === -1 ? '' : bound ?? ''}]`)
+            .join(''),
+        )
       : ''
 
     if (typeModifiers || arrayBounds) {
