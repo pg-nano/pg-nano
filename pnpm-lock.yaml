@@ -17,8 +17,8 @@ importers:
         specifier: workspace:^
         version: link:packages/libpq
       '@pg-nano/pg-parser':
-        specifier: ^16.1.4
-        version: 16.1.4
+        specifier: ^16.1.5
+        version: 16.1.5
       '@pg-nano/pg-schema-diff':
         specifier: workspace:^
         version: link:packages/pg-schema-diff
@@ -481,8 +481,8 @@ packages:
     resolution: {integrity: sha512-oGB+UxlgWcgQkgwo8GcEGwemoTFt3FIO9ababBmaGwXIoBKZ+GTy0pP185beGg7Llih/NSHSV2XAs1lnznocSg==}
     engines: {node: '>= 8'}
 
-  '@pg-nano/pg-parser@16.1.4':
-    resolution: {integrity: sha512-gzzTZY5LZJBagKCThjeddbzURYo060swTLnTb5iqEMXAk2PJvkgBnyqThIGU9uOvB+WmO2nIXnnNSAMqAUNqXQ==}
+  '@pg-nano/pg-parser@16.1.5':
+    resolution: {integrity: sha512-RivZFsbNuE15wJGSZ98aCle6Lp7ZmgCBNkgQ5BJPTc158uszcSPZKl6eLHlAijEkQBQTpN5YaxfRBxs7nCw7pA==}
     engines: {node: '>=16'}
 
   '@pkgjs/parseargs@0.11.0':
@@ -1703,7 +1703,7 @@ snapshots:
       '@nodelib/fs.scandir': 2.1.5
       fastq: 1.17.1
 
-  '@pg-nano/pg-parser@16.1.4':
+  '@pg-nano/pg-parser@16.1.5':
     dependencies:
       bindings: 1.5.0
       node-addon-api: 8.2.1
