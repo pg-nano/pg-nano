@@ -23,9 +23,9 @@ type EventMap = {
   'plugin:statements': [event: { plugin: Plugin }]
   'parser:skip-column': [event: { columnDef: ColumnDef }]
   'parser:unhandled-statement': [event: { query: string; node: Node }]
-  'migrate-start': []
-  'generate-start': []
-  'generate-end': []
+  'migrate:start': []
+  'generate:start': []
+  'generate:end': []
   'pg-schema-diff:apply': [event: { proc: ChildProcess }]
 }
 
@@ -120,15 +120,15 @@ export function enableEventLogging(verbose?: boolean) {
     dump(node)
   })
 
-  events.on('migrate-start', () => {
+  events.on('migrate:start', () => {
     log('Migrating database...')
   })
 
-  events.on('generate-start', () => {
+  events.on('generate:start', () => {
     log('Generating type definitions...')
   })
 
-  events.on('generate-end', () => {
+  events.on('generate:end', () => {
     if (!process.env.DEBUG) {
       log.eraseLine()
     }
