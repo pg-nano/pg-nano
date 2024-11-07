@@ -169,9 +169,27 @@ export async function parseObjectStatements(
           })
         } else if ($.isConstraint(elt)) {
           const { contype } = $(elt)
+          console.dir(elt, { depth: null })
           if (contype === ConstrType.CONSTR_PRIMARY) {
             for (const key of $(elt).keys!) {
               primaryKeyColumns.push($(key).sval)
+            }
+          } else if (contype === ConstrType.CONSTR_FOREIGN) {
+            const { pktable, pk_attrs, fk_attrs = [] } = $(elt)
+            if (!pktable || !pk_attrs) {
+              continue
+            }
+            for (const attr of fk_attrs) {
+              const column = columns.find(c => c.name === attr.String.sval)
+              if (column) {
+                // column.refs
+              }
+            }
+            if (pktable) {
+              const column = columns.find(c => c.name === fk_attrs[0])
+              // refs.push(
+              //   new SQLIdentifier(pktable.relname, pktable.schemaname),
+              // )
             }
           }
         }

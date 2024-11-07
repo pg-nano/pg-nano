@@ -16,6 +16,7 @@ describe('migrate', () => {
       })
 
       await project.generate({ noEmit: true })
+      console.log(project.eventLog, { depth: null })
 
       project.writeFile(
         'sql/schema.sql',

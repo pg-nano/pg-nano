@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { PgResultError, sql } from 'pg-nano'
 import { map, memo, sift } from 'radashi'
-import type { Plugin } from '../config/plugin.js'
+import type { Plugin, SQLTemplate } from '../config/plugin.js'
 import { debug, traceChecks, traceDepends, traceParser } from '../debug.js'
 import type { Env } from '../env.js'
 import { events } from '../events.js'
@@ -218,26 +218,31 @@ export async function prepareDatabase(
                 object.query.lastIndexOf(')'),
               )
 
+          // If the primary key is being changed, we need to drop the constraint
+          // for the old primary key first.
+          let precondition: SQLTemplate | undefined
+
           if (/ primary key/i.test(colExpr)) {
             const oldPrimaryKey = await pg.queryValue<string>(sql`
-                SELECT c.conname
-                FROM pg_constraint c
-                JOIN pg_class t ON t.oid = c.conrelid
-                WHERE
-                  t.relname = ${object.id.nameVal}
-                  AND t.relnamespace = ${object.id.schemaVal}::regnamespace
-                  AND c.contype = 'p'
+              SELECT c.conname
+              FROM pg_constraint c
+              JOIN pg_class t ON t.oid = c.conrelid
+              WHERE
+                t.relname = ${object.id.nameVal}
+                AND t.relnamespace = ${object.id.schemaVal}::regnamespace
+                AND c.contype = 'p'
             `)
 
             if (oldPrimaryKey) {
-              await pg.query(sql`
+              precondition = sql`
                 ALTER TABLE ${object.id.toSQL()}
-                DROP CONSTRAINT ${sql.id(oldPrimaryKey)};
-              `)
+                DROP CONSTRAINT ${sql.id(oldPrimaryKey)} CASCADE;
+              `
             }
           }
 
           return sql`
+            ${precondition}
             ALTER TABLE ${object.id.toSQL()} ADD COLUMN ${sql.unsafe(colExpr)};
           `
         })
