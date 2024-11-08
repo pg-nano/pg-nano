@@ -60,7 +60,7 @@ export async function parseObjectStatements(
 
     const node = parseResult.stmts[0].stmt
 
-    const stmt: Omit<PgObjectStmt, 'id' | 'kind'> = {
+    const stmt: Omit<PgObjectStmt, 'id' | 'kind' | 'node'> = {
       query,
       line,
       file,
@@ -110,6 +110,7 @@ export async function parseObjectStatements(
 
       objects.push({
         kind: 'routine',
+        node: fn,
         id,
         params: inParams,
         returnType,
@@ -192,6 +193,7 @@ export async function parseObjectStatements(
 
       objects.push({
         kind: 'table',
+        node: node.CreateStmt,
         id,
         columns,
         primaryKeyColumns,
@@ -220,6 +222,7 @@ export async function parseObjectStatements(
       objects.push({
         kind: 'type',
         subkind: 'composite',
+        node: node.CompositeTypeStmt,
         id,
         columns,
         ...stmt,
@@ -233,6 +236,7 @@ export async function parseObjectStatements(
       objects.push({
         kind: 'type',
         subkind: 'enum',
+        node: node.CreateEnumStmt,
         id,
         labels,
         ...stmt,
@@ -260,6 +264,7 @@ export async function parseObjectStatements(
 
       objects.push({
         kind: 'view',
+        node: node.ViewStmt,
         id,
         refs: toUniqueIdList(
           refs.filter(
@@ -277,6 +282,7 @@ export async function parseObjectStatements(
 
       objects.push({
         kind: 'extension',
+        node: node.CreateExtensionStmt,
         id,
         ...stmt,
       })

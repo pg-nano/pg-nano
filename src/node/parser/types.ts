@@ -1,5 +1,14 @@
 import type { Field } from 'pg-native'
-import type { ColumnDef, FunctionParameter } from '../config/plugin.js'
+import type {
+  ColumnDef,
+  CompositeTypeStmt,
+  CreateEnumStmt,
+  CreateExtensionStmt,
+  CreateFunctionStmt,
+  CreateStmt,
+  FunctionParameter,
+  ViewStmt,
+} from '../config/plugin.js'
 import type { SQLIdentifier } from './identifier.js'
 
 export type PgObjectStmtKind<T = PgObjectStmt> = T extends PgObjectStmt
@@ -14,9 +23,10 @@ export type PgObjectStmt =
   | PgViewStmt
   | PgExtensionStmt
 
-interface IPgObjectStmt {
+interface IPgObjectStmt<TNode extends object> {
   kind: string
   id: SQLIdentifier
+  node: TNode
   query: string
   line: number
   file: string
@@ -43,7 +53,7 @@ export type PgColumnDef<
   node: TNode
 }
 
-export interface PgRoutineStmt extends IPgObjectStmt {
+export interface PgRoutineStmt extends IPgObjectStmt<CreateFunctionStmt> {
   kind: 'routine'
   params: PgParamDef[]
   returnType: SQLIdentifier | PgColumnDef<FunctionParameter>[] | undefined
@@ -51,28 +61,28 @@ export interface PgRoutineStmt extends IPgObjectStmt {
   isProcedure: boolean
 }
 
-export interface PgTableStmt extends IPgObjectStmt {
+export interface PgTableStmt extends IPgObjectStmt<CreateStmt> {
   kind: 'table'
   columns: PgColumnDef<ColumnDef>[]
   primaryKeyColumns: string[]
 }
 
-export interface PgTypeStmt extends IPgObjectStmt {
+export interface PgTypeStmt<TNode extends object> extends IPgObjectStmt<TNode> {
   kind: 'type'
   subkind: string
 }
 
-export interface PgEnumStmt extends PgTypeStmt {
+export interface PgEnumStmt extends PgTypeStmt<CreateEnumStmt> {
   subkind: 'enum'
   labels: string[]
 }
 
-export interface PgCompositeTypeStmt extends PgTypeStmt {
+export interface PgCompositeTypeStmt extends PgTypeStmt<CompositeTypeStmt> {
   subkind: 'composite'
   columns: PgColumnDef<ColumnDef>[]
 }
 
-export interface PgViewStmt extends IPgObjectStmt {
+export interface PgViewStmt extends IPgObjectStmt<ViewStmt> {
   kind: 'view'
   /**
    * References within the view's subquery to objects that aren't from the
@@ -82,6 +92,6 @@ export interface PgViewStmt extends IPgObjectStmt {
   fields: Field[] | null
 }
 
-export interface PgExtensionStmt extends IPgObjectStmt {
+export interface PgExtensionStmt extends IPgObjectStmt<CreateExtensionStmt> {
   kind: 'extension'
 }
