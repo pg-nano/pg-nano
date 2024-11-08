@@ -13,6 +13,7 @@ import {
 } from '../inspector/diff.js'
 import type { PgBaseType } from '../inspector/types.js'
 import { linkObjectStatements } from '../linker/link.js'
+import { extractColumnDefinition } from '../parser/column.js'
 import type { SQLIdentifier } from '../parser/identifier.js'
 import { parseObjectStatements } from '../parser/parse.js'
 import type { PgObjectStmt, PgObjectStmtKind } from '../parser/types.js'
@@ -200,25 +201,13 @@ export async function prepareDatabase(
           const alterStmts = await map(addedColumns, async name => {
             const index = object.columns.findIndex(c => c.name === name)
             const column = object.columns[index]
-
-            const siblingIndex = index + 1
-            const siblingNode =
-              siblingIndex < object.columns.length
-                ? object.columns[siblingIndex].node
-                : undefined
-
-            const colExpr = object.query
-              .slice(
-                column.node.location,
-                siblingNode?.location ?? object.query.lastIndexOf(')'),
-              )
-              .replace(/,?\s*$/, '')
+            const columnDDL = extractColumnDefinition(column, object)
 
             // If the primary key is being changed, we need to drop the constraint
             // for the old primary key first.
             let precondition: SQLTemplate | undefined
 
-            if (/ primary key/i.test(colExpr)) {
+            if (/ primary key/i.test(columnDDL)) {
               const oldPrimaryKey = await pg.queryValue<string>(sql`
                 SELECT c.conname
                 FROM pg_constraint c
@@ -238,7 +227,7 @@ export async function prepareDatabase(
             }
 
             const addColumnStmt = sql`
-              ALTER TABLE ${object.id.toSQL()} ADD COLUMN ${sql.unsafe(colExpr)};
+              ALTER TABLE ${object.id.toSQL()} ADD COLUMN ${sql.unsafe(columnDDL)};
             `
 
             return sql`
