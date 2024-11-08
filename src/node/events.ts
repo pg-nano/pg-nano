@@ -81,6 +81,10 @@ export function enableEventLogging(verbose?: boolean) {
     log.magenta('Updating %s %s', object.kind, object.id.toQualifiedName())
   })
 
+  events.on('prepare:mutation', ({ query }) => {
+    debug('Applying mutation', query)
+  })
+
   events.on('name-collision', ({ object }) => {
     log.warn(
       '%s name is already in use:',
