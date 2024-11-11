@@ -20,8 +20,8 @@ importers:
         specifier: ^16.1.5
         version: 16.1.5
       '@pg-nano/pg-schema-diff':
-        specifier: workspace:^
-        version: link:packages/pg-schema-diff
+        specifier: ^0.7.1
+        version: 0.7.1
       bundle-require:
         specifier: ^5.0.0
         version: 5.0.0(esbuild@0.23.1)
@@ -481,6 +481,10 @@ packages:
   '@pg-nano/pg-parser@16.1.5':
     resolution: {integrity: sha512-RivZFsbNuE15wJGSZ98aCle6Lp7ZmgCBNkgQ5BJPTc158uszcSPZKl6eLHlAijEkQBQTpN5YaxfRBxs7nCw7pA==}
     engines: {node: '>=16'}
+
+  '@pg-nano/pg-schema-diff@0.7.1':
+    resolution: {integrity: sha512-xNWoJg2omf49fQjVAWlRs+keX2yNPzTxot4/kTGSzZnsL5twGoQ5AciEtgmezQvHy+WMPQODreb2+iiJ8Fralg==}
+    hasBin: true
 
   '@pkgjs/parseargs@0.11.0':
     resolution: {integrity: sha512-+1VkjdD0QBLPodGrJUeqarH8VAIvQODIbwh9XpP5Syisf7YoQgsJKPNFoqqLQlu+VQ/tVSshMR6loPMn8U+dPg==}
@@ -1702,6 +1706,8 @@ snapshots:
       bindings: 1.5.0
       node-addon-api: 8.2.1
       prebuild-install: 7.1.2
+
+  '@pg-nano/pg-schema-diff@0.7.1': {}
 
   '@pkgjs/parseargs@0.11.0':
     optional: true
