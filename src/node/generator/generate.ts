@@ -507,14 +507,16 @@ export async function generate(
         ),
       )
 
-      const jsArgEntries = argNames?.map((name, index) => {
-        const optionalToken =
-          index >= routine.paramTypes.length - routine.numDefaultParams
-            ? '?'
-            : ''
+      const jsArgEntries = argNames?.some(Boolean)
+        ? argNames.map((name, index) => {
+            const optionalToken =
+              index >= routine.paramTypes.length - routine.numDefaultParams
+                ? '?'
+                : ''
 
-        return `${formatFieldName(name)}${optionalToken}: ${jsArgTypes[index]}`
-      })
+            return `${name === '' ? '$' + (index + 1) : formatFieldName(name)}${optionalToken}: ${jsArgTypes[index]}`
+          })
+        : null
 
       /** When true, a row type is used in the return type, either with or without SETOF. */
       let returnsRow = false
