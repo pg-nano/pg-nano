@@ -174,7 +174,6 @@ export const Foo = (options?: SchemaOptions) =>
       tags: Type.Optional(Type.Array(Type.String())),
       matrix: Type.Optional(Type.Array(Type.Number())),
       metadata: Type.Optional(Type.Never()),
-      colorPreference: Type.Optional(Type.String()),
       binaryData: Type.Optional(Type.Never()),
       coordinates: Type.Optional(Point),
       ipAddress: Type.Optional(Type.String()),
@@ -187,6 +186,7 @@ export const Foo = (options?: SchemaOptions) =>
       status: Type.Optional(StatusType),
       address: Type.Optional(AddressType),
       productAttributes: Type.Optional(Type.Unknown()),
+      colorPreference: Type.Optional(Type.String()),
     },
     options,
   )
@@ -208,7 +208,6 @@ Foo.InsertParams = (options?: SchemaOptions) =>
       tags: Type.Optional(Type.Array(Type.String())),
       matrix: Type.Optional(Type.Array(Type.Number())),
       metadata: Type.Optional(Type.Never()),
-      colorPreference: Type.Optional(Type.String()),
       binaryData: Type.Optional(Type.Never()),
       coordinates: Type.Optional(Point),
       ipAddress: Type.Optional(Type.String()),
@@ -221,6 +220,7 @@ Foo.InsertParams = (options?: SchemaOptions) =>
       status: Type.Optional(StatusType),
       address: Type.Optional(AddressType),
       productAttributes: Type.Optional(Type.Unknown()),
+      colorPreference: Type.Optional(Type.String()),
     },
     options,
   )
