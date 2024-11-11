@@ -24,7 +24,7 @@ export async function* parseMigrationPlan(stdout: Readable) {
         const title = line.replace(/^#+\s*|\s*#+$/g, '')
 
         // Skip the review plan section.
-        if (title === 'Review plan') {
+        if (title === 'Review plan' || title === 'Generated plan') {
           skipped = true
           continue
         }
