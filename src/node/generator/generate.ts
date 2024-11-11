@@ -436,6 +436,11 @@ export async function generate(
     if (type) {
       jsType = type.jsType
 
+      // Let bigint parameters accept plain numbers.
+      if (paramKind !== PgParamKind.Out && jsType === 'BigInt') {
+        jsType += ' | number'
+      }
+
       if (isBaseType(type)) {
         const match = jsType.match(builtinTypeRegex)
         if (match) {
