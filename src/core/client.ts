@@ -76,7 +76,7 @@ export interface ClientConfig {
    * Executes the given SQL on each connection, immediately after it is
    * established, before any queries are run.
    */
-  postConnectDDL: SQLTemplate | null
+  postConnectQuery: SQLTemplate | null
 
   /**
    * Text parsers for custom types. This can be used to override or extend the
@@ -124,7 +124,7 @@ export class Client {
     maxRetries = Number.POSITIVE_INFINITY,
     idleTimeout = 30e3,
     fieldCase = FieldCase.camel,
-    postConnectDDL = null,
+    postConnectQuery = null,
     textParsers = null,
     debug = false,
   }: Partial<ClientConfig> = {}) {
@@ -136,7 +136,7 @@ export class Client {
       maxRetries,
       idleTimeout,
       fieldCase,
-      postConnectDDL,
+      postConnectQuery,
       textParsers,
       debug,
     }
@@ -222,8 +222,8 @@ export class Client {
           ))
         }
 
-        if (this.config.postConnectDDL) {
-          await connection.query(QueryType.void, this.config.postConnectDDL)
+        if (this.config.postConnectQuery) {
+          await connection.query(QueryType.void, this.config.postConnectQuery)
         }
 
         const index = this.pool.indexOf(connecting)
