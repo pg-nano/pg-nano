@@ -5,3 +5,6 @@ test/__fixtures__/*/
 
 # bundle-require
 *.bundled_*.mjs
+
+# indo
+.indo.json
