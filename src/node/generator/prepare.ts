@@ -1,8 +1,9 @@
+import { scanSync } from '@pg-nano/pg-parser'
 import fs from 'node:fs'
 import path from 'node:path'
 import { PgResultError, sql } from 'pg-nano'
 import { map, memo, sift } from 'radashi'
-import type { Plugin, SQLTemplate } from '../config/plugin.js'
+import { select, type Plugin, type SQLTemplate } from '../config/plugin.js'
 import { debug, traceChecks, traceDepends, traceParser } from '../debug.js'
 import type { Env } from '../env.js'
 import { events } from '../events.js'
@@ -16,7 +17,11 @@ import { linkObjectStatements } from '../linker/link.js'
 import { extractColumnDefinition } from '../parser/column.js'
 import type { SQLIdentifier } from '../parser/identifier.js'
 import { parseObjectStatements } from '../parser/parse.js'
-import type { PgObjectStmt, PgObjectStmtKind } from '../parser/types.js'
+import type {
+  PgObjectStmt,
+  PgObjectStmtKind,
+  PgRoutineStmt,
+} from '../parser/types.js'
 import { cwdRelative } from '../util/path.js'
 
 export async function prepareDatabase(
@@ -177,6 +182,14 @@ export async function prepareDatabase(
           }
         }
       } else if (object.kind === 'routine') {
+        const lang = extractRoutineLanguage(object)
+        if (lang === 'sql') {
+          const body = extractRoutineBody(object)
+          if (body) {
+            console.log(object.id.toQualifiedName(), scanSync(body))
+          }
+        }
+
         if (await hasRoutineSignatureChanged(pg, object)) {
           events.emit('update-object', { object })
           query = sql`
@@ -419,4 +432,31 @@ function throwFormattedQueryError(
   error.message = message
   error.stack = message + stack
   throw error
+}
+
+function extractRoutineLanguage(object: PgRoutineStmt) {
+  const languageNode = object.node.options?.find(
+    option => option.DefElem.defname === 'language',
+  )?.DefElem
+  if (!languageNode) {
+    return null
+  }
+
+  return select(languageNode, 'arg.sval') as string
+}
+
+function extractRoutineBody(object: PgRoutineStmt) {
+  const bodyNode = object.node.options?.find(
+    option => option.DefElem.defname === 'as',
+  )?.DefElem
+  if (!bodyNode) {
+    return null
+  }
+
+  const bodyList = select(bodyNode, 'arg.items')
+  if (!bodyList) {
+    return null
+  }
+
+  return select(bodyList[0], 'sval') as string
 }
