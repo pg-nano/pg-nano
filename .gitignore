@@ -8,3 +8,4 @@ test/__fixtures__/*/
 
 # indo
 .indo.json
+/vendor/
