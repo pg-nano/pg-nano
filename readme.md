@@ -258,23 +258,21 @@ pnpm dev
 
 ### C++ development
 
-If you're editing C++ code in either `packages/libpq` or `packages/pg-parser`, you'll want to have [compiledb](https://github.com/nickdiego/compiledb) installed and the [clangd extension](https://marketplace.visualstudio.com/items?itemName=llvm-vs-code-extensions.vscode-clangd) in VSCode. This enables the `clangd` language server for features like autocomplete, static analysis, and code navigation.
+If you're editing C++ code in `packages/libpq`, you'll want to have [compiledb](https://github.com/nickdiego/compiledb) installed and the [clangd extension](https://marketplace.visualstudio.com/items?itemName=llvm-vs-code-extensions.vscode-clangd) in VSCode. This enables the `clangd` language server for features like autocomplete, static analysis, and code navigation.
 
 ```sh
 brew install compiledb
 ```
 
-Both `libpq` and `pg-parser` are compiled on install. If you make changes, you'll need one of the following commands to recompile.
+The `libpq` package is compiled on install. If you make changes, you'll need one of the following commands to recompile. You must run these commands from the `./packages/libpq` directory.
 
 ```sh
-# Must be run from ./packages/libpq or ./packages/pg-parser
+# Rebuilds the package
 pnpm build
 
 # Automatically rebuilds on file changes
 pnpm dev
 ```
-
-**⚠️ Windows support:** The `packages/pg-parser/binding.gyp` file is currently broken for Windows builds. Any help would be appreciated!
 
 ## License
 
