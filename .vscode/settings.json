@@ -22,25 +22,9 @@
   "clangd.arguments": [
     "--compile-commands-dir=${workspaceFolder}/packages/libpq/build"
   ],
-  "pgFormatter.noSpaceFunction": false,
-  "pgFormatter.spaces": 2,
-  "pgFormatter.noExtraLine": true,
-  "pgFormatter.keepNewline": true,
   "[sql]": {
     "editor.defaultFormatter": "dorzey.vscode-sqlfluff"
   },
-  "sqlLanguageServer.connections": [
-    {
-      "name": "demos/exhaustive",
-      "adapter": "postgres",
-      "host": "localhost",
-      "port": 5432,
-      "user": "postgres",
-      "password": "postgres",
-      "database": "postgres",
-      "projectPaths": ["${workspaceFolder}/demos/exhaustive"]
-    }
-  ],
   "autoHide.autoHidePanel": false,
   "typescript.preferences.importModuleSpecifierEnding": "js"
 }

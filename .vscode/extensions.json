@@ -2,6 +2,8 @@
   "recommendations": [
     "biomejs.biome",
     "stkb.rewrap",
-    "jtladeiras.vscode-inline-sql"
+    "jtladeiras.vscode-inline-sql",
+    "dorzey.vscode-sqlfluff",
+    "llvm-vs-code-extensions.vscode-clangd"
   ]
 }
