@@ -16,9 +16,6 @@
 [submodule "packages/libpq"]
 	path = packages/libpq
 	url = https://github.com/pg-nano/node-libpq
-[submodule "packages/pg-schema-diff"]
-	path = packages/pg-schema-diff
-	url = https://github.com/pg-nano/pg-schema-diff
 [submodule "packages/postgres-composite"]
 	path = packages/postgres-composite
 	url = https://github.com/pg-nano/postgres-composite
