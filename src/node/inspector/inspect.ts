@@ -103,7 +103,7 @@ export function inspectBaseTypes(client: Client, signal?: AbortSignal) {
     FROM pg_catalog.pg_type t
     JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace
     WHERE t.typtype IN ('b', 'p', 'r')
-      AND t.typarray <> 0
+      AND (t.typarray <> 0 OR t.typtype = 'p')
       AND t.typnamespace = 'pg_catalog'::regnamespace
   `
 
