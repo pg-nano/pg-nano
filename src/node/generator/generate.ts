@@ -477,6 +477,7 @@ export async function generate(
       if (
         options?.paramKind != null &&
         options.paramKind !== PgParamKind.Out &&
+        options.paramKind !== PgParamKind.Table &&
         jsType === 'BigInt'
       ) {
         jsType += ' | number'
