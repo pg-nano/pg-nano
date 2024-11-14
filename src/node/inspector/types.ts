@@ -4,6 +4,7 @@ export type PgField = {
   name: string
   typeOid: number
   hasNotNull: boolean
+  ndims?: number
 }
 
 export enum PgIdentityKind {
@@ -171,12 +172,12 @@ export type PgTypeContext = {
    * The kind of parameter this type represents, if this type is a parameter.
    * This includes result parameters (a.k.a. OUT parameters).
    */
-  paramKind?: PgParamKind | null
+  paramKind?: PgParamKind
   /**
    * The index of the parameter this type represents, if this type is a
    * parameter.
    */
-  paramIndex?: number | null
+  paramIndex?: number
 }
 
 export type PgFieldContext = {
@@ -197,6 +198,10 @@ export type PgFieldContext = {
    * The type of the field.
    */
   fieldType: PgType
+  /**
+   * The depth of array nesting for this field.
+   */
+  ndims?: number
   /**
    * The row type that `this.field` belongs to, if `this.container` is a function.
    */

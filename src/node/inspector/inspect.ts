@@ -138,7 +138,8 @@ export function inspectCompositeTypes(client: Client, signal?: AbortSignal) {
       json_build_object(
         'name', a.attname,
         'typeOid', a.atttypid::int,
-        'hasNotNull', a.attnotnull
+        'hasNotNull', a.attnotnull,
+        'ndims', a.attndims
       )
       ORDER BY a.attnum
     )
@@ -174,7 +175,8 @@ export function inspectTables(client: Client, signal?: AbortSignal) {
         'typeOid', a.atttypid::int,
         'hasNotNull', a.attnotnull,
         'hasDefault', a.atthasdef,
-        'identity', a.attidentity
+        'identity', a.attidentity,
+        'ndims', a.attndims
       )
       ORDER BY a.attnum
     )

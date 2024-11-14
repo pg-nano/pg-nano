@@ -2,14 +2,14 @@ import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { snakeToCamel, sql } from 'pg-nano'
-import { camel, map, mapify, pascal, sift } from 'radashi'
+import { camel, map, mapify, pascal, shake, sift } from 'radashi'
 import stringArgv from 'string-argv'
 import type {
   GenerateContext,
   Plugin,
   PluginContext,
 } from '../config/plugin.js'
-import { traceParser } from '../debug.js'
+import { traceParser, traceRender } from '../debug.js'
 import type { Env } from '../env.js'
 import { events } from '../events.js'
 import { inspectBaseTypes, inspectNamespaces } from '../inspector/inspect.js'
@@ -110,8 +110,8 @@ export async function generate(
   // Step 1: Collect type information from the database.
   const namespaces = await inspectNamespaces(pg, options.signal)
 
-  const typesByOid = new Map<number, PgType>()
-  const typesByName = new Map<string, PgType>()
+  const typesByOid = new Map<number, Required<PgType>>()
+  const typesByName = new Map<string, Required<PgType>>()
 
   const registerType = (
     object: PgBaseType | PgEnumType | PgCompositeType | PgTable,
@@ -120,7 +120,7 @@ export async function generate(
   ) => {
     const oid = isArray ? object.arrayOid : object.oid
     const suffix = isArray ? '[]' : ''
-    const type: PgType = {
+    const type: Required<PgType> = {
       object: object as any,
       jsType: (jsType ?? pascal(object.name)) + suffix,
       isArray,
@@ -232,14 +232,10 @@ export async function generate(
         ${type.fields
           .map(field => {
             const jsName = formatFieldName(field.name)
-            const jsType = renderTypeReference(
-              field.typeOid,
-              type,
-              null,
-              null,
-              field.name,
+            const jsType = renderTypeReference(field.typeOid, type, {
+              fieldName: field.name,
               field,
-            )
+            })
 
             const optionalToken = field.hasNotNull ? '' : '?'
 
@@ -258,14 +254,11 @@ export async function generate(
         ${table.fields
           .map(field => {
             const jsName = formatFieldName(field.name)
-            const jsType = renderTypeReference(
-              field.typeOid,
-              table,
-              PgParamKind.Out,
-              null,
-              field.name,
+            const jsType = renderTypeReference(field.typeOid, table, {
+              paramKind: PgParamKind.Out,
+              fieldName: field.name,
               field,
-            )
+            })
 
             const optionalToken = field.hasNotNull ? '' : '?'
 
@@ -279,14 +272,11 @@ export async function generate(
             .filter(field => field.identity !== PgIdentityKind.Always)
             .map(field => {
               const jsName = formatFieldName(field.name)
-              const jsType = renderTypeReference(
-                field.typeOid,
-                table,
-                PgParamKind.In,
-                null,
-                field.name,
+              const jsType = renderTypeReference(field.typeOid, table, {
+                paramKind: PgParamKind.In,
+                fieldName: field.name,
                 field,
-              )
+              })
 
               const optionalToken =
                 field.hasNotNull && !field.hasDefault ? '' : '?'
@@ -301,7 +291,11 @@ export async function generate(
               const jsName = formatFieldName(fieldName)
               const field = table.fields.find(f => f.name === fieldName)!
 
-              return `${jsName}: ${renderTypeReference(field.typeOid, table, PgParamKind.In, null, field.name, field)}`
+              return `${jsName}: ${renderTypeReference(field.typeOid, table, {
+                paramKind: PgParamKind.In,
+                fieldName: field.name,
+                field,
+              })}`
             })
             .join('\n')}
         }
@@ -358,10 +352,12 @@ export async function generate(
     }
 
     if (type && (isCompositeType(type) || isTableType(type))) {
-      const jsTypeId = 't.' + type.object.name
-
-      if (type?.isArray) {
-        return 't.array(' + jsTypeId + ')'
+      let jsTypeId = 't.' + type.object.name
+      if (type.isArray) {
+        const ndims = fieldContext.ndims ?? 1
+        for (let i = 0; i < ndims; i++) {
+          jsTypeId = 't.array(' + jsTypeId + ')'
+        }
       }
       return jsTypeId
     }
@@ -374,6 +370,7 @@ export async function generate(
       object.fields.map(field => {
         const type = renderFieldType(field.typeOid, {
           fieldName: field.name,
+          ndims: field.ndims,
           container: object,
         })
         if (type) {
@@ -405,10 +402,13 @@ export async function generate(
   const renderTypeReference = (
     oid: number,
     container: Exclude<PgObject, PgEnumType>,
-    paramKind?: PgParamKind | null,
-    paramIndex?: number | null,
-    fieldName?: string,
-    field?: PgField | PgTableField,
+    options?: {
+      paramKind?: PgParamKind
+      paramIndex?: number
+      fieldName?: string
+      field?: PgField | PgTableField
+      ndims?: number
+    },
     skipPlugins?: boolean,
   ) => {
     let type = typesByOid.get(oid)
@@ -418,18 +418,15 @@ export async function generate(
         ...generateContext,
         type: type ?? typesByName.get('unknown')!,
         container,
-        field,
-        fieldName,
-        paramKind,
-        paramIndex,
-        renderTypeReference: (oid, newParamKind = paramKind) =>
+        ...options,
+        renderTypeReference: (oid, newParamKind) =>
           renderTypeReference(
             oid,
             container,
-            newParamKind,
-            paramIndex,
-            fieldName,
-            field,
+            {
+              ...options,
+              paramKind: newParamKind ?? options?.paramKind,
+            },
             true,
           ),
       }
@@ -438,6 +435,18 @@ export async function generate(
         const result = plugin.mapTypeReference(pluginContext, env.config)
         if (result) {
           if (result.lang === 'ts') {
+            if (traceRender.enabled) {
+              traceRender(
+                'renderTypeReference',
+                shake({
+                  oid,
+                  type,
+                  jsType: result.type,
+                  options,
+                  plugin: plugin.name,
+                }),
+              )
+            }
             return result.type
           }
 
@@ -457,8 +466,12 @@ export async function generate(
     if (type) {
       jsType = type.jsType
 
-      // Let bigint parameters accept plain numbers.
-      if (paramKind !== PgParamKind.Out && jsType === 'BigInt') {
+      // Let bigint input parameters accept plain numbers.
+      if (
+        options?.paramKind != null &&
+        options.paramKind !== PgParamKind.Out &&
+        jsType === 'BigInt'
+      ) {
         jsType += ' | number'
       }
 
@@ -491,16 +504,29 @@ export async function generate(
             container.schema,
           )
           if (type.isArray) {
-            jsType += '[]'
+            const ndims = options?.ndims ?? options?.field?.ndims ?? 1
+            jsType += '[]'.repeat(ndims)
           }
         }
-        if (isTableType(type) && paramKind === PgParamKind.In) {
+        if (isTableType(type) && options?.paramKind === PgParamKind.In) {
           jsType = jsType.replace(/(?=\[)|$/, '.InsertParams')
         }
       }
     } else {
       jsType = 'unknown'
       unsupportedTypes.add(oid)
+    }
+
+    if (traceRender.enabled && !skipPlugins) {
+      traceRender(
+        'renderTypeReference',
+        shake({
+          oid,
+          type,
+          jsType,
+          options,
+        }),
+      )
     }
 
     return jsType
@@ -514,18 +540,18 @@ export async function generate(
     for (const routine of nsp.routines) {
       const jsName = camel(routine.name)
 
+      traceRender('renderRoutine', routine)
+
       const argNames = routine.paramNames
         ?.slice(0, routine.paramTypes.length)
         .map(name => name.replace(/^p_/, ''))
 
       const jsArgTypes = routine.paramTypes.map((typeOid, index) =>
-        renderTypeReference(
-          typeOid,
-          routine,
-          routine.paramKinds?.[index] ?? PgParamKind.In,
-          index,
-          argNames?.[index] ?? `$${index + 1}`,
-        ),
+        renderTypeReference(typeOid, routine, {
+          paramKind: routine.paramKinds?.[index] ?? PgParamKind.In,
+          paramIndex: index,
+          fieldName: argNames?.[index] ?? `$${index + 1}`,
+        }),
       )
 
       const jsArgEntries = argNames?.some(Boolean)
@@ -556,11 +582,9 @@ export async function generate(
       if (!stmt.returnType) {
         jsResultType = 'void'
       } else if (stmt.returnType instanceof SQLIdentifier) {
-        jsResultType = renderTypeReference(
-          routine.returnTypeOid,
-          routine,
-          PgParamKind.Out,
-        )
+        jsResultType = renderTypeReference(routine.returnTypeOid, routine, {
+          paramKind: PgParamKind.Out,
+        })
 
         const type = typesByOid.get(routine.returnTypeOid)
         if (type && type.object.type !== PgObjectType.Base) {
@@ -576,6 +600,7 @@ export async function generate(
               if (fieldType && 'fields' in fieldType.object) {
                 const type = renderFieldType(field.typeOid, {
                   fieldName: field.name,
+                  ndims: field.ndims,
                   container: routine,
                   paramKind: PgParamKind.Out,
                   rowType: fieldType.object,
@@ -594,12 +619,16 @@ export async function generate(
             const fieldType = types.find(
               type =>
                 type.object.name === field.type.name &&
-                type.object.schema === (field.type.schema ?? routine.schema),
+                (type.object.type === PgObjectType.Base
+                  ? !field.type.schema || field.type.schema === 'pg_catalog'
+                  : type.object.schema === (field.type.schema ?? 'public')) &&
+                type.isArray === !!field.type.arrayBounds,
             )
 
             if (fieldType && 'fields' in fieldType.object) {
               const type = renderFieldType(fieldType.object.oid, {
                 fieldName: field.name,
+                ndims: field.type.arrayBounds?.length,
                 container: routine,
                 paramKind: PgParamKind.Table,
               })
@@ -610,13 +639,11 @@ export async function generate(
 
             const jsName = formatFieldName(field.name)
             const jsType = fieldType
-              ? renderTypeReference(
-                  fieldType.object.oid,
-                  routine,
-                  PgParamKind.Table,
-                  null,
-                  field.name,
-                )
+              ? renderTypeReference(fieldType.object.oid, routine, {
+                  paramKind: PgParamKind.Table,
+                  fieldName: field.name,
+                  ndims: field.type.arrayBounds?.length,
+                })
               : 'unknown'
 
             return `${jsName}: ${jsType}`
