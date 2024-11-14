@@ -6,6 +6,14 @@ export type { ConnectOptions, MigrationHazardType }
 
 export type FieldCase = 'camel' | 'preserve'
 
+export type FunctionType =
+  | 'value'
+  | 'value?'
+  | 'row'
+  | 'row?'
+  | 'value-list'
+  | 'row-list'
+
 export interface UserConfig {
   dev: {
     /**
@@ -91,6 +99,12 @@ export interface UserConfig {
      * to disk.
      */
     postGenerateScript?: string
+    /**
+     * Assign a “function type” to each function based on its name. This
+     * determines the runtime expectations of a function. The keys are regular
+     * expressions and the values are the function types.
+     */
+    functionPatterns?: Record<string, FunctionType>
   }
   plugins?: Plugin[]
 }

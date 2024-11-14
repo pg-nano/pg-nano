@@ -1,7 +1,9 @@
+import os from 'node:os'
 import path from 'node:path'
-import os from 'os'
 import { parseConnectionString, stringifyConnectOptions } from 'pg-native'
-import type { ConnectOptions, UserConfig } from './configTypes'
+import { noop, pascal } from 'radashi'
+import type { ConnectOptions, FunctionType, UserConfig } from './configTypes'
+import type { PgRoutineBindingFunction } from './plugin.js'
 
 export type ResolvedConfig = ReturnType<typeof resolveConfig>
 
@@ -71,6 +73,50 @@ export function resolveConfig(
         root,
         userConfig?.generate?.pluginSqlDir ?? 'sql/nano_plugins',
       ),
+      functionPatterns: compileFunctionPatterns(
+        userConfig?.generate?.functionPatterns ?? {},
+      ),
     },
+  }
+}
+
+function compileFunctionPatterns(typesByPattern: Record<string, FunctionType>) {
+  const matchers = Object.keys(typesByPattern).map(pattern => {
+    let flags: string | undefined
+    if (pattern[0] === '/') {
+      const regexEnd = pattern.lastIndexOf('/')
+      if (regexEnd === 0) {
+        throw new Error(`Invalid function pattern: ${pattern}`)
+      }
+      pattern = pattern.slice(1, regexEnd)
+      flags = pattern.slice(regexEnd + 1)
+    }
+    return new RegExp(pattern, flags)
+  })
+  if (matchers.length === 0) {
+    return noop
+  }
+  const types = Object.values(typesByPattern)
+  const validTypes = [
+    'value',
+    'value?',
+    'row',
+    'row?',
+    'value-list',
+    'row-list',
+  ]
+  types.forEach((type, index) => {
+    if (!validTypes.includes(type)) {
+      throw new Error(
+        `Function pattern ${matchers[index]} has invalid type: ${type}`,
+      )
+    }
+  })
+  return (name: string) => {
+    const index = matchers.findIndex(matcher => matcher.test(name))
+    if (index >= 0) {
+      const type = types[index]
+      return `bindQuery${pascal(type.replace('?', 'OrNull'))}` as PgRoutineBindingFunction
+    }
   }
 }

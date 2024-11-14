@@ -652,6 +652,7 @@ export async function generate(
 
       const bindingFunction =
         routine.bindingFunction ??
+        env.config.generate.functionPatterns?.(routine.name) ??
         (returnsRow
           ? routine.returnSet
             ? 'bindQueryRowList'
