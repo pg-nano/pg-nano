@@ -1,5 +1,4 @@
 import type { Options as BundleRequireOptions } from 'bundle-require'
-import { watch } from 'chokidar'
 import mri from 'mri'
 import path from 'node:path'
 import { Client } from 'pg-nano'
@@ -108,16 +107,6 @@ async function loadEnv(cwd: string, options: EnvOptions) {
     untrackedDir,
     schemaDir,
     verbose: options.verbose,
-    watcher: options.watch
-      ? watch([...config.schema.include, ...userConfigDependencies], {
-          cwd: root,
-          ignored: [
-            ...config.schema.exclude,
-            config.generate.pluginSqlDir,
-            '**/.pg-nano/**',
-          ],
-        })
-      : undefined,
     get client() {
       return (client ??= (async () => {
         events.emit('connecting', config.dev.connection)

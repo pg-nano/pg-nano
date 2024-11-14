@@ -1,82 +1,56 @@
-import { gray, strikethrough } from 'kleur/colors'
-import { statSync } from 'node:fs'
-import path from 'node:path'
+import { jumpgen } from 'jumpgen'
 import {
   enableEventLogging,
   generate,
   getEnv,
   log,
+  type Env,
   type EnvOptions,
   type GenerateOptions,
 } from 'pg-nano/node'
-import { debounce, select } from 'radashi'
 
 type Options = EnvOptions & Omit<GenerateOptions, 'signal'>
 
-export default async function dev(cwd: string, options: Options = {}) {
-  enableEventLogging(options.verbose)
-  const env = await getEnv(cwd, {
-    ...options,
-    watch: true,
-  })
+type Store = {
+  env: Env
+}
 
-  const watcher = env.watcher!
+const createDevGenerator = (options: Options = {}) =>
+  jumpgen<Store>('pg-nano', async ctx => {
+    const { fs, store } = ctx
 
-  let controller = new AbortController()
+    // Close the previous database connection.
+    await store.env?.close()
 
-  const regenerate = debounce({ delay: 400 }, () => {
-    controller.abort()
-    controller = new AbortController()
-
-    const sqlRegex = /\.(p|pg)?sql$/
-    const filePaths = Object.entries(watcher.getWatched()).flatMap(
-      ([dir, files]) =>
-        select(
-          files,
-          file => path.join(env.root, dir, file),
-          file => sqlRegex.test(file),
-        ),
-    )
-
-    generate(env, filePaths, {
+    const { config, configDependencies } = (store.env = await getEnv(ctx.root, {
       ...options,
-      signal: controller.signal,
+      reloadEnv: true,
+    }))
+
+    fs.watch(configDependencies)
+
+    const files = fs.scan(config.schema.include, {
+      absolute: true,
+      ignoreEmptyNewFiles: true,
+      ignore: [
+        ...config.schema.exclude,
+        config.generate.pluginSqlDir,
+        '**/.pg-nano/**',
+      ],
+    })
+
+    log(`Found ${files.length} SQL file${files.length === 1 ? '' : 's'}`)
+
+    await generate(store.env, files, {
+      ...options,
+      signal: ctx.signal,
     }).catch(error => {
       log.error(error.stack)
     })
   })
 
-  let filesAdded = 0
-  watcher.once('ready', () => {
-    log(`Found ${filesAdded} SQL file${filesAdded === 1 ? '' : 's'}`)
-    filesAdded = -1
-  })
-
-  watcher.on('all', (event, file) => {
-    if (event === 'addDir' || event === 'unlinkDir') {
-      return
-    }
-    const filePath = path.join(watcher.options.cwd!, file)
-    if (env.configDependencies.includes(filePath)) {
-      if (event === 'change') {
-        watcher.close()
-
-        log.magenta('Config changed, refreshing...')
-        dev(cwd, { ...options, reloadEnv: true })
-      }
-    } else {
-      const skipped = event === 'add' && statSync(file).size === 0
-      if (filesAdded < 0) {
-        log.magenta(
-          event,
-          skipped ? gray(strikethrough(file) + ' (empty)') : file,
-        )
-      } else if (event === 'add') {
-        filesAdded++
-      }
-      if (!skipped) {
-        regenerate()
-      }
-    }
-  })
+export default async function dev(root: string, options: Options = {}) {
+  enableEventLogging(options.verbose)
+  const generate = createDevGenerator(options)
+  await generate({ root, watch: true })
 }
