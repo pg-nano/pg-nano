@@ -353,12 +353,12 @@ export async function generate(
 
     if (type && (isCompositeType(type) || isTableType(type))) {
       let jsTypeId = 't.' + type.object.name
-      if (type.isArray) {
-        const ndims = fieldContext.ndims ?? 1
-        for (let i = 0; i < ndims; i++) {
-          jsTypeId = 't.array(' + jsTypeId + ')'
-        }
+
+      const ndims = fieldContext.ndims ?? (type.isArray ? 1 : 0)
+      for (let i = 0; i < ndims; i++) {
+        jsTypeId = 't.array(' + jsTypeId + ')'
       }
+
       return jsTypeId
     }
     return ''
@@ -503,18 +503,24 @@ export async function generate(
             type.object.schema,
             container.schema,
           )
-          if (type.isArray) {
-            const ndims = options?.ndims ?? options?.field?.ndims ?? 1
-            jsType += '[]'.repeat(ndims)
-          }
         }
         if (isTableType(type) && options?.paramKind === PgParamKind.In) {
-          jsType = jsType.replace(/(?=\[)|$/, '.InsertParams')
+          jsType += '.InsertParams'
         }
       }
     } else {
       jsType = 'unknown'
       unsupportedTypes.add(oid)
+    }
+
+    const ndims =
+      options?.ndims ?? options?.field?.ndims ?? (type?.isArray ? 1 : 0)
+
+    if (ndims > 0) {
+      if (jsType.includes(' ')) {
+        jsType = `(${jsType})`
+      }
+      jsType += '[]'.repeat(ndims)
     }
 
     if (traceRender.enabled && !skipPlugins) {
