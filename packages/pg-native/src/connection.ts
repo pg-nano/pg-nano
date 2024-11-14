@@ -2,7 +2,6 @@ import Libpq from '@pg-nano/libpq'
 import { EventEmitter } from 'node:events'
 import util from 'node:util'
 import { isFunction, noop, uid } from 'radashi'
-import type { StrictEventEmitter } from 'strict-event-emitter-types'
 import { debugConnection, debugQuery } from './debug'
 import { PgNativeError } from './error'
 import { baseTypeParsers, createTextParser } from './pg-types.js'
@@ -19,18 +18,10 @@ import type { SQLTemplate } from './template'
 import { renderTemplate } from './template/render'
 
 interface ConnectionEvents {
-  result: (result: unknown) => void
-  end: () => void
-  close: () => void
+  result: [result: unknown]
+  end: []
+  close: []
 }
-
-const ConnectionEmitter =
-  EventEmitter as unknown as new () => StrictEventEmitter<
-    EventEmitter,
-    ConnectionEvents
-  >
-
-type ConnectionEmitter = InstanceType<typeof ConnectionEmitter>
 
 /**
  * The `pg-native` connection represents a single socket, connected to a
@@ -48,7 +39,7 @@ type ConnectionEmitter = InstanceType<typeof ConnectionEmitter>
  * The `"notify"` event is emitted when a NOTIFY message is received from the
  * database. This is useful for push-based data updates.
  */
-export class Connection extends ConnectionEmitter {
+export class Connection extends EventEmitter<ConnectionEvents> {
   protected currentQuery: IQuery | null = null
   protected idleTimeoutId: any = null
   protected declare pq: Libpq
@@ -183,7 +174,7 @@ export enum ConnectionStatus {
   QUERY_READING = 3,
 }
 
-interface IConnection extends ConnectionEmitter {
+interface IConnection extends EventEmitter<ConnectionEvents> {
   pq: Libpq
   id: string
   status: ConnectionStatus
