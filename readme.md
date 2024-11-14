@@ -189,8 +189,8 @@ Here are some caveats with the pg-nano approach.
    - [Pseudo types](https://www.postgresql.org/docs/current/extend-type-system.html#EXTEND-TYPE-SYSTEM-PSEUDO)
    - [Transforms](https://www.postgresql.org/docs/current/sql-createtransform.html)
    - Circular foreign key constraints (#34)
-   - Multi-dimensional array types (#38)
    - Custom range types (#39)
+   - Multi-dimensional arrays as input parameters (#47)
 
 ### What Postgres features are definitely supported?
 
