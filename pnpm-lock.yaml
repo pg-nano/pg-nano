@@ -32,8 +32,8 @@ importers:
         specifier: ^0.23.1
         version: 0.23.1
       jumpgen:
-        specifier: ^0.1.0
-        version: 0.1.0
+        specifier: ^0.1.1
+        version: 0.1.1
       string-argv:
         specifier: ^0.3.2
         version: 0.3.2
@@ -945,8 +945,8 @@ packages:
   jsonfile@6.1.0:
     resolution: {integrity: sha512-5dgndWOriYSm5cnYaJNhalLNDKOqFwyDB/rr1E9ZsGciGvKPs8R2xYGCacuf3z6K1YKDz182fd+fY3cn3pMqXQ==}
 
-  jumpgen@0.1.0:
-    resolution: {integrity: sha512-NNJBCxalWDM/gMZ3rP7LI0kKDa7L4BXGdu36noM+WvI90ZxIuHFmW3LSbncRrHgMm8988lS3an4L4PA4RRkAbA==}
+  jumpgen@0.1.1:
+    resolution: {integrity: sha512-qlOJXyZYQ2cLNpgNVTdjJuShb4454CmDzVrAMuCLoBxI14SIUNYsBWuv+nOftGgueTnWbQ8WX8ivXR5ooB/kMw==}
 
   kleur@4.1.5:
     resolution: {integrity: sha512-o+NO+8WrRiQEE4/7nwRJhN1HWpVmJm511pBHUxPLtp0BUISzlBplORYSmTclCnJvQq2tKu/sgl3xVpkc7ZWuQQ==}
@@ -2191,7 +2191,7 @@ snapshots:
     optionalDependencies:
       graceful-fs: 4.2.11
 
-  jumpgen@0.1.0:
+  jumpgen@0.1.1:
     dependencies:
       chokidar: 4.0.1
       picomatch: 4.0.2
