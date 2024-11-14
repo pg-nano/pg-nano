@@ -179,18 +179,18 @@ Here are some caveats with the pg-nano approach.
 
    The (probably incomplete) list of missing features:
 
-   - Materialized views (#11)
+   - Materialized views ([#11](https://github.com/pg-nano/pg-nano/issues/11))
    - Generated columns (https://github.com/stripe/pg-schema-diff/issues/165)
    - Table privileges (https://github.com/stripe/pg-schema-diff/issues/124)
-   - Variadic parameters (#9)
-   - Function overloading (#8)
-   - LISTEN/NOTIFY (#5)
+   - Variadic parameters ([#9](https://github.com/pg-nano/pg-nano/issues/9))
+   - Function overloading ([#8](https://github.com/pg-nano/pg-nano/issues/8))
+   - LISTEN/NOTIFY ([#5](https://github.com/pg-nano/pg-nano/issues/5))
    - [Domain types](https://www.postgresql.org/docs/current/sql-createdomain.html)
    - [Pseudo types](https://www.postgresql.org/docs/current/extend-type-system.html#EXTEND-TYPE-SYSTEM-PSEUDO)
    - [Transforms](https://www.postgresql.org/docs/current/sql-createtransform.html)
-   - Circular foreign key constraints (#34)
-   - Custom range types (#39)
-   - Multi-dimensional arrays as input parameters (#47)
+   - Circular foreign key constraints ([#34](https://github.com/pg-nano/pg-nano/issues/34))
+   - Custom range types ([#39](https://github.com/pg-nano/pg-nano/issues/39))
+   - Multi-dimensional arrays as input parameters ([#47](https://github.com/pg-nano/pg-nano/issues/47))
 
 ### What Postgres features are definitely supported?
 
