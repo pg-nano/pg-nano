@@ -2,13 +2,14 @@ import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { snakeToCamel, sql } from 'pg-nano'
-import { camel, mapify, pascal, sift } from 'radashi'
+import { camel, map, mapify, pascal, sift } from 'radashi'
 import stringArgv from 'string-argv'
 import type {
   GenerateContext,
   Plugin,
   PluginContext,
 } from '../config/plugin.js'
+import { traceParser } from '../debug.js'
 import type { Env } from '../env.js'
 import { events } from '../events.js'
 import { inspectBaseTypes, inspectNamespaces } from '../inspector/inspect.js'
@@ -31,6 +32,7 @@ import {
   type PgType,
 } from '../inspector/types.js'
 import { quoteName, SQLIdentifier } from '../parser/identifier.js'
+import { parseObjectStatements } from '../parser/parse.js'
 import { dedent } from '../util/dedent.js'
 import { jsTypesByOid } from './jsTypesByOid.js'
 import { migrate } from './migrate.js'
@@ -46,6 +48,12 @@ export type GenerateOptions = {
    * Called right before pg-schema-diff is invoked.
    */
   preMigrate?: () => any
+  /**
+   * Override the default file-reading API.
+   *
+   * @default import('node:fs').readFileSync
+   */
+  readFile?: (filePath: string, encoding: BufferEncoding) => string
 }
 
 export async function generate(
@@ -56,8 +64,21 @@ export async function generate(
   const pg = await env.client
   const baseTypes = await inspectBaseTypes(pg, options.signal)
 
-  const [allObjects, pluginsByStatementId] = await prepareDatabase(
-    filePaths,
+  const readFile = options.readFile ?? fs.readFileSync
+
+  const allObjects = (
+    await map(filePaths, async file => {
+      traceParser('parsing schema file:', file)
+      return await parseObjectStatements(
+        readFile(file, 'utf8'),
+        file,
+        baseTypes,
+      )
+    })
+  ).flat()
+
+  const { pluginsByStatementId } = await prepareDatabase(
+    allObjects,
     baseTypes,
     env,
   )

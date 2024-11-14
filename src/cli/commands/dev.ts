@@ -44,6 +44,7 @@ const createDevGenerator = (options: Options = {}) =>
     await generate(store.env, files, {
       ...options,
       signal: ctx.signal,
+      readFile: fs.read,
     }).catch(error => {
       log.error(error.stack)
     })

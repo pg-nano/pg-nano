@@ -3,7 +3,7 @@ import path from 'node:path'
 import { PgResultError, sql } from 'pg-nano'
 import { map, memo, sift } from 'radashi'
 import type { Plugin, SQLTemplate } from '../config/plugin.js'
-import { debug, traceChecks, traceDepends, traceParser } from '../debug.js'
+import { debug, traceChecks, traceDepends } from '../debug.js'
 import type { Env } from '../env.js'
 import { events } from '../events.js'
 import {
@@ -20,20 +20,11 @@ import type { PgObjectStmt, PgObjectStmtKind } from '../parser/types.js'
 import { cwdRelative } from '../util/path.js'
 
 export async function prepareDatabase(
-  sqlFiles: string[],
+  objects: PgObjectStmt[],
   baseTypes: PgBaseType[],
   env: Env,
 ) {
   const pg = await env.client
-
-  traceParser('parsing SQL files')
-
-  const parsedFiles = await map(sqlFiles, async file => {
-    const content = fs.readFileSync(file, 'utf8')
-    traceParser('parsing SQL file:', file)
-    const objects = await parseObjectStatements(content, file, baseTypes)
-    return { file, objects }
-  })
 
   type ObjectExistenceConfig = {
     from: string
@@ -98,14 +89,12 @@ export async function prepareDatabase(
     `)
   })
 
-  const allObjects = parsedFiles.flatMap(parsedFile => parsedFile.objects)
-
   // Plugins may add to the object list, so run them before linking the object
   // dependencies together.
   const pluginsByStatementId = await preparePluginStatements(
     env,
     baseTypes,
-    allObjects,
+    objects,
   )
 
   debug('plugin statements prepared')
@@ -113,7 +102,7 @@ export async function prepareDatabase(
   // Since pg-schema-diff is still somewhat limited, we have to create our own
   // dependency graph, so we can ensure all objects (and their dependencies)
   // exist before pg-schema-diff works its magic.
-  const sortedObjects = linkObjectStatements(allObjects)
+  const sortedObjects = linkObjectStatements(objects)
 
   // The "nano" schema is used to store temporary objects during diffing.
   await pg.query(sql`
@@ -143,7 +132,7 @@ export async function prepareDatabase(
   }
 
   const objectUpdates = new Map(
-    allObjects.map(object => [object, Promise.withResolvers<any>()] as const),
+    objects.map(object => [object, Promise.withResolvers<any>()] as const),
   )
 
   async function updateObject(object: PgObjectStmt): Promise<any> {
@@ -252,7 +241,7 @@ export async function prepareDatabase(
   }
 
   await Promise.all(
-    allObjects.map(object => {
+    objects.map(object => {
       const { resolve } = objectUpdates.get(object)!
       return updateObject(object).then(resolve, async error => {
         const exists = await doesObjectExist(object.kind, object.id)
@@ -293,7 +282,7 @@ export async function prepareDatabase(
     )
   }
 
-  return [allObjects, pluginsByStatementId] as const
+  return { pluginsByStatementId }
 }
 
 function getLineFromPosition(position: number, query: string) {
@@ -309,7 +298,7 @@ function getLineFromPosition(position: number, query: string) {
 async function preparePluginStatements(
   env: Env,
   baseTypes: PgBaseType[],
-  allObjects: PgObjectStmt[],
+  objects: PgObjectStmt[],
 ) {
   // Ensure that removed plugins don't leave behind any SQL files.
   fs.rmSync(env.config.generate.pluginSqlDir, {
@@ -334,10 +323,7 @@ async function preparePluginStatements(
   for (const plugin of plugins) {
     events.emit('plugin:statements', { plugin })
 
-    const template = await plugin.statements(
-      { objects: allObjects },
-      env.config,
-    )
+    const template = await plugin.statements({ objects }, env.config)
 
     if (template) {
       const outFile = path.join(
@@ -357,13 +343,17 @@ async function preparePluginStatements(
 
       // Immediately parse the generated statements so they can be used by
       // plugins that run after this one.
-      const objects = await parseObjectStatements(content, outFile, baseTypes)
-      for (const object of objects) {
-        if (allObjects.some(other => other.id.equals(object.id))) {
+      const newObjects = await parseObjectStatements(
+        content,
+        outFile,
+        baseTypes,
+      )
+      for (const object of newObjects) {
+        if (objects.some(other => other.id.equals(object.id))) {
           events.emit('name-collision', { object })
           continue
         }
-        allObjects.push(object)
+        objects.push(object)
         pluginsByStatementId.set(object.id.toQualifiedName(), plugin)
       }
     }
