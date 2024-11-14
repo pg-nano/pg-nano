@@ -65,9 +65,9 @@
     "@pg-nano/pg-parser": "^16.1.5",
     "@pg-nano/pg-schema-diff": "^0.7.1",
     "bundle-require": "^5.0.0",
-    "chokidar": "^3.6.0",
     "debug": "^4.3.7",
     "esbuild": "^0.23.1",
+    "jumpgen": "^0.1.1",
     "string-argv": "^0.3.2"
   },
   "pnpm": {
