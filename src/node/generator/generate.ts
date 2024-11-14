@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { snakeToCamel, sql } from 'pg-nano'
-import { camel, map, mapify, pascal, shake, sift } from 'radashi'
+import { camel, map, mapify, pascal, select, shake, sift } from 'radashi'
 import stringArgv from 'string-argv'
 import type {
   GenerateContext,
@@ -286,18 +286,25 @@ export async function generate(
             .join('\n')}
         }
         type UpsertParams = InsertParams & {
-          ${tableStmt.primaryKeyColumns
-            .map(fieldName => {
-              const jsName = formatFieldName(fieldName)
+          ${
+            select(tableStmt.primaryKeyColumns, fieldName => {
               const field = table.fields.find(f => f.name === fieldName)!
+              if (
+                field.identity !== PgIdentityKind.Always &&
+                !field.hasDefault
+              ) {
+                return
+              }
+
+              const jsName = formatFieldName(fieldName)
 
               return `${jsName}: ${renderTypeReference(field.typeOid, table, {
                 paramKind: PgParamKind.In,
                 fieldName: field.name,
                 field,
               })}`
-            })
-            .join('\n')}
+            }).join('\n') || '/* Primary key is always required */'
+          }
         }
       }\n\n
     `
