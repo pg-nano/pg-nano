@@ -24,6 +24,14 @@ export type FunctionPattern = {
   }
 }
 
+type Option<T> =
+  | (T extends object
+      ? T extends readonly any[]
+        ? T
+        : { [K in keyof T]: Option<T[K]> }
+      : T)
+  | undefined
+
 export interface UserConfig {
   dev: {
     /**
@@ -37,7 +45,7 @@ export interface UserConfig {
      * You may prefer using the `connection` option instead, which allows you to
      * set all the connection options individually.
      */
-    connectionString?: string
+    connectionString?: Option<string>
     /**
      * The connection options to use when connecting to the database. The user
      * must be a superuser. This option is required if `connectionString` is not
@@ -45,9 +53,9 @@ export interface UserConfig {
      * {@link https://www.postgresql.org/docs/current/libpq-envars.html|environment variables}
      * like `PGUSER`, `PGPASSWORD`, etc.
      */
-    connection?: ConnectOptions
+    connection?: Option<ConnectOptions>
   }
-  schema?: {
+  schema?: Option<{
     /**
      * SQL files matched by these glob patterns are loaded into the database and
      * automatically migrated when changed while the `pg-nano dev` command is
@@ -65,16 +73,16 @@ export interface UserConfig {
      * By default, only `node_modules` is excluded.
      */
     exclude?: string[]
-  }
-  migration?: {
+  }>
+  migration?: Option<{
     /**
      * Allow certain migration hazards that are usually disabled for safety. By
      * default, when connecting to a local Postgres instance, all hazards are
      * allowed.
      */
     allowHazards?: MigrationHazardType[]
-  }
-  generate?: {
+  }>
+  generate?: Option<{
     /**
      * The file to write the generated TypeScript definitions to. This includes
      * the UDF wrapper functions.
@@ -115,6 +123,6 @@ export interface UserConfig {
      * that are matched against function names.
      */
     functionPatterns?: FunctionPattern[]
-  }
-  plugins?: Plugin[]
+  }>
+  plugins?: Option<Plugin[]>
 }

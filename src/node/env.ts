@@ -7,6 +7,7 @@ import { camel, castArrayIfExists, mapKeys } from 'radashi'
 import { resolveConfig, type UserConfig } from './config/config.js'
 import { findConfigFile } from './config/findConfigFile.js'
 import { allMigrationHazardTypes } from './config/hazards.js'
+import { mergeConfig } from './config/mergeConfig.js'
 import { debug } from './debug.js'
 import { events } from './events.js'
 import { log } from './log.js'
@@ -14,6 +15,7 @@ import { isLocalHost } from './util/localhost.js'
 
 export type EnvOptions = {
   dsn?: string
+  overrides?: Partial<UserConfig>
   verbose?: boolean
   watch?: boolean
   /** Skip cache and reload environment */
@@ -83,6 +85,10 @@ async function loadEnv(cwd: string, options: EnvOptions) {
       userConfig = result.mod.default
       userConfigDependencies = result.dependencies.map(dep => path.resolve(dep))
     }
+  }
+
+  if (userConfig && options.overrides) {
+    userConfig = mergeConfig(userConfig, options.overrides)
   }
 
   const config = resolveConfig(root, userConfig, options)

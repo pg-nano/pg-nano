@@ -10,7 +10,7 @@ import type {
   PgTypeContext,
 } from '../inspector/types.js'
 import type { PgObjectStmt } from '../parser/types.js'
-import type { ResolvedConfig } from './configResolver.js'
+import type { ResolvedConfig } from './resolveConfig.js'
 
 type Awaitable<T> = T | Promise<T>
 
@@ -139,4 +139,5 @@ export { sql, type SQLTemplate, type SQLTemplateValue } from 'pg-native'
 export * from '../inspector/types.js'
 export { SQLIdentifier } from '../parser/identifier.js'
 export * from '../parser/types.js'
-export type { ResolvedConfig } from './configResolver.js'
+export type { ResolvedConfig } from './resolveConfig.js'
+
