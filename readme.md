@@ -27,7 +27,7 @@ Here's what you can do with pg-nano:
 
 **Still have questions?** Check out the [FAQ](#faq) below.
 
-**Join the community:** Your perspective matters! [Open an issue](https://github.com/pg-nano/pg-nano/issues) or [submit a PR](https://github.com/pg-nano/pg-nano/pulls). You can also DM me on Discord (@aleclarson) if you'd like to chat.
+**Join the community:** Your perspective matters! [Open an issue](https://github.com/pg-nano/pg-nano/issues) or [submit a PR](https://github.com/pg-nano/pg-nano/pulls). You can also DM me on Bluesky ([@retropragma.bsky.social](https://bsky.app/profile/retropragma.bsky.social)) or Discord (@aleclarson) if you'd like to chat.
 
 **Try our demo:** Clone pg-nano and run the [exhaustive demo](https://github.com/pg-nano/pg-nano/tree/master/demos/exhaustive) to see how it works.
 
