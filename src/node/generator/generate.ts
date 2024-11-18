@@ -120,17 +120,16 @@ export async function generate(
     jsType?: string,
   ) => {
     const oid = isArray ? object.arrayOid : object.oid
-    const suffix = isArray ? '[]' : ''
     const type: Required<PgType> = {
       object: object as any,
-      jsType: (jsType ?? pascal(object.name)) + suffix,
+      jsType: jsType ?? pascal(object.name),
       isArray,
     }
     typesByOid.set(oid, type)
     typesByName.set(
       (object.schema !== 'public' && object.schema !== 'pg_catalog'
         ? object.schema + '.' + object.name
-        : object.name) + suffix,
+        : object.name) + (isArray ? '[]' : ''),
       type,
     )
   }
