@@ -1,7 +1,6 @@
 import os from 'node:os'
 import path from 'node:path'
 import { parseConnectionString, stringifyConnectOptions } from 'pg-native'
-import { noop, pascal } from 'radashi'
 import type { ConnectOptions, FunctionType, UserConfig } from './configTypes'
 import type { PgRoutineBindingFunction } from './plugin.js'
 
@@ -73,50 +72,62 @@ export function resolveConfig(
         root,
         userConfig?.generate?.pluginSqlDir ?? 'sql/nano_plugins',
       ),
-      functionPatterns: compileFunctionPatterns(
-        userConfig?.generate?.functionPatterns ?? {},
+      applyFunctionPatterns: compileFunctionPatterns(
+        userConfig?.generate?.functionPatterns ?? [],
       ),
     },
   }
 }
 
-function compileFunctionPatterns(typesByPattern: Record<string, FunctionType>) {
-  const matchers = Object.keys(typesByPattern).map(pattern => {
-    let flags: string | undefined
-    if (pattern[0] === '/') {
-      const regexEnd = pattern.lastIndexOf('/')
-      if (regexEnd === 0) {
-        throw new Error(`Invalid function pattern: ${pattern}`)
+export type RoutineBindingContext = {
+  name: string
+  bindingFunction: PgRoutineBindingFunction
+}
+
+function compileFunctionPatterns(patterns: FunctionPattern[]) {
+  if (patterns.length === 0) {
+    return
+  }
+
+  const compiledPatterns = patterns.map(({ pattern }) => {
+    const nameRegex = pattern.name ? compileRegExp(pattern.name) : /^/
+    const bindingFunctionRegex = pattern.bindingFunction
+      ? compileRegExp(pattern.bindingFunction)
+      : /^/
+
+    return {
+      nameRegex,
+      bindingFunctionRegex,
+    }
+  })
+
+  return (context: RoutineBindingContext) => {
+    for (let i = 0; i < patterns.length; i++) {
+      const { nameRegex, bindingFunctionRegex } = compiledPatterns[i]
+      if (
+        nameRegex.test(context.name) &&
+        bindingFunctionRegex.test(context.bindingFunction)
+      ) {
+        const overrides = patterns[i].replace
+        const keys = Object.keys(overrides) as (keyof typeof overrides)[]
+
+        for (const key of keys) {
+          context[key] = overrides[key] as any
+        }
       }
-      pattern = pattern.slice(1, regexEnd)
-      flags = pattern.slice(regexEnd + 1)
-    }
-    return new RegExp(pattern, flags)
-  })
-  if (matchers.length === 0) {
-    return noop
-  }
-  const types = Object.values(typesByPattern)
-  const validTypes = [
-    'value',
-    'value?',
-    'row',
-    'row?',
-    'value-list',
-    'row-list',
-  ]
-  types.forEach((type, index) => {
-    if (!validTypes.includes(type)) {
-      throw new Error(
-        `Function pattern ${matchers[index]} has invalid type: ${type}`,
-      )
-    }
-  })
-  return (name: string) => {
-    const index = matchers.findIndex(matcher => matcher.test(name))
-    if (index >= 0) {
-      const type = types[index]
-      return `bindQuery${pascal(type.replace('?', 'OrNull'))}` as PgRoutineBindingFunction
     }
   }
+}
+
+function compileRegExp(pattern: string) {
+  let flags: string | undefined
+  if (pattern[0] === '/') {
+    const regexEnd = pattern.lastIndexOf('/')
+    if (regexEnd === 0) {
+      throw new Error(`Invalid function pattern: ${pattern}`)
+    }
+    pattern = pattern.slice(1, regexEnd)
+    flags = pattern.slice(regexEnd + 1)
+  }
+  return new RegExp(pattern, flags)
 }

@@ -1,18 +1,28 @@
 import type { ConnectOptions } from 'pg-native'
 import type { MigrationHazardType } from './hazards'
-import type { Plugin } from './plugin'
+import type { PgRoutineBindingFunction, Plugin } from './plugin'
 
 export type { ConnectOptions, MigrationHazardType }
 
 export type FieldCase = 'camel' | 'preserve'
 
-export type FunctionType =
-  | 'value'
-  | 'value?'
-  | 'row'
-  | 'row?'
-  | 'value-list'
-  | 'row-list'
+export type FunctionPattern = {
+  pattern: {
+    /**
+     * Regular expression to match the function name (before it's been
+     * camel-cased).
+     */
+    name?: string
+    /**
+     * Regular expression to match the binding function name. See
+     * {@link PgRoutineBindingFunction} for possible values.
+     */
+    bindingFunction?: string
+  }
+  replace: {
+    bindingFunction?: PgRoutineBindingFunction
+  }
+}
 
 export interface UserConfig {
   dev: {
@@ -100,11 +110,11 @@ export interface UserConfig {
      */
     postGenerateScript?: string
     /**
-     * Assign a “function type” to each function based on its name. This
-     * determines the runtime expectations of a function. The keys are regular
-     * expressions and the values are the function types.
+     * Override a function's “result arity” based on its name. This determines
+     * how the response is parsed at runtime. The keys are regular expressions
+     * that are matched against function names.
      */
-    functionPatterns?: Record<string, FunctionType>
+    functionPatterns?: FunctionPattern[]
   }
   plugins?: Plugin[]
 }

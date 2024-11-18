@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { snakeToCamel, sql } from 'pg-nano'
+import type { RoutineBindingContext } from 'pg-nano/config'
 import { camel, map, mapify, pascal, select, shake, sift } from 'radashi'
 import stringArgv from 'string-argv'
 import type {
@@ -580,7 +581,7 @@ export async function generate(
         : null
 
       /** When true, a row type is used in the return type, either with or without SETOF. */
-      let returnsRow = false
+      let returnRow = false
 
       /** TypeScript type for the function's return value. */
       let jsResultType: string | undefined
@@ -603,7 +604,7 @@ export async function generate(
         const type = typesByOid.get(routine.returnTypeOid)
         if (type && type.object.type !== PgObjectType.Base) {
           if (isTableType(type) && !type.isArray) {
-            returnsRow = true
+            returnRow = true
           }
 
           // Determine if any of the table fields are composite types. If so, we
@@ -627,7 +628,7 @@ export async function generate(
           }
         }
       } else {
-        returnsRow = true
+        returnRow = true
         jsResultType = `{ ${stmt.returnType
           .map(field => {
             const fieldType = types.find(
@@ -698,7 +699,7 @@ export async function generate(
           }
         })
       }
-      if (returnsRow && !routine.returnSet) {
+      if (returnRow && !routine.returnSet) {
         builder += `.returnsRecord()`
       }
       if (outputMappers.length) {
@@ -712,18 +713,21 @@ export async function generate(
           ? `[${quoteName(routine.schema)}, ${quoteName(routine.name)}]`
           : quoteName(routine.name)
 
-      const bindingFunction =
-        routine.bindingFunction ??
-        env.config.generate.functionPatterns?.(routine.name) ??
-        (returnsRow
-          ? routine.returnSet
-            ? 'bindQueryRowList'
-            : 'bindQueryRowOrNull'
-          : routine.returnSet
-            ? 'bindQueryValueList'
-            : 'bindQueryValue')
+      const binding: RoutineBindingContext = {
+        name: routine.name,
+        bindingFunction:
+          routine.bindingFunction ??
+          (returnRow
+            ? routine.returnSet
+              ? 'bindQueryRowList'
+              : 'bindQueryRowOrNull'
+            : routine.returnSet
+              ? 'bindQueryValueList'
+              : 'bindQueryValue'),
+      }
 
-      imports.add(bindingFunction)
+      env.config.generate.applyFunctionPatterns?.(binding)
+      imports.add(binding.bindingFunction)
 
       const routineScript = dedent`
         export declare namespace ${jsName} {
@@ -731,7 +735,7 @@ export async function generate(
           type Result = ${jsResultType}
         }
 
-        export const ${jsName} = /* @__PURE__ */ ${bindingFunction}<${jsName}.Params, ${jsName}.Result>(${pgName}, ${builder})\n\n
+        export const ${jsName} = /* @__PURE__ */ ${binding.bindingFunction}<${jsName}.Params, ${jsName}.Result>(${pgName}, ${builder})\n\n
       `
 
       renderedObjects.set(routine, routineScript)
