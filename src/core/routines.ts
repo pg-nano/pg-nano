@@ -101,7 +101,7 @@ export function bindQueryRowOrNull<TArgs extends object, TRow extends Row>(
 export function bindQueryValueOrNull<TArgs extends object, TResult>(
   name: string | string[],
   build: (builder: RoutineBuilder) => typeof builder,
-): Routine<TArgs, Query<TResult, TResult>> {
+): Routine<TArgs, Query<TResult | null>> {
   return buildRoutine('queryValueOrNull', name, build) as any
 }
 
