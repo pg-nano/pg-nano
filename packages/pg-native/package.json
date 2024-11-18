@@ -15,5 +15,8 @@
     "postgres-date": "workspace:^",
     "postgres-interval": "workspace:^",
     "postgres-range": "workspace:^"
+  },
+  "dependencies": {
+    "option-types": "^1.0.0"
   }
 }

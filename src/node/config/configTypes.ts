@@ -1,3 +1,4 @@
+import type { Option, Options } from 'option-types'
 import type { ConnectOptions } from 'pg-native'
 import type { MigrationHazardType } from './hazards'
 import type { PgRoutineBindingFunction, Plugin } from './plugin'
@@ -24,16 +25,8 @@ export type FunctionPattern = {
   }
 }
 
-type Option<T> =
-  | (T extends object
-      ? T extends readonly any[]
-        ? T
-        : { [K in keyof T]: Option<T[K]> }
-      : T)
-  | undefined
-
 export interface UserConfig {
-  dev: {
+  dev: Options<{
     /**
      * The connection string to use when connecting to the database. The user
      * must be a superuser.
@@ -45,7 +38,7 @@ export interface UserConfig {
      * You may prefer using the `connection` option instead, which allows you to
      * set all the connection options individually.
      */
-    connectionString?: Option<string>
+    connectionString?: string
     /**
      * The connection options to use when connecting to the database. The user
      * must be a superuser. This option is required if `connectionString` is not
@@ -53,8 +46,8 @@ export interface UserConfig {
      * {@link https://www.postgresql.org/docs/current/libpq-envars.html|environment variables}
      * like `PGUSER`, `PGPASSWORD`, etc.
      */
-    connection?: Option<ConnectOptions>
-  }
+    connection?: ConnectOptions
+  }>
   schema?: Option<{
     /**
      * SQL files matched by these glob patterns are loaded into the database and

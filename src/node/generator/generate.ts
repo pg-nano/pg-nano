@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
+import type { Options } from 'option-types'
 import { snakeToCamel, sql } from 'pg-nano'
 import type { RoutineBindingContext } from 'pg-nano/config'
 import { camel, map, mapify, pascal, select, shake, sift } from 'radashi'
@@ -409,13 +410,13 @@ export async function generate(
   const renderTypeReference = (
     oid: number,
     container: Exclude<PgObject, PgEnumType>,
-    options?: {
+    options?: Options<{
       paramKind?: PgParamKind
       paramIndex?: number
       fieldName?: string
       field?: PgField | PgTableField
       ndims?: number
-    },
+    }>,
     skipPlugins?: boolean,
   ) => {
     let type = typesByOid.get(oid)

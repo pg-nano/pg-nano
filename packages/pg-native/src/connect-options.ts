@@ -1,3 +1,4 @@
+import type { Options } from 'option-types'
 import { isIntString } from 'radashi'
 
 /**
@@ -5,7 +6,7 @@ import { isIntString } from 'radashi'
  *
  * @see https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-PARAMKEYWORDS
  */
-export interface ConnectOptions {
+export type ConnectOptions = Options<{
   /**
    * Name of host to connect to. If a host name looks like an absolute path
    * name, it specifies Unix-domain communication rather than TCP/IP
@@ -325,7 +326,7 @@ export interface ConnectOptions {
    * @see https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNECT-LOAD-BALANCE-HOSTS
    */
   load_balance_hosts?: string
-}
+}>
 
 export function stringifyConnectOptions(options: ConnectOptions): string {
   return Object.entries(options)

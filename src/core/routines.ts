@@ -1,3 +1,4 @@
+import type { Options } from 'option-types'
 import {
   sql,
   type Interval,
@@ -134,13 +135,14 @@ function buildRoutine(
   }
 }
 
-interface RoutineConfig {
+type RoutineConfig = Options<{
   minArgCount?: number
   maxArgCount?: number
   argNames?: string[]
   returnsRecord?: boolean
-  inputMappers?: Record<string, FieldMapper>
-  outputMappers?: Record<string, FieldMapper>
+}> & {
+  inputMappers?: Record<string, FieldMapper> | undefined
+  outputMappers?: Record<string, FieldMapper> | undefined
 }
 
 class RoutineBuilder {

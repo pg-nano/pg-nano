@@ -1,4 +1,5 @@
 import type Libpq from '@pg-nano/libpq'
+import type { Options } from 'option-types'
 import type { SQLTemplate } from './template.js'
 
 export enum QueryType {
@@ -21,7 +22,7 @@ export enum QueryType {
   void = 4,
 }
 
-export interface QueryOptions {
+export type QueryOptions = Options<{
   /**
    * Map a field name before it's assigned to the result row.
    */
@@ -39,7 +40,7 @@ export interface QueryOptions {
    * @see https://www.postgresql.org/docs/current/libpq-single-row-mode.html#LIBPQ-PQSETSINGLEROWMODE
    */
   singleRowMode?: boolean
-}
+}>
 
 export interface IQuery extends QueryOptions {
   id: string

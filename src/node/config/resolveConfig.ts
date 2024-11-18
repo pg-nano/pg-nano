@@ -1,7 +1,11 @@
 import os from 'node:os'
 import path from 'node:path'
 import { parseConnectionString, stringifyConnectOptions } from 'pg-native'
-import type { ConnectOptions, FunctionPattern, UserConfig } from './configTypes.js'
+import type {
+  ConnectOptions,
+  FunctionPattern,
+  UserConfig,
+} from './configTypes.js'
 import type { PgRoutineBindingFunction } from './plugin.js'
 
 export type ResolvedConfig = ReturnType<typeof resolveConfig>

@@ -4,7 +4,7 @@ export type PgField = {
   name: string
   typeOid: number
   hasNotNull: boolean
-  ndims?: number
+  ndims?: number | undefined
 }
 
 export enum PgIdentityKind {
@@ -28,7 +28,7 @@ export type PgTable = {
   /**
    * If a plugin generated this table, it will be set here.
    */
-  plugin?: Plugin
+  plugin?: Plugin | undefined
 }
 
 export type PgCompositeType = {
@@ -41,7 +41,7 @@ export type PgCompositeType = {
   /**
    * If a plugin generated this type, it will be set here.
    */
-  plugin?: Plugin
+  plugin?: Plugin | undefined
 }
 
 export type PgEnumType = {
@@ -98,12 +98,12 @@ export type PgRoutine = {
   /**
    * If a plugin generated this function, it will be set here.
    */
-  plugin?: Plugin
+  plugin?: Plugin | undefined
   /**
    * This can be set by a plugin to override the inferred constructor used to
    * declare the routine proxy in TypeScript.
    */
-  bindingFunction?: PgRoutineBindingFunction
+  bindingFunction?: PgRoutineBindingFunction | undefined
 }
 
 export type PgRoutineBindingFunction =
@@ -142,9 +142,11 @@ export type PgType = (
   | { object: Readonly<PgTable> }
   | { object: Readonly<PgBaseType> }
 ) & {
-  isArray?: boolean
+  isArray?: boolean | undefined
   jsType: string
 }
+
+type ReadonlyUnion<T> = T extends any ? Readonly<T> : never
 
 export type PgTypeContext = {
   /**
@@ -154,11 +156,11 @@ export type PgTypeContext = {
   /**
    * The object that contains this type.
    */
-  container: Readonly<Exclude<PgObject, PgEnumType>>
+  container: ReadonlyUnion<Exclude<PgObject, PgEnumType>>
   /**
    * The field that contains this type, if any.
    */
-  field?: Readonly<PgField | PgTableField>
+  field?: ReadonlyUnion<PgField | PgTableField> | undefined
   /**
    * The name of the field, always in snake_case. Note that function parameters
    * with a "p_" prefix will have the prefix stripped.
@@ -167,24 +169,24 @@ export type PgTypeContext = {
    * (e.g. `"$1"` for an unnamed parameter) or `undefined` for an unnamed
    * `RETURNS` value.
    */
-  fieldName?: string
+  fieldName?: string | undefined
   /**
    * The kind of parameter this type represents, if this type is a parameter.
    * This includes result parameters (a.k.a. OUT parameters).
    */
-  paramKind?: PgParamKind
+  paramKind?: PgParamKind | undefined
   /**
    * The index of the parameter this type represents, if this type is a
    * parameter.
    */
-  paramIndex?: number
+  paramIndex?: number | undefined
 }
 
 export type PgFieldContext = {
   /**
    * The object that contains this field.
    */
-  container: Readonly<Exclude<PgObject, PgEnumType>>
+  container: ReadonlyUnion<Exclude<PgObject, PgEnumType>>
   /**
    * The name of the field, always in snake_case. Note that function parameters
    * with a "p_" prefix will have the prefix stripped.
@@ -201,22 +203,22 @@ export type PgFieldContext = {
   /**
    * The depth of array nesting for this field.
    */
-  ndims?: number
+  ndims?: number | undefined
   /**
    * The row type that `this.field` belongs to, if `this.container` is a function.
    */
-  rowType?: Readonly<PgTable | PgCompositeType>
+  rowType?: ReadonlyUnion<PgTable | PgCompositeType> | undefined
   /**
    * The kind of parameter this field represents, if `this.container` is a
    * function.
    */
-  paramKind?: PgParamKind
+  paramKind?: PgParamKind | undefined
   /**
    * The index of the parameter this field represents, if `this.container` is a
    * function and `this.paramKind` is either `PgParamKind.In` or
    * `PgParamKind.InOut`.
    */
-  paramIndex?: number
+  paramIndex?: number | undefined
 }
 
 export function isEnumType(

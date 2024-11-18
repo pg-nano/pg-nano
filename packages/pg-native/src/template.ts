@@ -6,7 +6,7 @@ const kSQLTemplateKind = Symbol.for('pg-nano:SQLTemplate')
 
 export class SQLTemplate {
   command?: string = undefined
-  params?: (string | null)[] = undefined
+  params?: (string | null)[] | undefined = undefined
   readonly indent: string
   constructor(
     readonly strings: readonly string[],

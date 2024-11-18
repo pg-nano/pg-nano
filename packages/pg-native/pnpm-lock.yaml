@@ -7,6 +7,10 @@ settings:
 importers:
 
   .:
+    dependencies:
+      option-types:
+        specifier: ^1.0.0
+        version: 1.0.0
     devDependencies:
       postgres-array:
         specifier: workspace:^
@@ -26,3 +30,12 @@ importers:
       postgres-range:
         specifier: workspace:^
         version: link:../postgres-range
+
+packages:
+
+  option-types@1.0.0:
+    resolution: {integrity: sha512-JBDFMXv8zGSOTescwlW7IrE4mNTl3o4QAUr9Bia3UKOxoZQGqoV+DsNHwCsSwAMDX+8nt73C3zpRwvCpcOP0ww==}
+
+snapshots:
+
+  option-types@1.0.0: {}
