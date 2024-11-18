@@ -57,13 +57,11 @@
     "type": "git",
     "url": "https://github.com/pg-nano/pg-nano.git"
   },
-  "files": [
-    "dist"
-  ],
+  "files": ["dist"],
   "dependencies": {
     "@pg-nano/libpq": "workspace:^",
     "@pg-nano/pg-parser": "^16.1.5",
-    "@pg-nano/pg-schema-diff": "^0.7.1",
+    "@pg-nano/pg-schema-diff": "^0.7.2",
     "bundle-require": "^5.0.0",
     "debug": "^4.3.7",
     "esbuild": "^0.23.1",
