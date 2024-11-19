@@ -39,6 +39,9 @@ describe('migrate', () => {
         noEmit: true,
         async preMigrate() {
           migrationPlan = await migrate(project.env, { dryRun: true })
+          if (/No plan generated/i.test(migrationPlan)) {
+            migrationPlan = ''
+          }
         },
       })
 

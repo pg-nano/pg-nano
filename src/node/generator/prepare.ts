@@ -131,11 +131,16 @@ export async function prepareDatabase(
     }
   }
 
+  const objectNames = new Set<string>()
+
   const objectUpdates = new Map(
     objects.map(object => [object, Promise.withResolvers<any>()] as const),
   )
 
   async function updateObject(object: PgObjectStmt): Promise<any> {
+    const nameAlreadyExists = objectNames.has(object.id.name)
+    objectNames.add(object.id.name)
+
     if (!(object.kind in objectExistence)) {
       events.emit('unsupported-object', { object })
       return
@@ -229,8 +234,43 @@ export async function prepareDatabase(
         }
       }
     } else {
+      if (nameAlreadyExists) {
+        events.emit('name-collision', { object })
+        return
+      }
+
       events.emit('create-object', { object })
       query = sql.unsafe(object.query)
+
+      // If an object of the same name already exists, we need to drop it before
+      // creating the new object. This can happen when changing a CREATE TYPE
+      // statement to a CREATE TABLE statement, for example.
+      const existingKind = await pg.queryValueOrNull<string>(sql`
+        SELECT c.relkind::text
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace 
+        WHERE c.relname = ${object.id.nameVal}
+          AND n.nspname = ${object.id.schemaVal}
+      `)
+
+      if (existingKind) {
+        const dropType =
+          existingKind === 'r'
+            ? 'TABLE'
+            : existingKind === 'v'
+              ? 'VIEW'
+              : existingKind === 'c'
+                ? 'TYPE'
+                : null
+
+        if (dropType) {
+          query = sql`
+            DROP ${sql.unsafe(dropType)} ${object.id.toSQL()} CASCADE;
+
+            ${query}
+          `
+        }
+      }
     }
 
     if (query) {
@@ -409,4 +449,15 @@ function throwFormattedQueryError(
   error.message = message
   error.stack = message + stack
   throw error
+}
+
+function nonUnique<T>(array: readonly T[]) {
+  const seen = new Set<T>()
+  return array.filter((value, index, arr) => {
+    if (seen.has(value)) {
+      return true
+    }
+    seen.add(value)
+    return false
+  })
 }
