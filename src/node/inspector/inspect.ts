@@ -1,24 +1,26 @@
-import type { Client } from 'pg-nano'
-import { type SQLTemplate, sql } from 'pg-native'
+import type { Client, CommandResult } from 'pg-nano'
+import { type SQLTemplate, getResult, sql } from 'pg-native'
 import { uid } from 'radashi'
-import type { PgViewStmt } from '../parser/types.js'
-import { parseViewSubquery } from './parseViewSubquery.js'
 import type {
   PgBaseType,
   PgCompositeType,
   PgEnumType,
+  PgField,
   PgNamespace,
   PgRoutine,
   PgTable,
+  PgView,
 } from './types.js'
 
 export async function inspectNamespaces(client: Client, signal?: AbortSignal) {
-  const [routines, compositeTypes, enumTypes, tables] = await Promise.all([
-    inspectRoutines(client, signal),
-    inspectCompositeTypes(client, signal),
-    inspectEnumTypes(client, signal),
-    inspectTables(client, signal),
-  ])
+  const [routines, compositeTypes, enumTypes, tables, views] =
+    await Promise.all([
+      inspectRoutines(client, signal),
+      inspectCompositeTypes(client, signal),
+      inspectEnumTypes(client, signal),
+      inspectTables(client, signal),
+      inspectViews(client, signal),
+    ])
 
   const namespaces: Record<string, PgNamespace> = {}
   const getNamespace = (schema: string) =>
@@ -28,6 +30,7 @@ export async function inspectNamespaces(client: Client, signal?: AbortSignal) {
       compositeTypes: [],
       enumTypes: [],
       tables: [],
+      views: [],
       names: [],
     })
 
@@ -36,6 +39,7 @@ export async function inspectNamespaces(client: Client, signal?: AbortSignal) {
     [compositeTypes, 'compositeTypes'],
     [enumTypes, 'enumTypes'],
     [tables, 'tables'],
+    [views, 'views'],
   ] as const) {
     for (const object of objects) {
       const nsp = getNamespace(object.schema)
@@ -204,35 +208,67 @@ export function inspectTables(client: Client, signal?: AbortSignal) {
   return client.queryRowList<PgTable>(query).cancelWithSignal(signal)
 }
 
-export async function inspectViewFields(
+export function inspectViews(client: Client, signal?: AbortSignal) {
+  const query = sql`
+    SELECT
+      'view'::text AS "type",
+      t.oid,
+      t.typname AS "name",
+      n.nspname AS "schema",
+      t.typarray::oid AS "arrayOid",
+      v.definition AS "query",
+      NULL AS "fields"
+    FROM pg_catalog.pg_class c
+    JOIN pg_catalog.pg_namespace n
+      ON n.oid = c.relnamespace
+    JOIN pg_catalog.pg_type t
+      ON t.oid = c.reltype
+    JOIN pg_catalog.pg_views v
+      ON v.schemaname = n.nspname
+      AND v.viewname = c.relname
+    WHERE c.relkind = 'v'
+      AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+  `
+
+  return client.queryRowList<PgView>(query).cancelWithSignal(signal)
+}
+
+export function inspectViewFields(
   client: Client,
-  view: PgViewStmt,
+  view: PgView,
   signal?: AbortSignal,
 ) {
-  return inspectResultSet(client, sql.unsafe(parseViewSubquery(view)), signal)
+  return inspectResultSet(client, sql.unsafe(view.query), signal)
 }
 
 export async function inspectResultSet(
   client: Client,
   input: SQLTemplate,
   signal?: AbortSignal,
-) {
+): Promise<PgField[]> {
   const name = 'pg_nano_' + uid(12)
   await client
     .query(sql`PREPARE ${sql.id(name)} AS ${input}`)
     .cancelWithSignal(signal)
 
   const [description] = await client
-    .query(pq => {
+    .query((pq, query) => {
       pq.describePrepared(name)
-      setImmediate(() => pq.emit('readable'))
-      return true
+      return () => {
+        const [error, result] = getResult(pq, query)
+        if (error) {
+          throw error
+        }
+        return [result as CommandResult]
+      }
     })
     .cancelWithSignal(signal)
 
-  console.log('inspectResultSet', { description })
-
   await client.query(sql`DEALLOCATE ${sql.id(name)}`).cancelWithSignal(signal)
 
-  return description.fields
+  return description.fields.map(f => ({
+    name: f.name,
+    typeOid: f.dataTypeID,
+    hasNotNull: false,
+  }))
 }

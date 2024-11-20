@@ -31,6 +31,20 @@ export type PgTable = {
   plugin?: Plugin | undefined
 }
 
+export type PgView = {
+  type: PgObjectType.View
+  oid: number
+  name: string
+  schema: string
+  arrayOid: number
+  query: string
+  fields: PgField[] | null
+  /**
+   * If a plugin generated this view, it will be set here.
+   */
+  plugin?: Plugin | undefined
+}
+
 export type PgCompositeType = {
   type: PgObjectType.Composite
   oid: number
@@ -115,6 +129,7 @@ export type PgNamespace = {
   compositeTypes: PgCompositeType[]
   enumTypes: PgEnumType[]
   tables: PgTable[]
+  views: PgView[]
   /**
    * The names of every object in this namespace.
    */
@@ -124,6 +139,7 @@ export type PgNamespace = {
 export type PgObject =
   | PgRoutine
   | PgTable
+  | PgView
   | PgEnumType
   | PgCompositeType
   | PgBaseType
@@ -134,12 +150,14 @@ export enum PgObjectType {
   Enum = 'enum type',
   Routine = 'routine',
   Table = 'table',
+  View = 'view',
 }
 
 export type PgType = (
   | { object: Readonly<PgEnumType> }
   | { object: Readonly<PgCompositeType> }
   | { object: Readonly<PgTable> }
+  | { object: Readonly<PgView> }
   | { object: Readonly<PgBaseType> }
 ) & {
   isArray?: boolean | undefined
@@ -207,7 +225,7 @@ export type PgFieldContext = {
   /**
    * The row type that `this.field` belongs to, if `this.container` is a function.
    */
-  rowType?: ReadonlyUnion<PgTable | PgCompositeType> | undefined
+  rowType?: ReadonlyUnion<PgCompositeType | PgTable | PgView> | undefined
   /**
    * The kind of parameter this field represents, if `this.container` is a
    * function.
@@ -237,6 +255,12 @@ export function isTableType(
   type: PgType,
 ): type is PgType & { object: Readonly<PgTable> } {
   return type.object.type === PgObjectType.Table
+}
+
+export function isViewType(
+  type: PgType,
+): type is PgType & { object: Readonly<PgView> } {
+  return type.object.type === PgObjectType.View
 }
 
 export function isBaseType(

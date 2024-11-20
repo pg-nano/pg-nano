@@ -8,18 +8,24 @@ import { camel, map, mapify, pascal, select, shake, sift } from 'radashi'
 import stringArgv from 'string-argv'
 import type {
   GenerateContext,
+  PgView,
   Plugin,
   PluginContext,
 } from '../config/plugin.js'
 import { traceParser, traceRender } from '../debug.js'
 import type { Env } from '../env.js'
 import { events } from '../events.js'
-import { inspectBaseTypes, inspectNamespaces } from '../inspector/inspect.js'
+import {
+  inspectBaseTypes,
+  inspectNamespaces,
+  inspectViewFields,
+} from '../inspector/inspect.js'
 import {
   isBaseType,
   isCompositeType,
   isEnumType,
   isTableType,
+  isViewType,
   type PgBaseType,
   type PgCompositeType,
   type PgEnumType,
@@ -36,6 +42,7 @@ import {
 import { quoteName, SQLIdentifier } from '../parser/identifier.js'
 import { parseObjectStatements } from '../parser/parse.js'
 import { dedent } from '../util/dedent.js'
+import { memoAsync } from '../util/memoAsync.js'
 import { jsTypesByOid } from './jsTypesByOid.js'
 import { migrate } from './migrate.js'
 import { prepareDatabase } from './prepare.js'
@@ -116,13 +123,15 @@ export async function generate(
   const typesByName = new Map<string, Required<PgType>>()
 
   const registerType = (
-    object: PgBaseType | PgEnumType | PgCompositeType | PgTable,
+    object: PgBaseType | PgEnumType | PgCompositeType | PgTable | PgView,
     isArray: boolean,
     jsType?: string,
   ) => {
     const oid = isArray ? object.arrayOid : object.oid
     const type: Required<PgType> = {
-      object: object as any,
+      // The first type assertion provides a bit of type safety, while the any
+      // assertion is necessary for assignability.
+      object: object as PgType['object'] as any,
       jsType: jsType ?? pascal(object.name),
       isArray,
     }
@@ -149,6 +158,7 @@ export async function generate(
       nsp.enumTypes,
       nsp.compositeTypes,
       nsp.tables,
+      nsp.views,
     ] as const) {
       for (const type of types) {
         registerType(type, false)
@@ -187,7 +197,8 @@ export async function generate(
   const moduleBasename = path.basename(env.config.generate.outFile) + '.js'
   const builtinTypeRegex = /\b(Interval|Range|Circle|Point|Timestamp|JSON)\b/
   const renderedObjects = new Map<PgObject, string>()
-  const renderedCompositeData = new Map<number, string>()
+  const renderedRowMappers = new Map<number, string>()
+  const referencedViews = new Set<PgView>()
   const unsupportedTypes = new Set<number>()
   const foreignImports = new Set<string>()
   const imports = new Set<string>()
@@ -245,6 +256,28 @@ export async function generate(
           .join('\n')}
       }\n\n
     `
+
+  const getViewFields = memoAsync((view: PgView) => inspectViewFields(pg, view))
+
+  const renderViewType = async (view: PgView) => {
+    const fields = await getViewFields(view)
+
+    return dedent`
+      export type ${pascal(view.name)} = {
+        ${fields
+          .map(field => {
+            const jsName = formatFieldName(field.name)
+            const jsType = renderTypeReference(field.typeOid, view, {
+              fieldName: field.name,
+              field,
+            })
+
+            return `${jsName}?: ${jsType}`
+          })
+          .join('\n')}
+      }\n\n
+    `
+  }
 
   const renderTableType = (table: PgTable) => {
     const tableId = new SQLIdentifier(table.name, table.schema)
@@ -321,7 +354,7 @@ export async function generate(
     [name: string]: { name: string; path: string }
   } = {}
 
-  const renderFieldType = (
+  const renderFieldMapper = (
     oid: number,
     fieldContext: Omit<PgFieldContext, 'fieldType'>,
   ) => {
@@ -359,7 +392,10 @@ export async function generate(
       }
     }
 
-    if (type && (isCompositeType(type) || isTableType(type))) {
+    if (!type) {
+      return ''
+    }
+    if (isCompositeType(type) || isTableType(type) || isViewType(type)) {
       let jsTypeId = 't.' + type.object.name
 
       const ndims = fieldContext.ndims ?? (type.isArray ? 1 : 0)
@@ -372,17 +408,20 @@ export async function generate(
     return ''
   }
 
-  const renderCompositeData = (object: PgCompositeType | PgTable) => {
-    const names = object.fields.map(field => field.name)
+  const renderRowMapper = (
+    object: PgCompositeType | PgTable | PgView,
+    fields: PgField[] = object.fields!,
+  ) => {
+    const names = fields.map(field => field.name)
     const types = sift(
-      object.fields.map(field => {
-        const type = renderFieldType(field.typeOid, {
+      fields.map(field => {
+        const fieldMapper = renderFieldMapper(field.typeOid, {
           fieldName: field.name,
           ndims: field.ndims,
           container: object,
         })
-        if (type) {
-          return `${formatFieldName(field.name)}: ${type}`
+        if (fieldMapper) {
+          return `${formatFieldName(field.name)}: ${fieldMapper}`
         }
       }),
     )
@@ -490,7 +529,9 @@ export async function generate(
           imports.add('type ' + match[1])
         }
       } else {
-        if (!renderedObjects.has(type.object)) {
+        if (isViewType(type)) {
+          referencedViews.add(type.object)
+        } else if (!renderedObjects.has(type.object)) {
           if (isEnumType(type)) {
             renderedObjects.set(type.object, renderEnumType(type.object))
           } else {
@@ -500,9 +541,9 @@ export async function generate(
                 ? renderCompositeType(type.object)
                 : renderTableType(type.object),
             )
-            renderedCompositeData.set(
+            renderedRowMappers.set(
               type.object.oid,
-              renderCompositeData(type.object),
+              renderRowMapper(type.object),
             )
           }
         }
@@ -603,25 +644,29 @@ export async function generate(
 
         const type = typesByOid.get(routine.returnTypeOid)
         if (type && type.object.type !== PgObjectType.Base) {
-          if (isTableType(type) && !type.isArray) {
+          if ((isTableType(type) || isViewType(type)) && !type.isArray) {
             returnRow = true
           }
 
           // Determine if any of the table fields are composite types. If so, we
           // need to generate runtime parsing hints for them.
-          if (type.object.type !== PgObjectType.Enum) {
-            type.object.fields.forEach(field => {
+          if (!isEnumType(type)) {
+            const fields = isViewType(type)
+              ? await getViewFields(type.object)
+              : type.object.fields
+
+            fields.forEach(field => {
               const fieldType = typesByOid.get(field.typeOid)
               if (fieldType && 'fields' in fieldType.object) {
-                const type = renderFieldType(field.typeOid, {
+                const fieldMapper = renderFieldMapper(field.typeOid, {
                   fieldName: field.name,
                   ndims: field.ndims,
                   container: routine,
                   paramKind: PgParamKind.Out,
                   rowType: fieldType.object,
                 })
-                if (type) {
-                  outputMappers.push([field.name, type])
+                if (fieldMapper) {
+                  outputMappers.push([field.name, fieldMapper])
                 }
               }
             })
@@ -641,14 +686,14 @@ export async function generate(
             )
 
             if (fieldType && 'fields' in fieldType.object) {
-              const type = renderFieldType(fieldType.object.oid, {
+              const fieldMapper = renderFieldMapper(fieldType.object.oid, {
                 fieldName: field.name,
                 ndims: field.type.arrayBounds?.length,
                 container: routine,
                 paramKind: PgParamKind.Table,
               })
-              if (type) {
-                outputMappers.push([field.name, type])
+              if (fieldMapper) {
+                outputMappers.push([field.name, fieldMapper])
               }
             }
 
@@ -676,26 +721,26 @@ export async function generate(
         }
         argNames.forEach((name, index) => {
           const typeOid = routine.paramTypes[index]
-          const type = renderFieldType(typeOid, {
+          const fieldMapper = renderFieldMapper(typeOid, {
             fieldName: name,
             container: routine,
             paramKind: routine.paramKinds?.[index] ?? PgParamKind.In,
             paramIndex: index,
           })
-          if (type) {
-            builder += `.mapInput(${index}, ${type})`
+          if (fieldMapper) {
+            builder += `.mapInput(${index}, ${fieldMapper})`
           }
         })
       } else {
         routine.paramTypes.forEach((typeOid, index) => {
-          const type = renderFieldType(typeOid, {
+          const fieldMapper = renderFieldMapper(typeOid, {
             fieldName: `$${index + 1}`,
             container: routine,
             paramKind: routine.paramKinds?.[index] ?? PgParamKind.In,
             paramIndex: index,
           })
-          if (type) {
-            builder += `.mapInput(${index}, ${type})`
+          if (fieldMapper) {
+            builder += `.mapInput(${index}, ${fieldMapper})`
           }
         })
       }
@@ -742,6 +787,11 @@ export async function generate(
     }
   }
 
+  for (const view of referencedViews) {
+    const fields = await getViewFields(view)
+    renderedRowMappers.set(view.oid, renderRowMapper(view, fields))
+  }
+
   const { outFile } = env.config.generate
 
   const renderedFieldMappers = Object.values(fieldMappers).map(
@@ -749,7 +799,7 @@ export async function generate(
   )
 
   // Step 5: Write the "typeData.ts" module.
-  if (renderedCompositeData.size + renderedFieldMappers.length) {
+  if (renderedRowMappers.size + renderedFieldMappers.length) {
     foreignImports.add("* as t from './typeData.js'")
     const prelude = dedent`
       /* BEWARE: This file was generated by pg-nano. Any changes you make will be overwritten. */
@@ -763,9 +813,9 @@ export async function generate(
         (renderedFieldMappers.length > 0
           ? '\n\n// Field mappers\n' + renderedFieldMappers.join('\n')
           : '') +
-        (renderedCompositeData.size > 0
+        (renderedRowMappers.size > 0
           ? '\n\n// Composite types\n' +
-            Array.from(renderedCompositeData.values()).join('\n\n')
+            Array.from(renderedRowMappers.values()).join('\n\n')
           : '') +
         '\n',
     )
@@ -815,14 +865,19 @@ export async function generate(
   for (const nsp of Object.values(namespaces)) {
     let nspCode = ''
 
-    for (const type of [
+    for (const object of [
       ...nsp.enumTypes.sort(nameSort),
       ...nsp.compositeTypes.sort(nameSort),
       ...nsp.tables.sort(nameSort),
+      ...nsp.views.sort(nameSort),
       ...nsp.routines.sort(nameSort),
     ]) {
-      if (renderedObjects.has(type)) {
-        nspCode += renderedObjects.get(type)!
+      if (object.type === PgObjectType.View) {
+        if (referencedViews.has(object)) {
+          nspCode += await renderViewType(object)
+        }
+      } else if (renderedObjects.has(object)) {
+        nspCode += renderedObjects.get(object)!
       }
     }
 
