@@ -144,8 +144,7 @@ export async function hasRoutineSignatureChanged(
     SELECT
       coalesce(p.proargnames, '{}') AS argument_names,
       coalesce(p.proargmodes, '{}') AS argument_modes,
-      p.proargtypes::oid[] AS argument_types,
-      p.prorettype AS return_type,
+      p.proallargtypes::oid[] AS parameter_types,
       p.provariadic AS variadic_type,
       p.prokind AS function_kind
     FROM
@@ -168,9 +167,8 @@ export async function hasRoutineSignatureChanged(
     )
     SELECT
       r1.argument_names <> r2.argument_names OR
-      r1.argument_types <> r2.argument_types OR
       r1.argument_modes <> r2.argument_modes OR
-      r1.return_type <> r2.return_type OR
+      r1.parameter_types <> r2.parameter_types OR
       r1.variadic_type <> r2.variadic_type OR
       r1.function_kind <> r2.function_kind AS has_changes
     FROM
