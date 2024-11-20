@@ -42,7 +42,7 @@ export type QueryOptions = Options<{
   singleRowMode?: boolean
 }>
 
-export interface IQuery extends QueryOptions {
+export interface QueryDescriptor extends QueryOptions {
   id: string
   type: QueryType
   input: SQLTemplate | QueryHook<any>
@@ -72,7 +72,8 @@ export class CommandResult<TRow extends Row = Row> {
  */
 export type QueryHook<TResult> = (
   pq: Libpq,
-) => boolean | (() => Promise<TResult>)
+  query: QueryDescriptor,
+) => boolean | (() => TResult | Promise<TResult>)
 
 export interface QueryPromise<TResult> extends Promise<TResult> {
   cancel: () => void

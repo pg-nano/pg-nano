@@ -7,7 +7,7 @@ import { PgNativeError } from './error'
 import { baseTypeParsers, createTextParser } from './pg-types.js'
 import {
   type CommandResult,
-  type IQuery,
+  type QueryDescriptor,
   type QueryHook,
   type QueryOptions,
   type QueryPromise,
@@ -40,7 +40,7 @@ interface ConnectionEvents {
  * database. This is useful for push-based data updates.
  */
 export class Connection extends EventEmitter<ConnectionEvents> {
-  protected currentQuery: IQuery | null = null
+  protected currentQuery: QueryDescriptor | null = null
   protected idleTimeoutId: any = null
   protected declare pq: Libpq
 
@@ -67,7 +67,7 @@ export class Connection extends EventEmitter<ConnectionEvents> {
     options?: QueryOptions | null,
   ): QueryPromise<TResult> {
     const conn = unprotect(this)
-    const query: IQuery = {
+    const query: QueryDescriptor = {
       id: uid(8),
       type,
       input,
@@ -178,7 +178,7 @@ interface IConnection extends EventEmitter<ConnectionEvents> {
   pq: Libpq
   id: string
   status: ConnectionStatus
-  currentQuery: IQuery | null
+  currentQuery: QueryDescriptor | null
 }
 
 function unprotect(conn: Connection): IConnection {
@@ -208,7 +208,10 @@ function reset(conn: IConnection, newStatus: ConnectionStatus): void {
  * Sends a query to libpq and waits for it to finish writing query text to the
  * socket.
  */
-async function sendQuery(conn: IConnection, query: IQuery): Promise<any> {
+async function sendQuery(
+  conn: IConnection,
+  query: QueryDescriptor,
+): Promise<any> {
   stopReading(conn, ConnectionStatus.QUERY_WRITING)
   conn.currentQuery = query
 
@@ -221,7 +224,7 @@ async function sendQuery(conn: IConnection, query: IQuery): Promise<any> {
   let sent: boolean | (() => Promise<any>)
 
   if (isFunction(input)) {
-    sent = input(conn.pq)
+    sent = input(conn.pq, query)
   } else {
     input.params = []
     input.command = renderTemplate(input, conn.pq)

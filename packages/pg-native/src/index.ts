@@ -7,12 +7,14 @@ export * from './template/render.js'
 export * from './template/token.js'
 export * from './tuple.js'
 
+export { getResult } from './result.js'
 export { stringifyValue } from './value.js'
 
 export {
   QueryType,
   type CommandResult,
   type Field,
+  type QueryDescriptor,
   type QueryHook,
   type QueryOptions,
   type QueryPromise,
