@@ -11,6 +11,7 @@ import {
 import { isArray, isObject } from 'radashi'
 import type { Client } from './client.js'
 import type { FieldMapper } from './data/fieldMapper.js'
+import type { Input } from './data/types.js'
 import type { Query } from './query.js'
 
 /**
@@ -35,10 +36,10 @@ type UnwrapSingleKey<T> = keyof T extends infer TKey
   : never
 
 export type Routine<TArgs extends object, TResult> = TArgs extends any[]
-  ? (client: Client, ...args: TArgs) => TResult
+  ? (client: Client, ...args: Input<TArgs>) => TResult
   : object extends TArgs
-    ? (client: Client, args?: TArgs | UnwrapSingleKey<TArgs>) => TResult
-    : (client: Client, args: TArgs | UnwrapSingleKey<TArgs>) => TResult
+    ? (client: Client, args?: Input<TArgs | UnwrapSingleKey<TArgs>>) => TResult
+    : (client: Client, args: Input<TArgs | UnwrapSingleKey<TArgs>>) => TResult
 
 /**
  * Create a dedicated query function for a Postgres routine that returns a
