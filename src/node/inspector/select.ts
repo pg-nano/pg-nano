@@ -440,7 +440,7 @@ async function resolveReferences(
       throw new Error('Subquery alias is required')
     }
     if ($.isSelectStmt(subquery)) {
-      const fields = await getSelectedFields(subquery.SelectStmt, ctx)
+      const fields = await getSelectedFields(subquery.SelectStmt, ctx.extend())
       ctx.references[alias.aliasname] = {
         type: 'subquery',
         fields:
