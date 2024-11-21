@@ -75,7 +75,7 @@ export async function generate(
 
   const readFile = options.readFile ?? fs.readFileSync
 
-  const allObjects = (
+  const objectStmts = (
     await map(filePaths, async file => {
       traceParser('parsing schema file:', file)
       return await parseObjectStatements(
@@ -87,7 +87,7 @@ export async function generate(
   ).flat()
 
   const { pluginsByStatementId } = await prepareDatabase(
-    allObjects,
+    objectStmts,
     baseTypes,
     env,
   )
@@ -105,12 +105,12 @@ export async function generate(
   }
 
   const tableStmts = mapify(
-    allObjects.filter(obj => obj.kind === 'table'),
+    objectStmts.filter(obj => obj.kind === 'table'),
     obj => obj.id.toQualifiedName(),
   )
 
   const routineStmts = mapify(
-    allObjects.filter(obj => obj.kind === 'routine'),
+    objectStmts.filter(obj => obj.kind === 'routine'),
     obj => obj.id.toQualifiedName(),
   )
 
@@ -118,6 +118,9 @@ export async function generate(
 
   // Step 1: Collect type information from the database.
   const namespaces = await inspectNamespaces(pg, options.signal)
+
+  /** Objects found in the database by introspection. */
+  const objects: PgObject[] = []
 
   const typesByOid = new Map<number, Required<PgType>>()
   const typesByName = new Map<string, Required<PgType>>()
@@ -167,13 +170,19 @@ export async function generate(
         }
         const id = new SQLIdentifier(type.name, type.schema)
         type.plugin = pluginsByStatementId.get(id.toQualifiedName())
+        objects.push(type)
       }
     }
     for (const routine of nsp.routines) {
       const id = new SQLIdentifier(routine.name, routine.schema)
       routine.plugin = pluginsByStatementId.get(id.toQualifiedName())
+      objects.push(routine)
     }
   }
+
+  const getViewFields = memoAsync((view: PgView) => {
+    return inspectViewFields(pg, view, objects, options.signal)
+  })
 
   const generateContext: GenerateContext = Object.freeze({
     typesByName,
@@ -257,8 +266,6 @@ export async function generate(
       }\n\n
     `
 
-  const getViewFields = memoAsync((view: PgView) => inspectViewFields(pg, view))
-
   const renderViewType = async (view: PgView) => {
     const fields = await getViewFields(view)
 
@@ -272,7 +279,9 @@ export async function generate(
               field,
             })
 
-            return `${jsName}?: ${jsType}`
+            const optionalToken = field.hasNotNull ? '' : '?'
+
+            return `${jsName}${optionalToken}: ${jsType}`
           })
           .join('\n')}
       }\n\n

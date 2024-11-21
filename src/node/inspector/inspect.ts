@@ -1,12 +1,15 @@
+import { parseQuery, type SelectStmt } from '@pg-nano/pg-parser'
 import type { Client, CommandResult } from 'pg-nano'
-import { type SQLTemplate, getResult, sql } from 'pg-native'
+import { getResult, sql, type SQLTemplate } from 'pg-native'
 import { uid } from 'radashi'
+import { inspectSelect } from './select.js'
 import type {
   PgBaseType,
   PgCompositeType,
   PgEnumType,
   PgField,
   PgNamespace,
+  PgObject,
   PgRoutine,
   PgTable,
   PgView,
@@ -233,12 +236,25 @@ export function inspectViews(client: Client, signal?: AbortSignal) {
   return client.queryRowList<PgView>(query).cancelWithSignal(signal)
 }
 
-export function inspectViewFields(
+export async function inspectViewFields(
   client: Client,
   view: PgView,
+  objects: PgObject[],
   signal?: AbortSignal,
 ) {
-  return inspectResultSet(client, sql.unsafe(view.query), signal)
+  const ast = await parseQuery(view.query)
+  const selectStmt = (ast.stmts[0].stmt as { SelectStmt: SelectStmt })
+    .SelectStmt
+
+  try {
+    return await inspectSelect(client, selectStmt, objects, signal)
+  } catch (error) {
+    console.warn(error)
+
+    // Fallback to asking the database directly. The downside of this is the
+    // lack of nullability hints.
+    return inspectResultSet(client, sql.unsafe(view.query), signal)
+  }
 }
 
 export async function inspectResultSet(
