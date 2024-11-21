@@ -1,7 +1,7 @@
 import * as array from 'postgres-array'
 import parseByteA from 'postgres-bytea'
 import * as composite from 'postgres-composite'
-import parseTimestampTz from 'postgres-date'
+import parseDate from 'postgres-date'
 import { parse as parseInterval } from 'postgres-interval'
 import * as range from 'postgres-range'
 
@@ -74,6 +74,11 @@ function parseRange(transform: (value: string) => any) {
 
 function parseString(value: string) {
   return value
+}
+
+function parseTimestampTz(value: string) {
+  const date = parseDate(value)
+  return typeof date === 'number' ? date : date.getTime()
 }
 
 function parseTimestamp(value: string) {

@@ -1,5 +1,9 @@
 /**
- * When a timestamp is not a Date instance, it's either Infinity or -Infinity.
- * @see https://www.postgresql.org/docs/current/datatype-datetime.html#DATATYPE-DATETIME-SPECIAL-VALUES
+ * Timestamps are represented in milliseconds (1e-3 seconds) since the Unix
+ * epoch.
+ *
+ * Unfortunately, this could mean a loss of precision since Postgres timestamps
+ * can have microseconds (1e-6 seconds). This limitation is being tracked in
+ * [#48](https://github.com/pg-nano/pg-nano/issues/48).
  */
-export type Timestamp = Date | number
+export type Timestamp = number
