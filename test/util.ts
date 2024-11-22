@@ -113,6 +113,7 @@ export async function createProject(
   // Load the environment, including the config file.
   const env = await getEnv(fixtureDir, {
     noConfigBundling: true,
+    verbose: true,
   })
 
   const eventLog: any[][] = []
