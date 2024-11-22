@@ -1,8 +1,8 @@
 import type Libpq from '@pg-nano/libpq'
 import { isArray, isString } from 'radashi'
 import { PgNativeError } from '../error.js'
-import { SQLTemplate, type SQLTemplateValue } from '../template.js'
 import { stringifyValue } from '../value.js'
+import { type SQLTemplate, type SQLTemplateValue, SQLToken } from './token.js'
 import {
   INDENT_RE,
   removeLeadingEmptyLines,
@@ -11,38 +11,39 @@ import {
 } from './whitespace.js'
 
 export function renderTemplate(
-  template: SQLTemplate,
+  input: SQLTemplate,
   pq: Libpq,
   options?: { reindent?: boolean; cache?: boolean },
   parentIndent?: string,
 ): string {
   let command = ''
 
-  for (let i = 0; i < template.strings.length; i++) {
-    command += template.strings[i]
+  if (input.type !== SQLToken.Type.Template) {
+    input = SQLToken.template([''], [input])
+  }
 
-    if (i < template.values.length) {
-      const needsReindent =
-        options?.reindent && INDENT_RE.test(template.strings[i])
+  const [strings, values, indent] = input.args
+
+  for (let i = 0; i < strings.length; i++) {
+    command += strings[i]
+
+    if (i < values.length) {
+      const needsReindent = options?.reindent && INDENT_RE.test(strings[i])
 
       const valueString = renderTemplateValue(
-        template.values[i],
+        values[i],
         pq,
         options,
-        needsReindent ? template.indent : undefined,
-        template,
+        needsReindent ? indent : undefined,
+        input,
       )
 
       command += needsReindent ? stripIndent(valueString) : valueString
     }
   }
 
-  if (
-    options?.reindent &&
-    template.values.length &&
-    template.indent !== (parentIndent ?? '')
-  ) {
-    command = replaceIndent(command, template.indent, parentIndent ?? '')
+  if (options?.reindent && values.length && indent !== (parentIndent ?? '')) {
+    command = replaceIndent(command, indent, parentIndent ?? '')
     command = removeLeadingEmptyLines(command)
   }
 
@@ -50,54 +51,58 @@ export function renderTemplate(
 }
 
 export function renderTemplateValue(
-  arg: SQLTemplateValue,
+  input: SQLTemplateValue,
   pq: Libpq,
   options?: { reindent?: boolean },
   parentIndent?: string,
   parentTemplate?: SQLTemplate,
 ): string {
-  if (!arg) {
+  if (!input) {
     return ''
   }
-  if (isArray(arg)) {
-    return arg
+  if (isArray(input)) {
+    return input
       .map(value => renderTemplateValue(value, pq, options, parentIndent))
       .join('')
   }
-  if (SQLTemplate.isTemplate(arg)) {
-    if (parentTemplate) {
-      arg.params = parentTemplate.params
+  switch (input.type) {
+    case SQLToken.Type.Template: {
+      if (parentTemplate) {
+        input.params = parentTemplate.params
+      }
+      return renderTemplate(input, pq, options, parentIndent)
     }
-    return renderTemplate(arg, pq, options, parentIndent)
-  }
-  switch (arg.type) {
-    case 'id': {
-      const escapedId = pq.escapeIdentifier(arg.id)
+    case SQLToken.Type.Id: {
+      const escapedId = pq.escapeIdentifier(input.args[0])
       if (escapedId === null) {
         throw new PgNativeError(pq.getLastErrorMessage())
       }
       return escapedId
     }
-    case 'val':
-      if (parentTemplate?.params && !arg.inline) {
-        return '$' + parentTemplate.params.push(stringifyValue(arg.value))
+    case SQLToken.Type.Literal: {
+      const [value, inline] = input.args
+      if (parentTemplate?.params && !inline) {
+        return '$' + parentTemplate.params.push(stringifyValue(value))
       }
-      return stringifyValue(arg.value, str => {
+      return stringifyValue(value, str => {
         const escapedStr = pq.escapeLiteral(str)
         if (escapedStr === null) {
           throw new PgNativeError(pq.getLastErrorMessage())
         }
         return escapedStr
       })
-    case 'join': {
-      const list: string[] = []
-      const separator = isString(arg.separator)
-        ? arg.separator.length <= 1
-          ? arg.separator
-          : ''
-        : renderTemplateValue(arg.separator, pq)
+    }
+    case SQLToken.Type.Join: {
+      const [values, separatorToken] = input.args
 
-      for (const value of arg.list) {
+      const list: string[] = []
+      const separator = isString(separatorToken)
+        ? separatorToken.length <= 1
+          ? separatorToken
+          : ''
+        : renderTemplateValue(separatorToken, pq)
+
+      for (const value of values) {
         const valueString = renderTemplateValue(
           value,
           pq,
@@ -111,11 +116,8 @@ export function renderTemplateValue(
 
       return list.join(separator)
     }
-    default: {
-      const constructor = (arg as any)?.constructor
-      throw new Error(
-        'Unsupported template value: ' + (constructor?.name || typeof arg),
-      )
+    case SQLToken.Type.Unsafe: {
+      return input.args[0]
     }
   }
 }
