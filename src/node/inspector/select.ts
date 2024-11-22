@@ -128,16 +128,21 @@ class SelectContext {
         array: type.arrayOid === typeOid,
       }
     }
-    return this.pg.queryRow<TypeName>(sql`
-      SELECT
-        t.typname AS "name",
-        n.nspname AS "schema",
-        (t.typarray = ${sql.val(typeOid)}) AS "array"
-      FROM pg_type t
-      JOIN pg_namespace n ON t.typnamespace = n.oid
-      WHERE (t.oid = ${sql.val(typeOid)} AND t.typname NOT LIKE '\_%') 
-         OR t.typarray = ${sql.val(typeOid)}
-    `)
+    try {
+      return await this.pg.queryRow<TypeName>(sql`
+        SELECT
+          t.typname AS "name",
+          n.nspname AS "schema",
+          (t.typarray = ${sql.val(typeOid)}) AS "array"
+        FROM pg_type t
+        JOIN pg_namespace n ON t.typnamespace = n.oid
+        WHERE (t.oid = ${sql.val(typeOid)} AND t.typname NOT LIKE '\\_%')
+          OR t.typarray = ${sql.val(typeOid)}
+      `)
+    } catch (error: any) {
+      error.message = `Failed to get type name for OID ${typeOid}: ${error.message}`
+      throw error
+    }
   })
 
   getTypeOid = memoAsync(
