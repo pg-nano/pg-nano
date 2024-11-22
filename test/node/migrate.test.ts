@@ -14,9 +14,7 @@ import {
 const cwd = join(__dirname, '__fixtures__')
 
 describe('migrate', () => {
-  beforeEach(async () => {
-    await resetPublicSchema()
-  })
+  beforeEach(resetPublicSchema)
 
   for (const beforeFile of globSync('**/before.sql', { cwd })) {
     const afterFile = beforeFile.replace('before', 'after')

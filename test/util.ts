@@ -27,25 +27,6 @@ export function spawn(
   return promise
 }
 
-export async function initPostgres() {
-  const port = process.env.PGPORT || '15432'
-  const proc = spawn('pg_tmp', ['-t', '-p', port])
-  const stderrPromise = bufferReadable<string>(proc.stderr!, 'utf8')
-  const stdout = await bufferReadable<string>(proc.stdout!, 'utf8')
-  if (stdout) {
-    process.env.PG_TMP_DSN = stdout
-    console.log('PG_TMP_DSN = %O', stdout)
-  } else {
-    const stderr = await stderrPromise
-    if (stderr.includes('postmaster already running')) {
-      process.env.PG_TMP_DSN = `postgresql://${process.env.USER}@localhost:${port}/test`
-    } else {
-      console.error(stderr)
-    }
-  }
-  await proc
-}
-
 export async function bufferReadable<T extends Buffer | string>(
   readable: Readable,
   encoding?: BufferEncoding | null,
@@ -66,7 +47,6 @@ export async function bufferReadable<T extends Buffer | string>(
 
 export async function resetPublicSchema() {
   await spawn('psql', [
-    '-d',
     process.env.PG_TMP_DSN!,
     '-c',
     'DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO public',
@@ -106,7 +86,7 @@ export type Project = Awaited<ReturnType<typeof createProject>>
 export async function createProject(
   fixtures: Record<string, string>,
   config?: Partial<Omit<UserConfig, 'plugins'>> & {
-    plugins?: string[]
+    plugins?: string[] | undefined
   },
 ) {
   const name = currentTestName()
