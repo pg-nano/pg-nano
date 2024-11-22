@@ -349,6 +349,38 @@ async function inspectExpression(
     ]
   }
 
+  if ($.isA_Const(expr)) {
+    const { A_Const: constExpr } = expr
+
+    let typeOid: number
+    let hasNotNull = true
+
+    if ('boolval' in constExpr) {
+      typeOid = await ctx.getTypeOid('bool', 'pg_catalog')
+    } else if ('bsval' in constExpr) {
+      typeOid = await ctx.getTypeOid('bit varying', 'pg_catalog')
+    } else if ('fval' in constExpr) {
+      typeOid = await ctx.getTypeOid('float8', 'pg_catalog')
+    } else if ('isnull' in constExpr) {
+      typeOid = await ctx.getTypeOid('unknown', 'pg_catalog')
+      hasNotNull = false
+    } else if ('ival' in constExpr) {
+      typeOid = await ctx.getTypeOid('int8', 'pg_catalog')
+    } else if ('sval' in constExpr) {
+      typeOid = await ctx.getTypeOid('text', 'pg_catalog')
+    } else {
+      throw new Error('Invalid A_Const value')
+    }
+
+    return [
+      {
+        name: 'const',
+        typeOid,
+        hasNotNull,
+      },
+    ]
+  }
+
   if ($.isA_ArrayExpr(expr)) {
     const { elements } = $(expr)
 
