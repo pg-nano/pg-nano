@@ -1,13 +1,13 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { PgResultError, sql } from 'pg-nano'
+import { type Client, PgResultError, sql } from 'pg-nano'
 import { map, memo, sift } from 'radashi'
 import type { Plugin, SQLTemplate } from '../config/plugin.js'
 import { debug, traceChecks, traceDepends } from '../debug.js'
 import type { Env } from '../env.js'
 import { events } from '../events.js'
 import {
-  findAddedTableColumns,
+  diffTableColumns,
   hasCompositeTypeChanged,
   hasRoutineSignatureChanged,
 } from '../inspector/diff.js'
@@ -179,7 +179,18 @@ export async function prepareDatabase(
           `
         }
       } else if (object.kind === 'table') {
-        const addedColumns = await findAddedTableColumns(pg, object)
+        const { addedColumns, droppedColumns } = await diffTableColumns(
+          pg,
+          object,
+        )
+
+        if (droppedColumns.length > 0) {
+          // Drop views that depend on this table. The more ideal solution would
+          // be to drop only the views that depend on the dropped columns, but
+          // we don't want to deal with that complexity (for now).
+          const drops = recursivelyDropViews(pg, object, objects)
+          query = sql`${sql.join('\n', drops)}`
+        }
 
         if (addedColumns.length > 0) {
           events.emit('update-object', { object })
@@ -230,7 +241,7 @@ export async function prepareDatabase(
             `
           })
 
-          query = sql`${sql.join('\n', alterStmts)}`
+          query = sql`${sql.join('\n', [query, ...alterStmts])}`
         }
       }
     } else {
@@ -400,6 +411,30 @@ async function preparePluginStatements(
   }
 
   return pluginsByStatementId
+}
+
+/**
+ * Drop views in the `objects` array if they depend on the given `dependency`
+ * object. Any views that depend on a dropped view will also be dropped.
+ */
+function recursivelyDropViews(
+  pg: Client,
+  dependency: PgObjectStmt,
+  objects: PgObjectStmt[],
+  drops: SQLTemplate[] = [],
+): SQLTemplate[] {
+  for (const view of objects) {
+    if (view.kind !== 'view') {
+      continue
+    }
+    if (view.dependencies.has(dependency)) {
+      recursivelyDropViews(pg, view, objects, drops)
+      drops.push(sql`
+        DROP VIEW ${view.id.toSQL()} CASCADE;
+      `)
+    }
+  }
+  return drops
 }
 
 function throwFormattedQueryError(

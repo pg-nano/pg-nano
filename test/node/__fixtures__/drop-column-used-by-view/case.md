@@ -1,0 +1,1 @@
+This case is about dropping a column that is being referenced by a view. To drop such a column, we need the `CASCADE` option.

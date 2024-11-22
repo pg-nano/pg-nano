@@ -1,5 +1,4 @@
 import { type Client, isPgResultError, sql } from 'pg-nano'
-import { select } from 'radashi'
 import { traceChecks } from '../debug.js'
 import type { SQLIdentifier } from '../parser/identifier.js'
 import type {
@@ -13,15 +12,12 @@ import { appendCodeFrame } from '../util/codeFrame.js'
 /**
  * Returns a set of column names that were added to the table.
  */
-export async function findAddedTableColumns(
-  client: Client,
-  table: PgTableStmt,
-) {
+export async function diffTableColumns(client: Client, table: PgTableStmt) {
   if (traceChecks.enabled) {
-    traceChecks('did %s have columns added?', table.id.toQualifiedName())
+    traceChecks('did %s change its columns?', table.id.toQualifiedName())
   }
 
-  const existingNames = await client.queryValueList<string>(sql`
+  const previousColumns = await client.queryValueList<string>(sql`
     SELECT
       a.attname
     FROM
@@ -35,11 +31,24 @@ export async function findAddedTableColumns(
       AND NOT a.attisdropped
   `)
 
-  return select(
-    table.columns,
-    col => col.name,
-    col => !existingNames.includes(col.name),
-  )
+  const addedColumns: string[] = []
+  const droppedColumns: string[] = []
+  const currentColumns: string[] = []
+
+  for (const col of table.columns) {
+    if (previousColumns.includes(col.name)) {
+      currentColumns.push(col.name)
+    } else {
+      addedColumns.push(col.name)
+    }
+  }
+  for (const name of previousColumns) {
+    if (!currentColumns.includes(name)) {
+      droppedColumns.push(name)
+    }
+  }
+
+  return { addedColumns, droppedColumns }
 }
 
 /**
