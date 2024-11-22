@@ -14,5 +14,5 @@ export type Input<T> = T extends (...args: any[]) => any
       : T extends BigInt
         ? T | number
         : T extends undefined
-          ? T | null
+          ? T | null | undefined
           : T
