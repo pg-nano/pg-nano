@@ -24,9 +24,14 @@
 
 import fs from 'node:fs'
 import net from 'node:net'
+import { isAbsolute } from 'node:path'
 
 export function isLocalHost(host: string): boolean {
   if (host === '::1' || host === 'localhost') {
+    return true
+  }
+
+  if (isAbsolute(host)) {
     return true
   }
 

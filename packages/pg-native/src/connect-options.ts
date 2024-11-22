@@ -344,7 +344,15 @@ export function parseConnectionString(
       ...Object.fromEntries(url.searchParams),
       user: url.username || undefined,
       password: url.password || undefined,
-      host: url.hostname,
+      host:
+        !url.host && url.searchParams.has('host')
+          ? // Unix domain socket
+            url.searchParams.get('host')!
+          : url.host.startsWith('%2F')
+            ? // Percent-encoded Unix domain socket path
+              decodeURIComponent(url.host)
+            : // TCP/IP
+              url.hostname,
       port: url.port || undefined,
       dbname: url.pathname.split('/')[1] || undefined,
     }
