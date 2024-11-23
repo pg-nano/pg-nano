@@ -345,6 +345,7 @@ async function inspectExpression(
         name: argFields[0].name || typeId.name,
         typeOid,
         hasNotNull: argFields[0].hasNotNull,
+        ndims: typeName.arrayBounds?.length,
       },
     ]
   }
