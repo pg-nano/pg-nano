@@ -404,7 +404,14 @@ export async function generate(
     if (!type) {
       return ''
     }
-    if (isCompositeType(type) || isTableType(type) || isViewType(type)) {
+    if (isBaseType(type)) {
+      const { paramKind } = fieldContext
+      if (!paramKind || isInputParam(paramKind)) {
+        if (type.jsType === 'Timestamp') {
+          return 't.timestamp'
+        }
+      }
+    } else if (isCompositeType(type) || isTableType(type) || isViewType(type)) {
       let jsTypeId = 't.' + type.object.name
 
       const ndims = fieldContext.ndims ?? (type.isArray ? 1 : 0)
@@ -926,4 +933,25 @@ export async function generate(
 
 function indent(text: string, count = 2) {
   return text.replace(/^/gm, ' '.repeat(count))
+}
+
+function isInputParam(paramKind: PgParamKind | undefined) {
+  return !!(
+    paramKind &&
+    extract(paramKind, [
+      PgParamKind.In,
+      PgParamKind.InOut,
+      PgParamKind.Variadic,
+    ])
+  )
+}
+
+type IfExists<T, U> = T extends never ? never : U
+
+function extract<TInput, const TOutput>(
+  input: TInput,
+  outputs: TOutput[],
+): Extract<TOutput, TInput> | IfExists<Exclude<TInput, TOutput>, undefined> {
+  const index = outputs.indexOf(input as any)
+  return (index === -1 ? undefined : outputs[index]) as any
 }

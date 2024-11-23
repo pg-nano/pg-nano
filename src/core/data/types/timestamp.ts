@@ -6,4 +6,4 @@
  * can have microseconds (1e-6 seconds). This limitation is being tracked in
  * [#48](https://github.com/pg-nano/pg-nano/issues/48).
  */
-export type Timestamp = number
+export type Timestamp = number & { __brand?: 'Timestamp' }
