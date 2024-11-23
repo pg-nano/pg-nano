@@ -1,3 +1,4 @@
+import type { Range } from 'postgres-range'
 import type { JSON } from './json'
 import type { Timestamp } from './timestamp'
 
@@ -24,6 +25,8 @@ export type Input<T> = JSON extends T
           ? T | null | undefined
           : T extends BigInt
             ? T | number
-            : T extends object
-              ? { [K in keyof T]: Input<T[K]> }
-              : T
+            : T extends Range<infer TSubtype>
+              ? Range<Input<TSubtype>>
+              : T extends object
+                ? { [K in keyof T]: Input<T[K]> }
+                : T
