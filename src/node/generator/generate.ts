@@ -461,14 +461,14 @@ export async function generate(
           container: object,
         })
         if (fieldMapper) {
-          return `${formatFieldName(field.name)}: ${fieldMapper}`
+          return ` ${formatFieldName(field.name)}: ${fieldMapper}`
         }
       }),
     )
 
     let args = JSON.stringify(names)
     if (types.length > 0) {
-      args += `, {${types}}`
+      args += `, {${types} }`
     }
 
     return dedent`
