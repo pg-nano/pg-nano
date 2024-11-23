@@ -8,6 +8,7 @@ const pkgJson = JSON.parse(readFileSync('../../package.json', 'utf-8'))
 export default defineConfig({
   entry: {
     'pg-nano': 'mod.ts',
+    'field-mappers': 'data/fieldMappers/index.ts',
   },
   outDir,
   format: ['esm'],

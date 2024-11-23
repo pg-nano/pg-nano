@@ -18,6 +18,10 @@
       "types": "./dist/node/plugin.d.ts",
       "default": "./dist/node/plugin.js"
     },
+    "./field-mappers": {
+      "types": "./dist/field-mappers.d.ts",
+      "default": "./dist/field-mappers.js"
+    },
     ".": {
       "types": "./dist/pg-nano.d.ts",
       "default": "./dist/pg-nano.js"

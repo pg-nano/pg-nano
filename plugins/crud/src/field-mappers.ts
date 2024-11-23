@@ -4,8 +4,8 @@ import {
   FieldCase,
   snakeToCamel,
   toPostgresText,
-  type RowMapper,
 } from 'pg-nano'
+import type { RowMapper } from 'pg-nano/field-mappers'
 
 export const insert_mapper = (table: RowMapper) =>
   defineFieldMapper(
