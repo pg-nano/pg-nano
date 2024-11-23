@@ -43,9 +43,9 @@ import { quoteName, SQLIdentifier } from '../parser/identifier.js'
 import { parseObjectStatements } from '../parser/parse.js'
 import { dedent } from '../util/dedent.js'
 import { memoAsync } from '../util/memoAsync.js'
-import { jsTypesByOid } from './jsTypesByOid.js'
 import { migrate } from './migrate.js'
 import { prepareDatabase } from './prepare.js'
+import { jsTypeByPgName, subtypeByPgName } from './typeMappings.js'
 
 export type GenerateOptions = {
   signal?: AbortSignal
@@ -148,7 +148,7 @@ export async function generate(
   }
 
   for (const baseType of baseTypes) {
-    const jsType = jsTypesByOid[baseType.oid] ?? 'string'
+    const jsType = jsTypeByPgName[baseType.name] ?? 'string'
     registerType(baseType, false, jsType)
     if (baseType.arrayOid) {
       registerType(baseType, true, jsType)
@@ -367,7 +367,7 @@ export async function generate(
     oid: number,
     fieldContext: Omit<PgFieldContext, 'fieldType'>,
   ) => {
-    const type = typesByOid.get(oid)
+    let type = typesByOid.get(oid)
 
     if (fieldMapperPlugins.length > 0) {
       const mapFieldContext = {
@@ -404,24 +404,38 @@ export async function generate(
     if (!type) {
       return ''
     }
+
+    let jsFieldMapperId: string | undefined
+    let isRange: boolean | undefined
+
+    if (type.jsType.startsWith('Range<')) {
+      isRange = true
+      const subtypeName = subtypeByPgName[type.object.name]
+      type = typesByName.get(subtypeName)!
+    }
+
     if (isBaseType(type)) {
       const { paramKind } = fieldContext
       if (!paramKind || isInputParam(paramKind)) {
         if (type.jsType === 'Timestamp') {
-          return 't.timestamp'
+          jsFieldMapperId = 't.timestamp'
         }
       }
     } else if (isCompositeType(type) || isTableType(type) || isViewType(type)) {
-      let jsTypeId = 't.' + type.object.name
+      jsFieldMapperId = 't.' + type.object.name
+    }
 
+    if (jsFieldMapperId) {
+      if (isRange) {
+        jsFieldMapperId = 't.range(' + jsFieldMapperId + ')'
+      }
       const ndims = fieldContext.ndims ?? (type.isArray ? 1 : 0)
       for (let i = 0; i < ndims; i++) {
-        jsTypeId = 't.array(' + jsTypeId + ')'
+        jsFieldMapperId = 't.array(' + jsFieldMapperId + ')'
       }
-
-      return jsTypeId
     }
-    return ''
+
+    return jsFieldMapperId ?? ''
   }
 
   const renderRowMapper = (
