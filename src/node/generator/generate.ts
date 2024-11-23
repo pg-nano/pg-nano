@@ -799,6 +799,7 @@ export async function generate(
   for (const view of referencedViews) {
     const fields = await getViewFields(view)
     renderedRowMappers.set(view.oid, renderRowMapper(view, fields))
+    renderedObjects.set(view, await renderViewType(view))
   }
 
   const { outFile } = env.config.generate
@@ -881,11 +882,7 @@ export async function generate(
       ...nsp.views.sort(nameSort),
       ...nsp.routines.sort(nameSort),
     ]) {
-      if (object.type === PgObjectType.View) {
-        if (referencedViews.has(object)) {
-          nspCode += await renderViewType(object)
-        }
-      } else if (renderedObjects.has(object)) {
+      if (renderedObjects.has(object)) {
         nspCode += renderedObjects.get(object)!
       }
     }
