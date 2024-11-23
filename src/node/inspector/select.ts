@@ -146,7 +146,7 @@ class SelectContext {
   })
 
   getTypeOid = memoAsync(
-    async (name: string, schema?: string, array = false) => {
+    async (name: string, schema?: string, array?: boolean) => {
       const id = schema ? `${schema}.${name}` : name
       const type = this.types[id]
       if (type) {
