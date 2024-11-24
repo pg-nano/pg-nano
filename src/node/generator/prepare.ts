@@ -68,26 +68,28 @@ export async function prepareDatabase(
     },
   }
 
-  const doesObjectExist = memo((type: PgObjectStmtKind, id: SQLIdentifier) => {
-    if (!(type in objectExistence)) {
-      return false
-    }
+  const doesObjectExist = memo(
+    async (type: PgObjectStmtKind, id: SQLIdentifier) => {
+      if (!(type in objectExistence)) {
+        return false
+      }
 
-    if (traceChecks.enabled) {
-      traceChecks('does %s exist?', id.toQualifiedName())
-    }
+      if (traceChecks.enabled) {
+        traceChecks('does %s exist?', id.toQualifiedName())
+      }
 
-    const { from, schemaKey, nameKey } = objectExistence[type]
+      const { from, schemaKey, nameKey } = objectExistence[type]
 
-    return pg.queryValue<boolean>(sql`
-      SELECT EXISTS (
-        SELECT 1
-        FROM ${sql.id(from)}
-        WHERE ${sql.id(schemaKey)} = ${id.schemaVal}${schemaKey.endsWith('namespace') ? sql.unsafe('::regnamespace') : ''}
-          AND ${sql.id(nameKey)} = ${id.nameVal}
-      );
-    `)
-  })
+      return pg.queryValue<boolean>(sql`
+        SELECT EXISTS (
+          SELECT 1
+          FROM ${sql.id(from)}
+          WHERE ${sql.id(schemaKey)} = ${id.schemaVal}${schemaKey.endsWith('namespace') ? sql.unsafe('::regnamespace') : ''}
+            AND ${sql.id(nameKey)} = ${id.nameVal}
+        );
+      `)
+    },
+  )
 
   // Plugins may add to the object list, so run them before linking the object
   // dependencies together.
