@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { type Client, PgResultError, sql } from 'pg-nano'
+import { PgResultError, sql } from 'pg-nano'
 import { map, memo, sift } from 'radashi'
 import type { Plugin, SQLTemplate } from '../config/plugin.js'
 import { debug, traceChecks, traceDepends } from '../debug.js'
@@ -16,7 +16,11 @@ import { linkObjectStatements } from '../linker/link.js'
 import { extractColumnDefinition } from '../parser/column.js'
 import type { SQLIdentifier } from '../parser/identifier.js'
 import { parseObjectStatements } from '../parser/parse.js'
-import type { PgObjectStmt, PgObjectStmtKind } from '../parser/types.js'
+import type {
+  PgObjectStmt,
+  PgObjectStmtKind,
+  PgViewStmt,
+} from '../parser/types.js'
 import { cwdRelative } from '../util/path.js'
 
 export async function prepareDatabase(
@@ -187,11 +191,40 @@ export async function prepareDatabase(
         )
 
         if (droppedColumns.length > 0) {
-          // Drop views that depend on this table. The more ideal solution would
-          // be to drop only the views that depend on the dropped columns, but
-          // we don't want to deal with that complexity (for now).
-          const drops = recursivelyDropViews(pg, object, objects)
-          query = sql`${sql.join('\n', drops)}`
+          // Drop existing views that depend on this table (directly or
+          // indirectly). The more ideal solution would be to drop only the
+          // views that depend on the dropped columns, but we don't want to deal
+          // with that complexity (for now).
+          const unmatchedViews = new Set(objects.filter(o => o.kind === 'view'))
+          const matchDependentViews = async (
+            dependency: PgObjectStmt,
+            dependentViews = new Set<PgViewStmt>(),
+          ) => {
+            for (const view of unmatchedViews) {
+              if (
+                view.dependencies.has(dependency) &&
+                (await doesObjectExist('view', view.id))
+              ) {
+                unmatchedViews.delete(view)
+                dependentViews.add(view)
+                await matchDependentViews(view, dependentViews)
+              }
+            }
+            return dependentViews
+          }
+
+          const dependentViews = await matchDependentViews(object)
+          if (dependentViews.size > 0) {
+            query = sql`${sql.join(
+              '\n',
+              Array.from(
+                dependentViews,
+                view => sql`
+                  DROP VIEW ${view.id.toSQL()} CASCADE;
+                `,
+              ),
+            )}`
+          }
         }
 
         if (addedColumns.length > 0) {
@@ -413,30 +446,6 @@ async function preparePluginStatements(
   }
 
   return pluginsByStatementId
-}
-
-/**
- * Drop views in the `objects` array if they depend on the given `dependency`
- * object. Any views that depend on a dropped view will also be dropped.
- */
-function recursivelyDropViews(
-  pg: Client,
-  dependency: PgObjectStmt,
-  objects: PgObjectStmt[],
-  drops: SQLTemplate[] = [],
-): SQLTemplate[] {
-  for (const view of objects) {
-    if (view.kind !== 'view') {
-      continue
-    }
-    if (view.dependencies.has(dependency)) {
-      recursivelyDropViews(pg, view, objects, drops)
-      drops.push(sql`
-        DROP VIEW ${view.id.toSQL()} CASCADE;
-      `)
-    }
-  }
-  return drops
 }
 
 function throwFormattedQueryError(
