@@ -496,14 +496,3 @@ function throwFormattedQueryError(
   error.stack = message + stack
   throw error
 }
-
-function nonUnique<T>(array: readonly T[]) {
-  const seen = new Set<T>()
-  return array.filter((value, index, arr) => {
-    if (seen.has(value)) {
-      return true
-    }
-    seen.add(value)
-    return false
-  })
-}
