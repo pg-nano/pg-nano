@@ -258,7 +258,7 @@ export async function generate(
               field,
             })
 
-            const optionalToken = field.hasNotNull ? '' : '?'
+            const optionalToken = field.nullable ? '?' : ''
 
             return `${jsName}${optionalToken}: ${jsType}`
           })
@@ -268,22 +268,21 @@ export async function generate(
 
   const renderViewType = async (view: PgView) => {
     const fields = await getViewFields(view)
+    const renderedFields = fields.map(field => {
+      const jsName = formatFieldName(field.name)
+      const jsType = renderTypeReference(field.typeOid, view, {
+        fieldName: field.name,
+        field,
+      })
+
+      const optionalToken = field.nullable ? '?' : ''
+
+      return `${jsName}${optionalToken}: ${jsType}`
+    })
 
     return dedent`
       export type ${pascal(view.name)} = {
-        ${fields
-          .map(field => {
-            const jsName = formatFieldName(field.name)
-            const jsType = renderTypeReference(field.typeOid, view, {
-              fieldName: field.name,
-              field,
-            })
-
-            const optionalToken = field.hasNotNull ? '' : '?'
-
-            return `${jsName}${optionalToken}: ${jsType}`
-          })
-          .join('\n')}
+        ${renderedFields.join('\n')}
       }\n\n
     `
   }
@@ -297,7 +296,7 @@ export async function generate(
         field,
       })
 
-      const optionalToken = field.hasNotNull ? '' : '?'
+      const optionalToken = field.nullable ? '?' : ''
 
       return `${jsFieldName}${optionalToken}: ${jsFieldType}`
     }

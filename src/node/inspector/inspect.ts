@@ -136,7 +136,7 @@ export function inspectCompositeTypes(client: Client, signal?: AbortSignal) {
       json_build_object(
         'name', a.attname,
         'typeOid', a.atttypid::int,
-        'hasNotNull', a.attnotnull,
+        'nullable', NOT a.attnotnull,
         'ndims', a.attndims
       )
       ORDER BY a.attnum
@@ -171,7 +171,7 @@ export function inspectTables(client: Client, signal?: AbortSignal) {
       json_build_object(
         'name', a.attname,
         'typeOid', a.atttypid::int,
-        'hasNotNull', a.attnotnull,
+        'nullable', NOT a.attnotnull,
         'hasDefault', a.atthasdef,
         'identity', a.attidentity,
         'ndims', a.attndims
@@ -276,6 +276,6 @@ export async function inspectResultSet(
   return description.fields.map(f => ({
     name: f.name,
     typeOid: f.dataTypeID,
-    hasNotNull: false,
+    nullable: true,
   }))
 }

@@ -315,12 +315,12 @@ async function inspectExpression(
     const returnTypeOid = await ctx.getTypeOid(returnType)
 
     // TODO: inspect user-defined routines to determine nullability
-    let hasNotNull = inspectedArgs?.every(arg => arg.hasNotNull) ?? true
+    let nullable = inspectedArgs?.some(arg => arg.nullable) ?? false
 
     if (!id.schema || id.schema === 'pg_catalog') {
       const attrs = functionAttributes[id.name] ?? {}
       if (attrs.nullable) {
-        hasNotNull = false
+        nullable = true
       }
     }
 
@@ -328,7 +328,7 @@ async function inspectExpression(
       {
         name: id.name,
         typeOid: returnTypeOid,
-        hasNotNull,
+        nullable,
       },
     ]
   }
@@ -344,7 +344,7 @@ async function inspectExpression(
       {
         name: argFields[0].name || typeId.name,
         typeOid,
-        hasNotNull: argFields[0].hasNotNull,
+        nullable: argFields[0].nullable,
         ndims: typeName.arrayBounds?.length,
       },
     ]
@@ -354,7 +354,7 @@ async function inspectExpression(
     const { A_Const: constExpr } = expr
 
     let typeOid: number
-    let hasNotNull = true
+    let nullable = false
 
     if ('boolval' in constExpr) {
       typeOid = await ctx.getTypeOid('bool', 'pg_catalog')
@@ -364,7 +364,7 @@ async function inspectExpression(
       typeOid = await ctx.getTypeOid('float8', 'pg_catalog')
     } else if ('isnull' in constExpr) {
       typeOid = await ctx.getTypeOid('unknown', 'pg_catalog')
-      hasNotNull = false
+      nullable = true
     } else if ('ival' in constExpr) {
       typeOid = await ctx.getTypeOid('int8', 'pg_catalog')
     } else if ('sval' in constExpr) {
@@ -377,7 +377,7 @@ async function inspectExpression(
       {
         name: 'const',
         typeOid,
-        hasNotNull,
+        nullable,
       },
     ]
   }
@@ -411,7 +411,7 @@ async function inspectExpression(
         name: 'array',
         typeOid,
         // Arrays themselves are not null, even if they contain null elements.
-        hasNotNull: true,
+        nullable: false,
       },
     ]
   }

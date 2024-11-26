@@ -3,7 +3,7 @@ import type { Plugin } from '../config/plugin'
 export type PgField = {
   name: string
   typeOid: number
-  hasNotNull: boolean
+  nullable: boolean
   ndims?: number | undefined
 }
 
