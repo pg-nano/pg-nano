@@ -1,4 +1,5 @@
 import { parseQuery, type SelectStmt } from '@pg-nano/pg-parser'
+import { setMaxListeners } from 'node:events'
 import { sql, type Client } from 'pg-nano'
 import { memoAsync } from '../../util/memoAsync.js'
 import { inspectResultSet } from '../inspect.js'
@@ -78,6 +79,11 @@ export class InferenceScope {
       if (type.arrayOid) {
         typesByOid[type.arrayOid] = type
       }
+    }
+
+    // Prevent the MaxListenersExceededWarning from being logged.
+    if (signal) {
+      setMaxListeners(200, signal)
     }
   }
 
