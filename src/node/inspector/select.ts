@@ -2,6 +2,7 @@ import {
   $,
   parseQuery,
   select,
+  SubLinkType,
   type Expr,
   type QualifiedName,
   type SelectStmt,
@@ -414,6 +415,20 @@ async function inspectExpression(
         nullable: false,
       },
     ]
+  }
+
+  if ($.isSubLink(expr)) {
+    const subselect = $(expr).subselect.SelectStmt
+    switch ($(expr).subLinkType) {
+      case SubLinkType.EXPR_SUBLINK: {
+        const fields = await getSelectedFields(subselect, ctx.extend())
+        return [fields[0]]
+      }
+      case SubLinkType.ARRAY_SUBLINK: {
+        const fields = await getSelectedFields(subselect, ctx.extend())
+        return [{ ...fields[0], ndims: 1 }]
+      }
+    }
   }
 
   throw new Error(`Unsupported expression type: ${Object.keys(expr)[0]}`)
