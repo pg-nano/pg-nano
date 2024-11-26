@@ -2,7 +2,8 @@ import { parseQuery, type SelectStmt } from '@pg-nano/pg-parser'
 import type { Client, CommandResult } from 'pg-nano'
 import { getResult, sql, type SQLTemplate } from 'pg-native'
 import { uid } from 'radashi'
-import { inspectSelect } from './select.js'
+import { InferenceScope } from './infer/scope.js'
+import { inferSelectedFields } from './infer/select.js'
 import type {
   PgBaseType,
   PgCompositeType,
@@ -246,6 +247,16 @@ export async function inspectViewFields(
     // lack of nullability hints.
     return inspectResultSet(client, sql.unsafe(view.query), signal)
   }
+}
+
+export async function inspectSelect(
+  client: Client,
+  selectStmt: SelectStmt,
+  objects: PgObject[],
+  signal?: AbortSignal,
+): Promise<PgField[]> {
+  const scope = new InferenceScope(client, objects, signal)
+  return inferSelectedFields(selectStmt, scope)
 }
 
 export async function inspectResultSet(
