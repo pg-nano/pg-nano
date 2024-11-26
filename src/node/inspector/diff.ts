@@ -215,7 +215,7 @@ export async function hasViewChanged(client: Client, view: PgViewStmt) {
   `)
 
   const selectViewDefinition = (id: SQLIdentifier) => sql`
-    SELECT pg_get_viewdef(${id.toSQL()}::regclass) AS view_definition
+    SELECT pg_get_viewdef(${sql.val(id.toQualifiedName())}::regclass) AS view_definition
   `
 
   const hasChanges = await client.queryValue<boolean>(sql`

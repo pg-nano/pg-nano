@@ -14,6 +14,7 @@ import {
   diffTableColumns,
   hasCompositeTypeChanged,
   hasRoutineSignatureChanged,
+  hasViewChanged,
 } from '../inspector/diff.js'
 import type { PgBaseType } from '../inspector/types.js'
 import { linkObjectStatements } from '../linker/link.js'
@@ -315,6 +316,16 @@ export async function prepareDatabase(
           })
 
           query = sql`${sql.join('\n', [query, ...alterStmts])}`
+        }
+      } else if (object.kind === 'view') {
+        // Consider removing this when pg-schema-diff adds support for views:
+        //   https://github.com/stripe/pg-schema-diff/issues/135
+        if (await hasViewChanged(pg, object)) {
+          query = sql`
+            ${await dropDependentObjects(oid)}
+            DROP VIEW ${object.id.toSQL()} CASCADE;
+            ${sql.unsafe(object.query)}
+          `
         }
       }
       if (query) {
