@@ -69,6 +69,16 @@ export const sql = /* @__PURE__ */ (() => {
     list: SQLTemplateValue[],
   ): SQLToken => ({ type: 'join', list, separator })
 
+  /**
+   * A parenthesized list of values. If no `mapper` is provided, the non-nullish
+   * values are converted to `sql.val` tokens.
+   */
+  sql.list = <T>(
+    values: T[],
+    mapper?: (value: T) => SQLTemplateValue,
+  ): SQLTemplate =>
+    sql`(${sql.join(',', values.map(mapper ?? (v => (v != null ? sql.val(v) : null))))})`
+
   /** Raw SQL syntax, dynamically inserted into the template. */
   sql.unsafe = (str: string) => new SQLTemplate([str], [])
 
