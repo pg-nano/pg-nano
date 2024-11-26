@@ -395,7 +395,7 @@ export class Client {
   /**
    * Like `queryValueOrNull`, but throws an error if the result is null.
    */
-  queryValue<T>(
+  queryValue<T extends {}>(
     input: SQLTemplate | QueryHook<T[]>,
     options?: Query.Options | null,
   ): Query<T, T> {
