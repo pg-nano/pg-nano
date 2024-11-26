@@ -65,6 +65,7 @@ export function inspectRoutines(client: Client, signal?: AbortSignal) {
     SELECT
       'routine'::text AS "type",
       p.prokind AS "kind",
+      p.oid,
       p.proname AS "name",
       n.nspname AS "schema",
       p.proargnames AS "paramNames",

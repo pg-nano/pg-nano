@@ -99,6 +99,7 @@ export enum PgRoutineKind {
 export type PgRoutine = {
   type: PgObjectType.Routine
   kind: PgRoutineKind
+  oid: number
   name: string
   schema: string
   paramNames: string[] | null

@@ -1,11 +1,15 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { PgResultError, sql } from 'pg-nano'
-import { map, memo, sift } from 'radashi'
+import { map, sift } from 'radashi'
 import type { Plugin, SQLTemplate } from '../config/plugin.js'
 import { debug, traceChecks, traceDepends } from '../debug.js'
 import type { Env } from '../env.js'
 import { events } from '../events.js'
+import {
+  inspectDependencies,
+  type PgDependentObject,
+} from '../inspector/dependencies.js'
 import {
   diffTableColumns,
   hasCompositeTypeChanged,
@@ -14,13 +18,10 @@ import {
 import type { PgBaseType } from '../inspector/types.js'
 import { linkObjectStatements } from '../linker/link.js'
 import { extractColumnDefinition } from '../parser/column.js'
-import type { SQLIdentifier } from '../parser/identifier.js'
+import { SQLIdentifier } from '../parser/identifier.js'
 import { parseObjectStatements } from '../parser/parse.js'
-import type {
-  PgObjectStmt,
-  PgObjectStmtKind,
-  PgViewStmt,
-} from '../parser/types.js'
+import type { PgObjectStmt, PgObjectStmtKind } from '../parser/types.js'
+import { memo } from '../util/memo.js'
 import { cwdRelative } from '../util/path.js'
 
 export async function prepareDatabase(
@@ -30,10 +31,11 @@ export async function prepareDatabase(
 ) {
   const pg = await env.client
 
-  type ObjectExistenceConfig = {
+  type ObjectLookupScheme = {
     from: string
     schemaKey: string
     nameKey: string
+    where?: SQLTemplate
   }
 
   /**
@@ -44,16 +46,17 @@ export async function prepareDatabase(
    * Currently, functions and composite types need their dependencies created
    * before the pg-schema-diff migration process begins.
    */
-  const objectExistence: Record<PgObjectStmtKind, ObjectExistenceConfig> = {
+  const objectLookupSchemes: Record<PgObjectStmtKind, ObjectLookupScheme> = {
     routine: {
       from: 'pg_proc',
       schemaKey: 'pronamespace',
       nameKey: 'proname',
     },
     table: {
-      from: 'pg_tables',
-      schemaKey: 'schemaname',
-      nameKey: 'tablename',
+      from: 'pg_class',
+      schemaKey: 'relnamespace',
+      nameKey: 'relname',
+      where: sql`relkind IN ('r', 'p')`,
     },
     type: {
       from: 'pg_type',
@@ -61,9 +64,10 @@ export async function prepareDatabase(
       nameKey: 'typname',
     },
     view: {
-      from: 'pg_views',
-      schemaKey: 'schemaname',
-      nameKey: 'viewname',
+      from: 'pg_class',
+      schemaKey: 'relnamespace',
+      nameKey: 'relname',
+      where: sql`relkind = 'v'`,
     },
     extension: {
       from: 'pg_extension',
@@ -72,26 +76,31 @@ export async function prepareDatabase(
     },
   }
 
-  const doesObjectExist = memo(
-    async (type: PgObjectStmtKind, id: SQLIdentifier) => {
-      if (!(type in objectExistence)) {
-        return false
+  const objectIdCache: Record<string, Promise<number | null>> = {}
+
+  const getObjectId = memo(
+    async (kind: PgObjectStmtKind, id: SQLIdentifier) => {
+      if (!(kind in objectLookupSchemes)) {
+        return null
       }
 
       if (traceChecks.enabled) {
         traceChecks('does %s exist?', id.toQualifiedName())
       }
 
-      const { from, schemaKey, nameKey } = objectExistence[type]
+      const { from, schemaKey, nameKey, where } = objectLookupSchemes[kind]
 
-      return pg.queryValue<boolean>(sql`
-        SELECT EXISTS (
-          SELECT 1
-          FROM ${sql.id(from)}
-          WHERE ${sql.id(schemaKey)} = ${id.schemaVal}${schemaKey.endsWith('namespace') ? sql.unsafe('::regnamespace') : ''}
-            AND ${sql.id(nameKey)} = ${id.nameVal}
-        );
+      return pg.queryValueOrNull<number>(sql`
+        SELECT oid
+        FROM ${sql.id(from)}
+        WHERE ${sql.id(schemaKey)} = ${id.schemaVal}::regnamespace
+          AND ${sql.id(nameKey)} = ${id.nameVal}
+          ${where && sql`AND ${where}`};
       `)
+    },
+    {
+      key: (_, id) => id.toQualifiedName(),
+      cache: objectIdCache,
     },
   )
 
@@ -143,16 +152,66 @@ export async function prepareDatabase(
     objects.map(object => [object, Promise.withResolvers<any>()] as const),
   )
 
+  /**
+   * Generate a DROP command for an object that (directly or indirectly) depends
+   * on another object that is about to be dropped.
+   */
+  function dropDependentObject(
+    object: PgDependentObject,
+  ): SQLTemplate | undefined {
+    const id = sql.id(object.schema, object.name)
+    switch (object.type) {
+      case 'pg_attrdef':
+        return sql`ALTER TABLE ${id} ALTER COLUMN ${sql.id(object.column!)} DROP DEFAULT;`
+      case 'pg_proc':
+        return sql`DROP ROUTINE ${id} CASCADE;`
+      case 'pg_type':
+        return sql`DROP TYPE ${id} CASCADE;`
+    }
+    switch (object.relKind) {
+      case 'r':
+        if (object.column) {
+          return sql`ALTER TABLE ${id} DROP COLUMN ${sql.id(object.column)} CASCADE;`
+        }
+        return sql`DROP TABLE ${id} CASCADE;`
+      case 'v':
+        return sql`DROP VIEW ${id} CASCADE;`
+    }
+  }
+
+  /**
+   * Generate DROP commands for all objects that depend on the specified object.
+   */
+  async function dropDependentObjects(oid: number, columns?: string[]) {
+    const cascade = await inspectDependencies(pg, oid, columns)
+    const drops: SQLTemplate[] = []
+    for (const object of cascade) {
+      const drop = dropDependentObject(object)
+      if (drop) {
+        drops.push(drop)
+
+        const id = new SQLIdentifier(
+          object.name,
+          object.schema,
+        ).toQualifiedName()
+
+        // Ensure future calls to `getObjectId` will check the database.
+        delete objectIdCache[id]
+      }
+    }
+    if (drops.length > 0) {
+      return sql.join('\n', drops)
+    }
+  }
+
   async function updateObject(object: PgObjectStmt): Promise<any> {
     const nameAlreadyExists = objectNames.has(object.id.name)
     objectNames.add(object.id.name)
 
-    if (!(object.kind in objectExistence)) {
+    if (!(object.kind in objectLookupSchemes)) {
       events.emit('unsupported-object', { object })
       return
     }
-
-    const exists = await doesObjectExist(object.kind, object.id)
 
     // Wait for dependencies to be created/updated before proceeding.
     if (object.dependencies.size > 0) {
@@ -165,12 +224,13 @@ export async function prepareDatabase(
 
     let query: SQLTemplate | undefined
 
-    if (exists) {
+    const oid = await getObjectId(object.kind, object.id)
+    if (oid) {
       if (object.kind === 'type') {
         if (object.subkind === 'composite') {
           if (await hasCompositeTypeChanged(pg, object)) {
-            events.emit('update-object', { object })
             query = sql`
+              ${await dropDependentObjects(oid)}
               DROP TYPE ${object.id.toSQL()} CASCADE;
               ${sql.unsafe(object.query)}
             `
@@ -178,8 +238,8 @@ export async function prepareDatabase(
         }
       } else if (object.kind === 'routine') {
         if (await hasRoutineSignatureChanged(pg, object)) {
-          events.emit('update-object', { object })
           query = sql`
+            ${await dropDependentObjects(oid)}
             DROP ROUTINE ${object.id.toSQL()} CASCADE;
             ${sql.unsafe(object.query)}
           `
@@ -190,49 +250,25 @@ export async function prepareDatabase(
           object,
         )
 
+        // Drop any objects that depend on the columns being dropped.
         if (droppedColumns.length > 0) {
-          // Drop existing views that depend on this table (directly or
-          // indirectly). The more ideal solution would be to drop only the
-          // views that depend on the dropped columns, but we don't want to deal
-          // with that complexity (for now).
-          const unmatchedViews = new Set(objects.filter(o => o.kind === 'view'))
-          const matchDependentViews = async (
-            dependency: PgObjectStmt,
-            dependentViews = new Set<PgViewStmt>(),
-          ) => {
-            for (const view of unmatchedViews) {
-              if (
-                view.dependencies.has(dependency) &&
-                (await doesObjectExist('view', view.id))
-              ) {
-                unmatchedViews.delete(view)
-                dependentViews.add(view)
-                await matchDependentViews(view, dependentViews)
-              }
-            }
-            return dependentViews
+          if (debug.enabled) {
+            debug(
+              'columns being dropped from "%s" table:',
+              object.id.toQualifiedName(),
+              droppedColumns,
+            )
           }
-
-          const dependentViews = await matchDependentViews(object)
-          if (dependentViews.size > 0) {
-            query = sql`${sql.join(
-              '\n',
-              Array.from(
-                dependentViews,
-                view => sql`
-                  DROP VIEW ${view.id.toSQL()} CASCADE;
-                `,
-              ),
-            )}`
+          const drops = await dropDependentObjects(oid, droppedColumns)
+          if (drops) {
+            query = sql`${drops}`
           }
         }
 
         if (addedColumns.length > 0) {
-          events.emit('update-object', { object })
-
           if (debug.enabled) {
             debug(
-              'found new columns in "%s" table:',
+              'columns being added to "%s" table:',
               object.id.toQualifiedName(),
               addedColumns,
             )
@@ -259,6 +295,8 @@ export async function prepareDatabase(
               `)
 
               if (oldPrimaryKey) {
+                // None of the objects managed by pg-nano will be affected by
+                // this drop, so skip the `dropDependentObjects` call.
                 precondition = sql`
                   ALTER TABLE ${object.id.toSQL()}
                   DROP CONSTRAINT ${sql.id(oldPrimaryKey)} CASCADE;
@@ -279,6 +317,9 @@ export async function prepareDatabase(
           query = sql`${sql.join('\n', [query, ...alterStmts])}`
         }
       }
+      if (query) {
+        events.emit('update-object', { object })
+      }
     } else {
       if (nameAlreadyExists) {
         events.emit('name-collision', { object })
@@ -291,28 +332,28 @@ export async function prepareDatabase(
       // If an object of the same name already exists, we need to drop it before
       // creating the new object. This can happen when changing a CREATE TYPE
       // statement to a CREATE TABLE statement, for example.
-      const existingKind = await pg.queryValueOrNull<string>(sql`
-        SELECT c.relkind::text
+      const conflict = await pg.queryRowOrNull<{
+        oid: number
+        relkind: string
+      }>(sql`
+        SELECT c.oid, c.relkind::text
         FROM pg_class c
         JOIN pg_namespace n ON n.oid = c.relnamespace 
         WHERE c.relname = ${object.id.nameVal}
           AND n.nspname = ${object.id.schemaVal}
       `)
 
-      if (existingKind) {
-        const dropType =
-          existingKind === 'r'
-            ? 'TABLE'
-            : existingKind === 'v'
-              ? 'VIEW'
-              : existingKind === 'c'
-                ? 'TYPE'
-                : null
+      if (conflict) {
+        const kind = {
+          r: 'TABLE',
+          v: 'VIEW',
+          c: 'TYPE',
+        }[conflict.relkind]
 
-        if (dropType) {
+        if (kind) {
           query = sql`
-            DROP ${sql.unsafe(dropType)} ${object.id.toSQL()} CASCADE;
-
+            ${await dropDependentObjects(conflict.oid)}
+            DROP ${sql.unsafe(kind)} ${object.id.toSQL()} CASCADE;
             ${query}
           `
         }
@@ -330,8 +371,8 @@ export async function prepareDatabase(
     objects.map(object => {
       const { resolve } = objectUpdates.get(object)!
       return updateObject(object).then(resolve, async error => {
-        const exists = await doesObjectExist(object.kind, object.id)
-        throwFormattedQueryError(error, object, exists)
+        const oid = await getObjectId(object.kind, object.id)
+        throwFormattedQueryError(error, object, !!oid)
       })
     }),
   )
