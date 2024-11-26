@@ -90,16 +90,6 @@ export function inspectRoutines(client: Client, signal?: AbortSignal) {
   return client.queryRowList<PgRoutine>(query).cancelWithSignal(signal)
 }
 
-// export async function inspectViews(client: Client, signal?: AbortSignal) {
-//   const query = sql`
-//     SELECT
-//       n.nspname,
-//       v.viewname,
-//       v.viewquery
-//     FROM pg_catalog.pg_view v
-//   `
-// }
-
 export function inspectBaseTypes(client: Client, signal?: AbortSignal) {
   const query = sql`
     SELECT
