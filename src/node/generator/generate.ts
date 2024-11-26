@@ -738,7 +738,8 @@ export async function generate(
                 })
               : 'unknown'
 
-            return `${jsName}: ${jsType}`
+            // Assume nullable until we can infer otherwise.
+            return `${jsName}?: ${jsType}`
           })
           .join(', ')} }`
       }
