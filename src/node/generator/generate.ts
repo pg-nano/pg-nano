@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
-import type { Options } from 'option-types'
+import type { ShallowOptions } from 'option-types'
 import { snakeToCamel, sql } from 'pg-nano'
 import type { RoutineBindingContext } from 'pg-nano/config'
 import { camel, map, mapify, pascal, select, shake, sift } from 'radashi'
@@ -488,7 +488,7 @@ export async function generate(
   const renderTypeReference = (
     oid: number,
     container: Exclude<PgObject, PgEnumType>,
-    options?: Options<{
+    options?: ShallowOptions<{
       paramKind?: PgParamKind
       paramIndex?: number
       fieldName?: string

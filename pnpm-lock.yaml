@@ -35,8 +35,8 @@ importers:
         specifier: ^0.1.1
         version: 0.1.1
       option-types:
-        specifier: ^1.0.0
-        version: 1.0.0
+        specifier: ^1.1.0
+        version: 1.1.0
       string-argv:
         specifier: ^0.3.2
         version: 0.3.2
@@ -1083,8 +1083,8 @@ packages:
     resolution: {integrity: sha512-1FlR+gjXK7X+AsAHso35MnyN5KqGwJRi/31ft6x0M194ht7S+rWAvd7PHss9xSKMzE0asv1pyIHaJYq+BbacAQ==}
     engines: {node: '>=12'}
 
-  option-types@1.0.0:
-    resolution: {integrity: sha512-JBDFMXv8zGSOTescwlW7IrE4mNTl3o4QAUr9Bia3UKOxoZQGqoV+DsNHwCsSwAMDX+8nt73C3zpRwvCpcOP0ww==}
+  option-types@1.1.0:
+    resolution: {integrity: sha512-XbFxQf/ag3xui9ohg8QFsXLvoqwhz3M/Q8eNOQ/I1yOacn/G1Us7tOvQkNQHZy8a7lwi/1qHwt7qlH1E/UDq8A==}
 
   package-json-from-dist@1.0.0:
     resolution: {integrity: sha512-dATvCeZN/8wQsGywez1mzHtTlP22H8OEfPrVMLNr4/eGa+ijtLn/6M5f0dY8UKNrC2O9UCU6SSoG3qRKnt7STw==}
@@ -2309,7 +2309,7 @@ snapshots:
     dependencies:
       mimic-fn: 4.0.0
 
-  option-types@1.0.0: {}
+  option-types@1.1.0: {}
 
   package-json-from-dist@1.0.0: {}
 
