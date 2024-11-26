@@ -250,6 +250,16 @@ export async function inferExpressionType(
     }
   }
 
+  if ($.isRowExpr(expr)) {
+    return [
+      {
+        name: 'row',
+        typeOid: await scope.getTypeOid('record', 'pg_catalog'),
+        nullable: false,
+      },
+    ]
+  }
+
   throw new Error(`Unsupported expression type: ${Object.keys(expr)[0]}`)
 }
 
