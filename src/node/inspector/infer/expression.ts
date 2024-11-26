@@ -5,8 +5,10 @@ import {
   type Expr,
   type QualifiedName,
 } from '@pg-nano/pg-parser'
+import { cluster } from 'radashi'
 import type { PgField } from '../types.js'
 import { toQualifiedId } from './identifier.js'
+import { inferJsonObjectType, inferJsonType } from './json.js'
 import type { InferenceScope } from './scope.js'
 import { inferSelectedFields } from './select.js'
 
@@ -55,6 +57,57 @@ export async function inferExpressionType(
   if ($.isFuncCall(expr)) {
     const { funcname: name, args } = $(expr)
 
+    const id = parseQualifiedName(name)
+
+    if (!id.schema || id.schema === 'pg_catalog') {
+      switch (id.name) {
+        case 'json_agg':
+        case 'jsonb_agg': {
+          if (!args || args.length !== 1) {
+            throw new Error(`Invalid number of arguments for ${id.name}`)
+          }
+          return [
+            {
+              name: id.name,
+              typeOid: await scope.getTypeOid(
+                id.name.split('_')[0],
+                'pg_catalog',
+              ),
+              nullable: false,
+              ndims: 1,
+              jsonType: {
+                kind: 'array',
+                elementType: await inferJsonType(args[0], uniqueFields, scope),
+                nullable: false,
+              },
+            },
+          ]
+        }
+        case 'json_build_object':
+        case 'jsonb_build_object': {
+          if (!args || args.length % 2 !== 0) {
+            throw new Error(`Invalid number of arguments for ${id.name}`)
+          }
+          return [
+            {
+              name: id.name,
+              typeOid: await scope.getTypeOid(
+                id.name.split('_', 2)[0],
+                'pg_catalog',
+              ),
+              nullable: false,
+              jsonType: await inferJsonObjectType(
+                cluster(args, 2) as [Expr, Expr][],
+                false,
+                uniqueFields,
+                scope,
+              ),
+            },
+          ]
+        }
+      }
+    }
+
     const inspectedArgs =
       args &&
       (await Promise.all(
@@ -73,7 +126,6 @@ export async function inferExpressionType(
         )
       : []
 
-    const id = parseQualifiedName(name)
     const qualifiedId = toQualifiedId(id.name, id.schema)
     const returnType = await scope.getReturnType(qualifiedId, argTypes)
     const returnTypeOid = await scope.getTypeOid(returnType)

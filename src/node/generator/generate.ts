@@ -15,6 +15,7 @@ import type {
 import { traceParser, traceRender } from '../debug.js'
 import type { Env } from '../env.js'
 import { events } from '../events.js'
+import { renderJsonType } from '../inspector/infer/json.js'
 import {
   inspectBaseTypes,
   inspectNamespaces,
@@ -270,10 +271,12 @@ export async function generate(
     const fields = await getViewFields(view)
     const renderedFields = fields.map(field => {
       const jsName = formatFieldName(field.name)
-      const jsType = renderTypeReference(field.typeOid, view, {
-        fieldName: field.name,
-        field,
-      })
+      const jsType = field.jsonType
+        ? renderJsonType(field.jsonType)
+        : renderTypeReference(field.typeOid, view, {
+            fieldName: field.name,
+            field,
+          })
 
       const optionalToken = field.nullable ? '?' : ''
 

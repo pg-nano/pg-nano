@@ -1,10 +1,12 @@
 import type { Plugin } from '../config/plugin'
+import type { PgJsonType } from './infer/json.js'
 
 export type PgField = {
   name: string
   typeOid: number
   nullable: boolean
   ndims?: number | undefined
+  jsonType?: PgJsonType | undefined
 }
 
 export enum PgIdentityKind {
