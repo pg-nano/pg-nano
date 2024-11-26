@@ -1,5 +1,5 @@
 import { Client, sql, type ClientConfig } from 'pg-nano'
-import { escapeValue, Tuple } from 'pg-native'
+import { stringifyValue, Tuple } from 'pg-native'
 import { resetPublicSchema } from 'test/util.js'
 
 let client: Client
@@ -21,7 +21,9 @@ describe('sanity', () => {
       new Tuple(0, 0),
       "meet Stacy's dog",
       null,
-    ].map(value => (value === null ? null : escapeValue(value)))
+    ].map(value => {
+      return value === null ? null : stringifyValue(value)
+    })
 
     expect(texts).toMatchInlineSnapshot(`
       [
