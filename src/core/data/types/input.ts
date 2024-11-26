@@ -2,9 +2,12 @@ import type { Range } from 'postgres-range'
 import type { JSON } from './json'
 import type { Timestamp } from './timestamp'
 
-type IsTimestamp<T> = 'Timestamp' extends Extract<T, Timestamp>['__brand']
-  ? true
-  : false
+type IsExact<T, U> = [T] extends [U] ? ([U] extends [T] ? true : false) : false
+
+type IsTimestamp<T> = IsExact<
+  Extract<T, Timestamp>['__brand'],
+  'Timestamp' | undefined
+>
 
 /**
  * Certain types have implicit coercion applied when passed to a Postgres
