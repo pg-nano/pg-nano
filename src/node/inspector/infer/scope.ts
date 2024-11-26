@@ -95,9 +95,11 @@ export class InferenceScope {
     async (name: string, argTypes: string[]) => {
       const signature = `${name}(${argTypes.join(',')})`
 
-      return this.pg.queryValue<string>(sql`
-        SELECT pg_get_function_result(${sql.val(signature)}::regprocedure)
-      `)
+      return this.pg
+        .queryValue<string>(sql`
+          SELECT pg_get_function_result(${sql.val(signature)}::regprocedure)
+        `)
+        .cancelWithSignal(this.signal)
     },
     {
       toKey: (name, argTypes) => `${name}(${argTypes.join(',')})`,
@@ -114,16 +116,18 @@ export class InferenceScope {
       }
     }
     try {
-      return await this.pg.queryRow<TypeName>(sql`
-        SELECT
-          t.typname AS "name",
-          n.nspname AS "schema",
-          (t.typarray = ${sql.val(typeOid)}) AS "array"
-        FROM pg_type t
-        JOIN pg_namespace n ON t.typnamespace = n.oid
-        WHERE (t.oid = ${sql.val(typeOid)} AND t.typname NOT LIKE '\\_%')
-          OR t.typarray = ${sql.val(typeOid)}
-      `)
+      return await this.pg
+        .queryRow<TypeName>(sql`
+          SELECT
+            t.typname AS "name",
+            n.nspname AS "schema",
+            (t.typarray = ${sql.val(typeOid)}) AS "array"
+          FROM pg_type t
+          JOIN pg_namespace n ON t.typnamespace = n.oid
+          WHERE (t.oid = ${sql.val(typeOid)} AND t.typname NOT LIKE '\\_%')
+            OR t.typarray = ${sql.val(typeOid)}
+        `)
+        .cancelWithSignal(this.signal)
     } catch (error: any) {
       error.message = `Failed to get type name for OID ${typeOid}: ${error.message}`
       throw error
@@ -137,11 +141,13 @@ export class InferenceScope {
       if (type) {
         return array ? type.arrayOid : type.oid
       }
-      return this.pg.queryValue<number>(sql`
-        SELECT ${sql.id(array ? 'typarray' : 'oid')}
-        FROM pg_type
-        WHERE typname = ${sql.val(name)}${schema && sql` AND typnamespace = ${sql.val(schema)}::regnamespace`}
-      `)
+      return this.pg
+        .queryValue<number>(sql`
+          SELECT ${sql.id(array ? 'typarray' : 'oid')}
+          FROM pg_type
+          WHERE typname = ${sql.val(name)}${schema && sql` AND typnamespace = ${sql.val(schema)}::regnamespace`}
+        `)
+        .cancelWithSignal(this.signal)
     },
     {
       toKey: (name, schema, array) =>
