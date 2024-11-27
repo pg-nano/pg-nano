@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { PgResultError, sql } from 'pg-nano'
+import { type Client, PgResultError, sql } from 'pg-nano'
 import { map, sift } from 'radashi'
 import type { Plugin, SQLTemplate } from '../config/plugin.js'
 import { debug, traceDepends } from '../debug.js'
@@ -26,20 +26,18 @@ import type { PgObjectStmt } from '../parser/types.js'
 import { cwdRelative } from '../util/path.js'
 
 export async function prepareDatabase(
-  objects: PgObjectStmt[],
+  objectStmts: PgObjectStmt[],
   baseTypes: PgBaseType[],
   env: Env,
 ) {
   const pg = await env.client
-
-  const objectIds = createIdentityCache(pg)
 
   // Plugins may add to the object list, so run them before linking the object
   // dependencies together.
   const pluginsByStatementId = await preparePluginStatements(
     env,
     baseTypes,
-    objects,
+    objectStmts,
   )
 
   debug('plugin statements prepared')
@@ -47,39 +45,72 @@ export async function prepareDatabase(
   // Since pg-schema-diff is still somewhat limited, we have to create our own
   // dependency graph, so we can ensure all objects (and their dependencies)
   // exist before pg-schema-diff works its magic.
-  const sortedObjects = linkObjectStatements(objects)
-
-  // The "nano" schema is used to store temporary objects during diffing.
-  await pg.query(sql`
-    DROP SCHEMA IF EXISTS nano CASCADE;
-    CREATE SCHEMA nano;
-  `)
+  const sortedObjectStmts = linkObjectStatements(objectStmts)
 
   if (traceDepends.enabled) {
-    for (const object of sortedObjects) {
-      if (object.dependencies.size > 0) {
+    for (const stmt of sortedObjectStmts) {
+      if (stmt.dependencies.size > 0) {
         traceDepends(
           '%s %s depends on %s',
-          object.kind,
-          object.id.toQualifiedName(),
-          Array.from(object.dependencies)
+          stmt.kind,
+          stmt.id.toQualifiedName(),
+          Array.from(stmt.dependencies)
             .map(dep => dep.id.toQualifiedName())
             .join(', '),
         )
       } else {
         traceDepends(
           '%s %s has no dependencies',
-          object.kind,
-          object.id.toQualifiedName(),
+          stmt.kind,
+          stmt.id.toQualifiedName(),
         )
       }
     }
   }
 
-  const objectNames = new Set<string>()
+  // The "nano" schema is used to store temporary objects during diffing.
+  await pg.query(sql`
+    DROP SCHEMA IF EXISTS nano CASCADE;
+    CREATE SCHEMA nano;
+  `)
+  try {
+    await updateObjects(pg, objectStmts)
+  } finally {
+    // Drop the "nano" schema now that diffing is complete.
+    await pg.query(sql`
+      DROP SCHEMA IF EXISTS nano CASCADE;
+    `)
+  }
 
+  fs.rmSync(env.schemaDir, { recursive: true, force: true })
+  fs.mkdirSync(env.schemaDir, { recursive: true })
+
+  const indexWidth = String(sortedObjectStmts.size).length
+
+  let stmtIndex = 1
+  for (const stmt of sortedObjectStmts) {
+    const name = sift([
+      String(stmtIndex++).padStart(indexWidth, '0'),
+      stmt.kind === 'extension' ? stmt.kind : null,
+      stmt.id.schema,
+      stmt.id.name,
+    ])
+
+    const outFile = path.join(env.schemaDir, name.join('-') + '.sql')
+    fs.writeFileSync(
+      outFile,
+      '-- file://' + stmt.file + '#L' + stmt.line + '\n' + stmt.query + ';\n',
+    )
+  }
+
+  return { pluginsByStatementId }
+}
+
+async function updateObjects(pg: Client, objectStmts: PgObjectStmt[]) {
+  const objectIds = createIdentityCache(pg)
+  const objectNames = new Set<string>()
   const objectUpdates = new Map(
-    objects.map(object => [object, Promise.withResolvers<any>()] as const),
+    objectStmts.map(stmt => [stmt, Promise.withResolvers<any>()] as const),
   )
 
   /**
@@ -127,14 +158,14 @@ export async function prepareDatabase(
     }
   }
 
-  async function updateObject(object: PgObjectStmt): Promise<any> {
-    const nameAlreadyExists = objectNames.has(object.id.name)
-    objectNames.add(object.id.name)
+  async function updateObject(stmt: PgObjectStmt): Promise<any> {
+    const nameAlreadyExists = objectNames.has(stmt.id.name)
+    objectNames.add(stmt.id.name)
 
     // Wait for dependencies to be created/updated before proceeding.
-    if (object.dependencies.size > 0) {
+    if (stmt.dependencies.size > 0) {
       await Promise.all(
-        Array.from(object.dependencies).map(
+        Array.from(stmt.dependencies).map(
           dependency => objectUpdates.get(dependency)?.promise,
         ),
       )
@@ -142,30 +173,30 @@ export async function prepareDatabase(
 
     let query: SQLTemplate | undefined
 
-    const oid = await objectIds.get(object.kind, object.id)
+    const oid = await objectIds.get(stmt.kind, stmt.id)
     if (oid) {
-      if (object.kind === 'type') {
-        if (object.subkind === 'composite') {
-          if (await hasCompositeTypeChanged(pg, object)) {
+      if (stmt.kind === 'type') {
+        if (stmt.subkind === 'composite') {
+          if (await hasCompositeTypeChanged(pg, stmt)) {
             query = sql`
               ${await dropDependentObjects(oid)}
-              DROP TYPE ${object.id.toSQL()} CASCADE;
-              ${sql.unsafe(object.query)}
+              DROP TYPE ${stmt.id.toSQL()} CASCADE;
+              ${sql.unsafe(stmt.query)}
             `
           }
         }
-      } else if (object.kind === 'routine') {
-        if (await hasRoutineSignatureChanged(pg, object)) {
+      } else if (stmt.kind === 'routine') {
+        if (await hasRoutineSignatureChanged(pg, stmt)) {
           query = sql`
             ${await dropDependentObjects(oid)}
-            DROP ROUTINE ${object.id.toSQL()} CASCADE;
-            ${sql.unsafe(object.query)}
+            DROP ROUTINE ${stmt.id.toSQL()} CASCADE;
+            ${sql.unsafe(stmt.query)}
           `
         }
-      } else if (object.kind === 'table') {
+      } else if (stmt.kind === 'table') {
         const { addedColumns, droppedColumns } = await diffTableColumns(
           pg,
-          object,
+          stmt,
         )
 
         // Drop any objects that depend on the columns being dropped.
@@ -173,7 +204,7 @@ export async function prepareDatabase(
           if (debug.enabled) {
             debug(
               'columns being dropped from "%s" table:',
-              object.id.toQualifiedName(),
+              stmt.id.toQualifiedName(),
               droppedColumns,
             )
           }
@@ -187,15 +218,15 @@ export async function prepareDatabase(
           if (debug.enabled) {
             debug(
               'columns being added to "%s" table:',
-              object.id.toQualifiedName(),
+              stmt.id.toQualifiedName(),
               addedColumns,
             )
           }
 
           const alterStmts = await map(addedColumns, async name => {
-            const index = object.columns.findIndex(c => c.name === name)
-            const column = object.columns[index]
-            const columnDDL = extractColumnDefinition(column, object)
+            const index = stmt.columns.findIndex(c => c.name === name)
+            const column = stmt.columns[index]
+            const columnDDL = extractColumnDefinition(column, stmt)
 
             // If the primary key is being changed, we need to drop the constraint
             // for the old primary key first.
@@ -207,8 +238,8 @@ export async function prepareDatabase(
                 FROM pg_constraint c
                 JOIN pg_class t ON t.oid = c.conrelid
                 WHERE
-                  t.relname = ${object.id.nameVal}
-                  AND t.relnamespace = ${object.id.schemaVal}::regnamespace
+                  t.relname = ${stmt.id.nameVal}
+                  AND t.relnamespace = ${stmt.id.schemaVal}::regnamespace
                   AND c.contype = 'p'
               `)
 
@@ -216,14 +247,14 @@ export async function prepareDatabase(
                 // None of the objects managed by pg-nano will be affected by
                 // this drop, so skip the `dropDependentObjects` call.
                 precondition = sql`
-                  ALTER TABLE ${object.id.toSQL()}
+                  ALTER TABLE ${stmt.id.toSQL()}
                   DROP CONSTRAINT ${sql.id(oldPrimaryKey)} CASCADE;
                 `
               }
             }
 
             const addColumnStmt = sql`
-              ALTER TABLE ${object.id.toSQL()} ADD COLUMN ${sql.unsafe(columnDDL)};
+              ALTER TABLE ${stmt.id.toSQL()} ADD COLUMN ${sql.unsafe(columnDDL)};
             `
 
             return sql`
@@ -234,28 +265,28 @@ export async function prepareDatabase(
 
           query = sql`${sql.join('\n', [query, ...alterStmts])}`
         }
-      } else if (object.kind === 'view') {
+      } else if (stmt.kind === 'view') {
         // Consider removing this when pg-schema-diff adds support for views:
         //   https://github.com/stripe/pg-schema-diff/issues/135
-        if (await hasViewChanged(pg, object)) {
+        if (await hasViewChanged(pg, stmt)) {
           query = sql`
             ${await dropDependentObjects(oid)}
-            DROP VIEW ${object.id.toSQL()} CASCADE;
-            ${sql.unsafe(object.query)}
+            DROP VIEW ${stmt.id.toSQL()} CASCADE;
+            ${sql.unsafe(stmt.query)}
           `
         }
       }
       if (query) {
-        events.emit('update-object', { object })
+        events.emit('update-object', { object: stmt })
       }
     } else {
       if (nameAlreadyExists) {
-        events.emit('name-collision', { object })
+        events.emit('name-collision', { object: stmt })
         return
       }
 
-      events.emit('create-object', { object })
-      query = sql.unsafe(object.query)
+      events.emit('create-object', { object: stmt })
+      query = sql.unsafe(stmt.query)
 
       // If an object of the same name already exists, we need to drop it before
       // creating the new object. This can happen when changing a CREATE TYPE
@@ -267,8 +298,8 @@ export async function prepareDatabase(
         SELECT c.oid, c.relkind::text
         FROM pg_class c
         JOIN pg_namespace n ON n.oid = c.relnamespace 
-        WHERE c.relname = ${object.id.nameVal}
-          AND n.nspname = ${object.id.schemaVal}
+        WHERE c.relname = ${stmt.id.nameVal}
+          AND n.nspname = ${stmt.id.schemaVal}
       `)
 
       if (conflict) {
@@ -281,7 +312,7 @@ export async function prepareDatabase(
         if (kind) {
           query = sql`
             ${await dropDependentObjects(conflict.oid)}
-            DROP ${sql.unsafe(kind)} ${object.id.toSQL()} CASCADE;
+            DROP ${sql.unsafe(kind)} ${stmt.id.toSQL()} CASCADE;
             ${query}
           `
         }
@@ -296,58 +327,14 @@ export async function prepareDatabase(
   }
 
   await Promise.all(
-    objects.map(object => {
-      const { resolve } = objectUpdates.get(object)!
-      return updateObject(object).then(resolve, async error => {
-        const oid = await objectIds.get(object.kind, object.id)
-        throwFormattedQueryError(error, object, !!oid)
+    objectStmts.map(stmt => {
+      const { resolve } = objectUpdates.get(stmt)!
+      return updateObject(stmt).then(resolve, async error => {
+        const oid = await objectIds.get(stmt.kind, stmt.id)
+        throwFormattedQueryError(error, stmt, !!oid)
       })
     }),
   )
-
-  // Drop the "nano" schema now that diffing is complete.
-  await pg.query(sql`
-    DROP SCHEMA IF EXISTS nano CASCADE;
-  `)
-
-  fs.rmSync(env.schemaDir, { recursive: true, force: true })
-  fs.mkdirSync(env.schemaDir, { recursive: true })
-
-  const indexWidth = String(sortedObjects.size).length
-
-  let objectIndex = 1
-  for (const object of sortedObjects) {
-    const name = sift([
-      String(objectIndex++).padStart(indexWidth, '0'),
-      object.kind === 'extension' ? object.kind : null,
-      object.id.schema,
-      object.id.name,
-    ])
-
-    const outFile = path.join(env.schemaDir, name.join('-') + '.sql')
-    fs.writeFileSync(
-      outFile,
-      '-- file://' +
-        object.file +
-        '#L' +
-        object.line +
-        '\n' +
-        object.query +
-        ';\n',
-    )
-  }
-
-  return { pluginsByStatementId }
-}
-
-function getLineFromPosition(position: number, query: string) {
-  let line = 1
-  for (let i = 0; i < position; i++) {
-    if (query[i] === '\n') {
-      line++
-    }
-  }
-  return line
 }
 
 async function preparePluginStatements(
@@ -464,4 +451,14 @@ function throwFormattedQueryError(
   error.message = message
   error.stack = message + stack
   throw error
+}
+
+function getLineFromPosition(position: number, query: string) {
+  let line = 1
+  for (let i = 0; i < position; i++) {
+    if (query[i] === '\n') {
+      line++
+    }
+  }
+  return line
 }
