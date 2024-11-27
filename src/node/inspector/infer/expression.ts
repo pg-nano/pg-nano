@@ -1,5 +1,6 @@
 import {
   $,
+  A_Expr_Kind,
   select,
   SubLinkType,
   type Expr,
@@ -194,6 +195,26 @@ export async function inferExpressionFields(
         nullable,
       },
     ]
+  }
+
+  if ($.isA_Expr(expr)) {
+    const { kind, lexpr, rexpr } = $(expr)
+
+    switch (kind) {
+      case A_Expr_Kind.AEXPR_NULLIF: {
+        // For simplicity, always infer from the left expression.
+        const left = await inferExpressionField(lexpr!, uniqueFields, scope)
+        return [
+          {
+            name: 'nullif',
+            typeOid: left.typeOid,
+            nullable: true,
+            jsonType: left.jsonType,
+            ndims: left.ndims,
+          },
+        ]
+      }
+    }
   }
 
   if ($.isA_ArrayExpr(expr)) {
