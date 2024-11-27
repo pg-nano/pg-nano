@@ -16,7 +16,6 @@ type EventMap = {
   'create-database': [dbname: string]
   'load-config': [event: { configFilePath: string }]
   'unsupported-type': [event: { typeOid: number; typeName: string }]
-  'unsupported-object': [event: { object: PgObjectStmt }]
   'create-object': [event: { object: PgObjectStmt }]
   'update-object': [event: { object: PgObjectStmt }]
   'prepare:mutation': [event: { query: string }]
@@ -50,27 +49,6 @@ export function enableEventLogging(verbose?: boolean) {
 
   events.on('unsupported-type', event => {
     log.warn(`Unsupported type: ${event.typeName} (${event.typeOid})`)
-  })
-
-  events.on('unsupported-object', ({ object }) => {
-    if (object.dependents.size > 0) {
-      log.warn(
-        'Missing %s {%s} required by %s other statement%s:',
-        object.kind,
-        object.id.toQualifiedName(),
-        object.dependents.size,
-        object.dependents.size === 1 ? 's' : '',
-      )
-      for (const dependent of object.dependents) {
-        log.warn('  * %s {%s}', dependent.kind, dependent.id.toQualifiedName())
-      }
-    } else {
-      log.warn(
-        'Could not check if object exists: %s (%s)',
-        object.id.toQualifiedName(),
-        object.kind,
-      )
-    }
   })
 
   events.on('create-object', ({ object }) => {

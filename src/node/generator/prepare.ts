@@ -3,7 +3,7 @@ import path from 'node:path'
 import { PgResultError, sql } from 'pg-nano'
 import { map, sift } from 'radashi'
 import type { Plugin, SQLTemplate } from '../config/plugin.js'
-import { debug, traceChecks, traceDepends } from '../debug.js'
+import { debug, traceDepends } from '../debug.js'
 import type { Env } from '../env.js'
 import { events } from '../events.js'
 import {
@@ -16,13 +16,13 @@ import {
   hasRoutineSignatureChanged,
   hasViewChanged,
 } from '../inspector/diff.js'
+import { createIdentityCache } from '../inspector/identity.js'
 import type { PgBaseType } from '../inspector/types.js'
 import { linkObjectStatements } from '../linker/link.js'
 import { extractColumnDefinition } from '../parser/column.js'
 import { SQLIdentifier } from '../parser/identifier.js'
 import { parseObjectStatements } from '../parser/parse.js'
-import type { PgObjectStmt, PgObjectStmtKind } from '../parser/types.js'
-import { memo } from '../util/memo.js'
+import type { PgObjectStmt } from '../parser/types.js'
 import { cwdRelative } from '../util/path.js'
 
 export async function prepareDatabase(
@@ -32,78 +32,7 @@ export async function prepareDatabase(
 ) {
   const pg = await env.client
 
-  type ObjectLookupScheme = {
-    from: string
-    schemaKey: string
-    nameKey: string
-    where?: SQLTemplate
-  }
-
-  /**
-   * If an object can be referenced by other objects and pg-schema-diff doesn't
-   * yet infer the dependency for its topological sorting, it needs to be added
-   * to this registry so its existence can be checked.
-   *
-   * Currently, functions and composite types need their dependencies created
-   * before the pg-schema-diff migration process begins.
-   */
-  const objectLookupSchemes: Record<PgObjectStmtKind, ObjectLookupScheme> = {
-    routine: {
-      from: 'pg_proc',
-      schemaKey: 'pronamespace',
-      nameKey: 'proname',
-    },
-    table: {
-      from: 'pg_class',
-      schemaKey: 'relnamespace',
-      nameKey: 'relname',
-      where: sql`relkind IN ('r', 'p')`,
-    },
-    type: {
-      from: 'pg_type',
-      schemaKey: 'typnamespace',
-      nameKey: 'typname',
-    },
-    view: {
-      from: 'pg_class',
-      schemaKey: 'relnamespace',
-      nameKey: 'relname',
-      where: sql`relkind = 'v'`,
-    },
-    extension: {
-      from: 'pg_extension',
-      schemaKey: 'extnamespace',
-      nameKey: 'extname',
-    },
-  }
-
-  const objectIdCache: Record<string, Promise<number | null>> = {}
-
-  const getObjectId = memo(
-    async (kind: PgObjectStmtKind, id: SQLIdentifier) => {
-      if (!(kind in objectLookupSchemes)) {
-        return null
-      }
-
-      if (traceChecks.enabled) {
-        traceChecks('does %s exist?', id.toQualifiedName())
-      }
-
-      const { from, schemaKey, nameKey, where } = objectLookupSchemes[kind]
-
-      return pg.queryValueOrNull<number>(sql`
-        SELECT oid
-        FROM ${sql.id(from)}
-        WHERE ${sql.id(schemaKey)} = ${id.schemaVal}::regnamespace
-          AND ${sql.id(nameKey)} = ${id.nameVal}
-          ${where && sql`AND ${where}`};
-      `)
-    },
-    {
-      key: (_, id) => id.toQualifiedName(),
-      cache: objectIdCache,
-    },
-  )
+  const objectIds = createIdentityCache(pg)
 
   // Plugins may add to the object list, so run them before linking the object
   // dependencies together.
@@ -190,14 +119,7 @@ export async function prepareDatabase(
       const drop = dropDependentObject(object)
       if (drop) {
         drops.push(drop)
-
-        const id = new SQLIdentifier(
-          object.name,
-          object.schema,
-        ).toQualifiedName()
-
-        // Ensure future calls to `getObjectId` will check the database.
-        delete objectIdCache[id]
+        objectIds.delete(new SQLIdentifier(object.name, object.schema))
       }
     }
     if (drops.length > 0) {
@@ -208,11 +130,6 @@ export async function prepareDatabase(
   async function updateObject(object: PgObjectStmt): Promise<any> {
     const nameAlreadyExists = objectNames.has(object.id.name)
     objectNames.add(object.id.name)
-
-    if (!(object.kind in objectLookupSchemes)) {
-      events.emit('unsupported-object', { object })
-      return
-    }
 
     // Wait for dependencies to be created/updated before proceeding.
     if (object.dependencies.size > 0) {
@@ -225,7 +142,7 @@ export async function prepareDatabase(
 
     let query: SQLTemplate | undefined
 
-    const oid = await getObjectId(object.kind, object.id)
+    const oid = await objectIds.get(object.kind, object.id)
     if (oid) {
       if (object.kind === 'type') {
         if (object.subkind === 'composite') {
@@ -382,7 +299,7 @@ export async function prepareDatabase(
     objects.map(object => {
       const { resolve } = objectUpdates.get(object)!
       return updateObject(object).then(resolve, async error => {
-        const oid = await getObjectId(object.kind, object.id)
+        const oid = await objectIds.get(object.kind, object.id)
         throwFormattedQueryError(error, object, !!oid)
       })
     }),
