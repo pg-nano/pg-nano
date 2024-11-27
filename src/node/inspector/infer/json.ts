@@ -1,5 +1,6 @@
 import { select, type Expr } from '@pg-nano/pg-parser'
-import { map, mapValues, shake } from 'radashi'
+import { createHash, type Hash } from 'node:crypto'
+import { map, mapValues, shake, unique } from 'radashi'
 import { jsTypeByPgName } from '../../generator/typeMappings.js'
 import type { PgField } from '../types.js'
 import { inferExpressionField } from './expression.js'
@@ -110,6 +111,72 @@ export async function inferJsonType(
     }
   }
   return jsonType
+}
+
+export function unionJsonTypes(
+  left: PgJsonType | undefined,
+  right: PgJsonType | undefined,
+): PgJsonType | undefined {
+  if (left && right) {
+    const types: PgJsonConcreteType[] = []
+
+    if (left.kind === 'union') {
+      types.push(...left.types)
+    } else {
+      types.push(left)
+    }
+
+    if (right.kind === 'union') {
+      types.push(...right.types)
+    } else {
+      types.push(right)
+    }
+
+    return {
+      kind: 'union',
+      types: uniqueJsonTypes(types),
+    }
+  }
+  return left ?? right
+}
+
+function uniqueJsonTypes(types: PgJsonConcreteType[]): PgJsonConcreteType[] {
+  return unique(types, t => hashJsonType(t).digest('hex'))
+}
+
+function hashJsonType(type: PgJsonType, hash = createHash('md5')): Hash {
+  switch (type.kind) {
+    case 'primitive':
+      hash.update(type.type)
+      break
+    case 'array':
+      hash.update('<')
+      hashJsonType(type.elementType, hash)
+      hash.update('>')
+      break
+    case 'object':
+      hash.update('#')
+      for (const key of Object.keys(type.fields).sort()) {
+        hash.update(key)
+        hash.update(':')
+        hashJsonType(type.fields[key], hash)
+        hash.update(',')
+      }
+      break
+    case 'union': {
+      type.types
+        .map(t => hashJsonType(t).digest('hex'))
+        .sort()
+        .forEach((h, i, { length }) => {
+          hash.update(h)
+          if (i < length - 1) {
+            hash.update('|')
+          }
+        })
+      break
+    }
+  }
+  return hash
 }
 
 const jsPrimitiveTypes: Record<string, string | undefined> = {
