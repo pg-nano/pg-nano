@@ -1,6 +1,6 @@
 import { $, type SelectStmt } from '@pg-nano/pg-parser'
 import type { PgField } from '../types.js'
-import { inferExpressionType } from './expression.js'
+import { inferExpressionFields } from './expression.js'
 import { toQualifiedId } from './identifier.js'
 import type { InferenceScope } from './scope.js'
 
@@ -56,7 +56,7 @@ export async function inferSelectedFields(
     if (!val) {
       continue
     }
-    const exprFields = await inferExpressionType(val, uniqueFields, scope)
+    const exprFields = await inferExpressionFields(val, uniqueFields, scope)
     if (!exprFields.length) {
       throw new Error(`Failed to inspect expression: ${Object.keys(val)[0]}`)
     }

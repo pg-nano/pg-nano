@@ -12,7 +12,7 @@ import { inferJsonObjectType, inferJsonType } from './json.js'
 import type { InferenceScope } from './scope.js'
 import { inferSelectedFields } from './select.js'
 
-export async function inferExpressionType(
+export async function inferExpressionFields(
   expr: Expr,
   uniqueFields: Record<string, PgField>,
   scope: InferenceScope,
@@ -58,8 +58,9 @@ export async function inferExpressionType(
     const { funcname: name, args } = $(expr)
 
     const id = parseQualifiedName(name)
+    const isPotentiallyBuiltIn = !id.schema || id.schema === 'pg_catalog'
 
-    if (!id.schema || id.schema === 'pg_catalog') {
+    if (isPotentiallyBuiltIn) {
       switch (id.name) {
         case 'json_agg':
         case 'jsonb_agg': {
@@ -111,10 +112,7 @@ export async function inferExpressionType(
     const inspectedArgs =
       args &&
       (await Promise.all(
-        args.map(async arg => {
-          const fields = await inferExpressionType(arg, uniqueFields, scope)
-          return fields[0]
-        }),
+        args.map(arg => inferExpressionField(arg, uniqueFields, scope)),
       ))
 
     const argTypes = inspectedArgs
@@ -152,15 +150,15 @@ export async function inferExpressionType(
   if ($.isTypeCast(expr)) {
     const { arg, typeName } = $(expr)
 
-    const argFields = await inferExpressionType(arg, uniqueFields, scope)
+    const argField = await inferExpressionField(arg, uniqueFields, scope)
     const typeId = parseQualifiedName(typeName.names)
     const typeOid = await scope.getTypeOid(typeId.name, typeId.schema)
 
     return [
       {
-        name: argFields[0].name || typeId.name,
+        name: argField.name || typeId.name,
         typeOid,
-        nullable: argFields[0].nullable,
+        nullable: argField.nullable,
         ndims: typeName.arrayBounds?.length,
       },
     ]
@@ -204,10 +202,9 @@ export async function inferExpressionType(
     const elementFields =
       elements &&
       (await Promise.all(
-        elements.map(async element => {
-          const fields = await inferExpressionType(element, uniqueFields, scope)
-          return fields[0]
-        }),
+        elements.map(element =>
+          inferExpressionField(element, uniqueFields, scope),
+        ),
       ))
 
     let typeOid: number
@@ -261,6 +258,15 @@ export async function inferExpressionType(
   }
 
   throw new Error(`Unsupported expression type: ${Object.keys(expr)[0]}`)
+}
+
+export async function inferExpressionField(
+  expr: Expr,
+  uniqueFields: Record<string, PgField>,
+  scope: InferenceScope,
+): Promise<PgField> {
+  const fields = await inferExpressionFields(expr, uniqueFields, scope)
+  return fields[0]
 }
 
 function parseQualifiedName(names: QualifiedName) {

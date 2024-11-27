@@ -2,7 +2,7 @@ import { select, type Expr } from '@pg-nano/pg-parser'
 import { map, mapValues, shake } from 'radashi'
 import { jsTypeByPgName } from '../../generator/typeMappings.js'
 import type { PgField } from '../types.js'
-import { inferExpressionType } from './expression.js'
+import { inferExpressionField } from './expression.js'
 import type { InferenceScope } from './scope.js'
 
 export type PgJsonPrimitive = {
@@ -75,7 +75,7 @@ export async function inferJsonType(
   uniqueFields: Record<string, PgField>,
   scope: InferenceScope,
 ): Promise<PgJsonType> {
-  let [{ typeOid, nullable, jsonType, ndims }] = await inferExpressionType(
+  let { typeOid, nullable, jsonType, ndims } = await inferExpressionField(
     expr,
     uniqueFields,
     scope,
