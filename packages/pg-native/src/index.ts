@@ -11,6 +11,12 @@ export { getResult } from './result.js'
 export { stringifyValue } from './value.js'
 
 export {
+  hashSessionParameters,
+  type SessionParameter,
+  type SessionParameters,
+} from './session.js'
+
+export {
   QueryType,
   type CommandResult,
   type Field,

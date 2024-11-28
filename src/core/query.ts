@@ -15,6 +15,22 @@ import { QueryError } from './error.js'
 
 type UnwrapArray<T> = T extends readonly (infer U)[] ? U : T
 
+// The Query class relies on protected members of the Client class, so this type
+// is used to allow it protected access.
+interface QueryClient {
+  config: Client['config']
+  getConnection: Client['getConnection']
+  onQueryFinished: Client['onQueryFinished']
+  parseText: Client['parseText']
+}
+
+// biome-ignore lint/suspicious/noConstEnum:
+export const enum QueryResultCount {
+  any = 0,
+  zeroOrOne = 1,
+  exactlyOne = 2,
+}
+
 export declare namespace Query {
   type Options = Omit<QueryOptions, 'singleRowMode'>
 }
@@ -23,14 +39,16 @@ export class Query<
   TPromiseResult,
   TIteratorResult = UnwrapArray<TPromiseResult>,
 > {
+  protected client: QueryClient
   protected trace?: Error = undefined
   constructor(
-    protected client: Client,
+    client: Client,
     protected type: QueryType,
     protected input: SQLTemplate | QueryHook<any>,
     protected options?: Query.Options | null,
-    protected expectedCount?: '[0,1]' | '[1,1]' | null,
+    protected expectedCount?: QueryResultCount,
   ) {
+    this.client = client as unknown as QueryClient
     if (client.config.debug) {
       this.trace = new Error()
       Error.captureStackTrace(this.trace, Query)
@@ -95,18 +113,13 @@ export class Query<
   protected send(): Promise<TPromiseResult>
   protected send(singleRowMode: true): AsyncIterable<TIteratorResult>
   protected send(singleRowMode?: boolean): Promise<any> | AsyncIterable<any> {
-    const client = this.client as unknown as {
-      config: Client['config']
-      getConnection: Client['getConnection']
-      onQueryFinished: Client['onQueryFinished']
-    }
-    const connection = client.getConnection(this.signal)
+    const connection = this.client.getConnection(this.signal)
     const promise = this.promise(connection, this.input, {
       ...this.options,
       singleRowMode,
       mapFieldName:
         this.options?.mapFieldName ??
-        (client.config.fieldCase === FieldCase.camel
+        (this.client.config.fieldCase === FieldCase.camel
           ? snakeToCamel
           : undefined),
     })
@@ -128,7 +141,7 @@ export class Query<
       })
       .finally(() => {
         try {
-          client.onQueryFinished()
+          this.client.onQueryFinished()
         } catch (error) {
           console.error(error)
         }
@@ -152,14 +165,10 @@ export class Query<
       this.signal?.throwIfAborted()
     }
 
-    const client = this.client as unknown as {
-      parseText: Client['parseText']
-    }
-
     const promise = connection.query(
       this.type,
       input,
-      client.parseText,
+      this.client.parseText,
       options,
     )
 
@@ -175,7 +184,7 @@ export class Query<
         throw new QueryError(`Expected at most 1 row, got ${rows.length}`)
       }
       if (rows.length === 0) {
-        if (this.expectedCount === '[1,1]') {
+        if (this.expectedCount === QueryResultCount.exactlyOne) {
           throw new QueryError('Expected row, got undefined')
         }
         return null

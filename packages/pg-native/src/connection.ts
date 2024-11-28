@@ -1,7 +1,7 @@
 import Libpq from '@pg-nano/libpq'
 import { EventEmitter } from 'node:events'
 import util from 'node:util'
-import { isFunction, noop, uid } from 'radashi'
+import { isFunction, noop, shake, uid } from 'radashi'
 import { debugConnection, debugQuery } from './debug'
 import { PgNativeError } from './error'
 import { baseTypeParsers, createTextParser } from './pg-types.js'
@@ -14,6 +14,11 @@ import {
   QueryType,
 } from './query.js'
 import { streamResults } from './result-stream.js'
+import {
+  hashSessionParameters,
+  renderSessionParameters,
+  type SessionParameters,
+} from './session.js'
 import type { SQLTemplate } from './template'
 import { renderTemplate } from './template/render'
 
@@ -45,16 +50,28 @@ export class Connection extends EventEmitter<ConnectionEvents> {
   protected declare pq: Libpq
 
   readonly id = uid(8)
-  readonly status: ConnectionStatus = ConnectionStatus.CLOSED
+  status: ConnectionStatus = ConnectionStatus.CLOSED
+  /**
+   * A hash of the session parameters used to connect to the database.
+   */
+  sessionHash = ''
 
   constructor(readonly idleTimeout: number) {
     super()
   }
 
-  async connect(dsn: string) {
+  async connect(dsn: string, sessionParams?: SessionParameters) {
     this.pq = new Libpq()
     await this.pq.connect(dsn)
-    setStatus(unprotect(this), ConnectionStatus.IDLE)
+    if (sessionParams) {
+      sessionParams = shake(sessionParams)
+    }
+    if (sessionParams && Object.keys(sessionParams).length) {
+      await this.query(QueryType.void, renderSessionParameters(sessionParams))
+      this.sessionHash = hashSessionParameters(sessionParams)
+    } else {
+      setStatus(unprotect(this), ConnectionStatus.IDLE)
+    }
   }
 
   /**
@@ -168,10 +185,16 @@ export class Connection extends EventEmitter<ConnectionEvents> {
 }
 
 export enum ConnectionStatus {
+  /** This connection is not connected to a server. */
   CLOSED = 0,
+  /** This connection is ready to process queries. */
   IDLE = 1,
-  QUERY_WRITING = 2,
-  QUERY_READING = 3,
+  /** This connection is reserved for a query but is not actively processing it. */
+  RESERVED = 2,
+  /** This connection is actively writing a query to the socket. */
+  QUERY_WRITING = 3,
+  /** This connection is actively reading the result of a query from the socket. */
+  QUERY_READING = 4,
 }
 
 interface IConnection extends EventEmitter<ConnectionEvents> {

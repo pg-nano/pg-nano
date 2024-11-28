@@ -3,7 +3,8 @@ export * from './client.js'
 export * from './data/fieldMapper.js'
 export * from './data/types.js'
 export * from './error.js'
-export * from './query.js'
+
+export { Query } from './query.js'
 
 export {
   Interval,
