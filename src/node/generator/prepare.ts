@@ -49,21 +49,17 @@ export async function prepareDatabase(
 
   if (traceDepends.enabled) {
     for (const stmt of sortedObjectStmts) {
+      const name = `${stmt.kind} ${stmt.id.toQualifiedName()}`
       if (stmt.dependencies.size > 0) {
         traceDepends(
-          '%s %s depends on %s',
-          stmt.kind,
-          stmt.id.toQualifiedName(),
-          Array.from(stmt.dependencies)
-            .map(dep => dep.id.toQualifiedName())
-            .join(', '),
+          `${name}\n${Array.from(
+            stmt.dependencies,
+            (dep, index) =>
+              `${index === stmt.dependencies.size - 1 ? '└─' : '├─'} ${dep.id.toQualifiedName()}`,
+          ).join('\n')}`,
         )
       } else {
-        traceDepends(
-          '%s %s has no dependencies',
-          stmt.kind,
-          stmt.id.toQualifiedName(),
-        )
+        traceDepends('\x1b[2m%s (none)\x1b[0m', name)
       }
     }
   }
