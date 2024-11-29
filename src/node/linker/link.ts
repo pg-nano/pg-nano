@@ -29,6 +29,12 @@ export function linkObjectStatements(objects: PgObjectStmt[]) {
 
   // Determine dependencies
   for (const stmt of idSortedObjects) {
+    if (stmt.kind === 'schema') {
+      continue
+    }
+    if (stmt.id.schema) {
+      link(stmt, new SQLIdentifier('', stmt.id.schema))
+    }
     if (stmt.kind === 'routine') {
       for (const param of stmt.params) {
         link(stmt, param.type)

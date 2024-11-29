@@ -50,27 +50,30 @@ export class SQLIdentifier {
    */
   toSQL(defaultSchema?: string): SQLTemplateValue {
     const schema = this.schema ?? defaultSchema ?? 'public'
-    const id =
-      schema === 'pg_catalog'
-        ? sql.unsafe(this.name)
-        : sql.id(schema, this.name)
+    if (this.name) {
+      const id =
+        schema === 'pg_catalog'
+          ? sql.unsafe(this.name)
+          : sql.id(schema, this.name)
 
-    const typeModifiers = this.typeModifiers
-      ? sql.unsafe(`(${this.typeModifiers.join(', ')})`)
-      : ''
+      const typeModifiers = this.typeModifiers
+        ? sql.unsafe(`(${this.typeModifiers.join(', ')})`)
+        : ''
 
-    const arrayBounds = this.arrayBounds
-      ? sql.unsafe(
-          this.arrayBounds
-            .map(bound => `[${bound === -1 ? '' : bound ?? ''}]`)
-            .join(''),
-        )
-      : ''
+      const arrayBounds = this.arrayBounds
+        ? sql.unsafe(
+            this.arrayBounds
+              .map(bound => `[${bound === -1 ? '' : bound ?? ''}]`)
+              .join(''),
+          )
+        : ''
 
-    if (typeModifiers || arrayBounds) {
-      return [id, typeModifiers, arrayBounds]
+      if (typeModifiers || arrayBounds) {
+        return [id, typeModifiers, arrayBounds]
+      }
+      return id
     }
-    return id
+    return sql.id(schema)
   }
 
   /**
@@ -81,8 +84,7 @@ export class SQLIdentifier {
   toQualifiedName(defaultSchema?: string) {
     return (
       unsafelyQuotedName(this.schema ?? defaultSchema ?? 'public') +
-      '.' +
-      unsafelyQuotedName(this.name)
+      (this.name ? '.' + unsafelyQuotedName(this.name) : '')
     )
   }
 

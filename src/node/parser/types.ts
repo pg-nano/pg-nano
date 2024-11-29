@@ -5,6 +5,7 @@ import type {
   CreateEnumStmt,
   CreateExtensionStmt,
   CreateFunctionStmt,
+  CreateSchemaStmt,
   CreateStmt,
   FunctionParameter,
   ViewStmt,
@@ -21,6 +22,7 @@ export type PgObjectStmt =
   | PgEnumStmt
   | PgCompositeTypeStmt
   | PgViewStmt
+  | PgSchemaStmt
   | PgExtensionStmt
 
 interface IPgObjectStmt<TNode extends object> {
@@ -90,6 +92,10 @@ export interface PgViewStmt extends IPgObjectStmt<ViewStmt> {
    */
   refs: SQLIdentifier[]
   fields: Field[] | null
+}
+
+export interface PgSchemaStmt extends IPgObjectStmt<CreateSchemaStmt> {
+  kind: 'schema'
 }
 
 export interface PgExtensionStmt extends IPgObjectStmt<CreateExtensionStmt> {

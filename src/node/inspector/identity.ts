@@ -19,7 +19,10 @@ type ObjectLookupScheme = {
  * Currently, functions and composite types need their dependencies created
  * before the pg-schema-diff migration process begins.
  */
-const objectLookupSchemes: Record<PgObjectStmtKind, ObjectLookupScheme> = {
+const objectLookupSchemes: Record<
+  Exclude<PgObjectStmtKind, 'schema'>,
+  ObjectLookupScheme
+> = {
   routine: {
     from: 'pg_proc',
     schemaKey: 'pronamespace',
@@ -55,12 +58,18 @@ export function createIdentityCache(pg: Client) {
   return {
     get: memo(
       async (kind: PgObjectStmtKind, id: SQLIdentifier) => {
-        if (!(kind in objectLookupSchemes)) {
-          throw new Error(`Unsupported object kind: ${kind}`)
-        }
-
         if (traceChecks.enabled) {
           traceChecks('does %s exist?', id.toQualifiedName())
+        }
+
+        if (kind === 'schema') {
+          return pg.queryValueOrNull<number>(sql`
+            SELECT ${id.schemaVal}::regnamespace;
+          `)
+        }
+
+        if (!(kind in objectLookupSchemes)) {
+          throw new Error(`Unsupported object kind: ${kind}`)
         }
 
         const { from, schemaKey, nameKey, where } = objectLookupSchemes[kind]

@@ -276,6 +276,16 @@ export async function parseObjectStatements(
         fields: null,
         ...stmt,
       })
+    } else if ($.isCreateSchemaStmt(node)) {
+      const { schemaname } = $(node)
+      const id = new SQLIdentifier('', schemaname!)
+
+      objects.push({
+        kind: 'schema',
+        node: node.CreateSchemaStmt,
+        id,
+        ...stmt,
+      })
     } else if ($.isCreateExtensionStmt(node)) {
       const { extname } = $(node)
       const id = new SQLIdentifier(extname)
