@@ -1,7 +1,11 @@
 import { SQLIdentifier } from '../parser/identifier.js'
 import type { PgObjectStmt } from '../parser/types.js'
-import { ExecutionQueue } from './executionQueue.js'
+import { TopologicalSet } from './topologicalSet.js'
 
+/**
+ * Populate the dependencies and dependents of each object statement. Returns a
+ * topological set of the objects.
+ */
 export function linkObjectStatements(objects: PgObjectStmt[]) {
   const objectsByName = new Map<string, PgObjectStmt>()
 
@@ -68,5 +72,5 @@ export function linkObjectStatements(objects: PgObjectStmt[]) {
     }
   }
 
-  return new ExecutionQueue(idSortedObjects)
+  return new TopologicalSet(idSortedObjects)
 }

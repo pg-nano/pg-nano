@@ -5,27 +5,35 @@ import {
   type FunctionParameter,
   FunctionParameterMode,
   parseQuery,
+  scanSync,
+  select,
   splitWithScannerSync,
   walk,
 } from '@pg-nano/pg-parser'
-import { select, tryit } from 'radashi'
+import * as _ from 'radashi'
 import { traceParser } from '../debug.js'
 import { events } from '../events.js'
 import type { PgBaseType } from '../inspector/types.js'
 import { appendCodeFrame } from '../util/codeFrame.js'
 import { SQLIdentifier, toUniqueIdList } from './identifier.js'
-import type { PgColumnDef, PgObjectStmt, PgParamDef } from './types.js'
+import type {
+  PgColumnDef,
+  PgInsertStmt,
+  PgObjectStmt,
+  PgParamDef,
+} from './types.js'
 
 const whitespace = ' \n\t\r'.split('').map(c => c.charCodeAt(0))
 
-export async function parseObjectStatements(
+export async function parseSQLStatements(
   content: string,
   file: string,
   baseTypes: PgBaseType[],
 ) {
   const stmts = splitWithScannerSync(content)
+  const objectStmts: PgObjectStmt[] = []
+  const insertStmts: PgInsertStmt[] = []
 
-  const objects: PgObjectStmt[] = []
   const lineBreaks = getLineBreakLocations(content)
 
   for (const { location, length } of stmts) {
@@ -43,7 +51,7 @@ export async function parseObjectStatements(
     }
 
     traceParser('parsing statement on line', line)
-    const [parseError, parseResult] = await tryit(parseQuery)(query)
+    const [parseError, parseResult] = await _.tryit(parseQuery)(query)
 
     if (parseError) {
       if (isParseError(parseError)) {
@@ -108,7 +116,7 @@ export async function parseObjectStatements(
           ? SQLIdentifier.fromTypeName(fn.returnType)
           : undefined
 
-      objects.push({
+      objectStmts.push({
         kind: 'routine',
         node: fn,
         id,
@@ -191,7 +199,7 @@ export async function parseObjectStatements(
         }
       }
 
-      objects.push({
+      objectStmts.push({
         kind: 'table',
         node: node.CreateStmt,
         id,
@@ -203,7 +211,7 @@ export async function parseObjectStatements(
       const { typevar, coldeflist } = $(node)
 
       const id = new SQLIdentifier(typevar.relname, typevar.schemaname)
-      const columns = select(
+      const columns = _.select(
         coldeflist,
         (col): PgColumnDef<ColumnDef> | null => {
           const { colname, typeName } = $(col)
@@ -219,7 +227,7 @@ export async function parseObjectStatements(
         },
       )
 
-      objects.push({
+      objectStmts.push({
         kind: 'type',
         subkind: 'composite',
         node: node.CompositeTypeStmt,
@@ -233,7 +241,7 @@ export async function parseObjectStatements(
       const id = SQLIdentifier.fromQualifiedName(typeName)
       const labels = vals.map(val => $(val).sval)
 
-      objects.push({
+      objectStmts.push({
         kind: 'type',
         subkind: 'enum',
         node: node.CreateEnumStmt,
@@ -262,7 +270,7 @@ export async function parseObjectStatements(
         },
       })
 
-      objects.push({
+      objectStmts.push({
         kind: 'view',
         node: node.ViewStmt,
         id,
@@ -280,7 +288,7 @@ export async function parseObjectStatements(
       const { schemaname } = $(node)
       const id = new SQLIdentifier('', schemaname!)
 
-      objects.push({
+      objectStmts.push({
         kind: 'schema',
         node: node.CreateSchemaStmt,
         id,
@@ -290,10 +298,83 @@ export async function parseObjectStatements(
       const { extname } = $(node)
       const id = new SQLIdentifier(extname)
 
-      objects.push({
+      objectStmts.push({
         kind: 'extension',
         node: node.CreateExtensionStmt,
         id,
+        ...stmt,
+      })
+    } else if ($.isInsertStmt(node)) {
+      if (!select(node, 'selectStmt.valuesLists')) {
+        events.emit('parser:unhandled-insert', {
+          insertStmt: node.InsertStmt,
+        })
+        continue
+      }
+
+      const tuples: string[][] = []
+
+      const tokens = scanSync(query)
+      const valuesIndex = tokens.findIndex(token => token.kind === 'VALUES')
+      for (
+        let i = valuesIndex + 1,
+          start = -1,
+          openParens = 0,
+          tuple: string[] | undefined;
+        i < tokens.length;
+        i++
+      ) {
+        let isEndOfValue: boolean | undefined
+
+        const token = tokens[i]
+        switch (token.kind) {
+          case 'ASCII_40': // left paren
+            start = token.end
+            tuple = []
+            openParens++
+            break
+          case 'ASCII_44': // comma
+            isEndOfValue = openParens === 1
+            break
+          case 'ASCII_41': // right paren
+            if (--openParens < 0) {
+              throw new Error('Unbalanced parentheses in INSERT VALUES clause')
+            }
+            if (tuple && openParens === 0) {
+              tuples.push(tuple)
+              isEndOfValue = true
+            }
+            break
+        }
+
+        if (tuple && isEndOfValue) {
+          tuple.push(query.slice(start, token.start).trim())
+          start = token.end
+        }
+      }
+
+      const { relation, cols } = $(node)
+
+      const targetColumns =
+        cols?.map(col => {
+          let { name = '', indirection } = $(col)
+          if (indirection) {
+            name += indirection
+              .map(i => {
+                const index = select(i, 'sval')
+                return `[${index}]`
+              })
+              .join('')
+          }
+          return name
+        }) ?? null
+
+      insertStmts.push({
+        kind: 'insert',
+        node: node.InsertStmt,
+        relationId: new SQLIdentifier(relation.relname, relation.schemaname),
+        targetColumns,
+        tuples,
         ...stmt,
       })
     } else {
@@ -310,7 +391,7 @@ export async function parseObjectStatements(
     }
   }
 
-  return objects
+  return { objectStmts, insertStmts }
 }
 
 function getLineBreakLocations(content: string) {

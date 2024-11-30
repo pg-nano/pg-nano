@@ -46,7 +46,11 @@ const createDevGenerator = (options: Options = {}) =>
       signal: ctx.signal,
       readFile: fs.read,
     }).catch(error => {
-      log.error(error.stack)
+      if (error.code === 'MIGRATION_HAZARDS') {
+        log.error(error.message)
+      } else {
+        log.error(error.stack)
+      }
     })
   })
 

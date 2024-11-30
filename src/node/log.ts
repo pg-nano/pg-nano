@@ -27,6 +27,7 @@ const createLog = (
         hour12: false,
         hour: '2-digit',
         minute: '2-digit',
+        second: '2-digit',
       })
       message = gray(`[${timestamp}]`) + ' ' + message
     }
@@ -50,7 +51,7 @@ export const log = createLog(blue) as Logger & {
   green: Logger
   cyan: Logger
   magenta: Logger
-  eraseLine: () => void
+  task: (message: string) => () => void
   enableTimestamps: (enabled: boolean) => void
 }
 
@@ -67,10 +68,42 @@ log.green = createLog(green)
 log.cyan = createLog(cyan)
 log.magenta = createLog(magenta)
 
-log.eraseLine = () => {
-  process.stdout.write('\x1B[1A') // Move cursor up one line
-  process.stdout.write(' '.repeat(process.stdout.columns)) // Write spaces to clear the line
-  process.stdout.write('\r') // Move cursor to start of line
+let lastLoggedLine = ''
+
+const updateLastLoggedLine = (arg: unknown) => {
+  if (isString(arg)) {
+    const message = arg.trimEnd()
+    lastLoggedLine = message.slice(message.lastIndexOf('\n') + 1)
+  }
+}
+
+const stdoutWrite: any = process.stdout.write.bind(process.stdout)
+process.stdout.write = (...args) => {
+  updateLastLoggedLine(args[0])
+  return stdoutWrite(...args)
+}
+
+const stderrWrite: any = process.stderr.write.bind(process.stderr)
+process.stderr.write = (...args) => {
+  updateLastLoggedLine(args[0])
+  return stderrWrite(...args)
+}
+
+log.task = (message: string) => {
+  const start = Date.now()
+  log(message)
+
+  return () => {
+    if (lastLoggedLine.includes(message)) {
+      process.stdout.moveCursor(0, -1) // Move cursor up one line
+      process.stdout.clearLine(0) // Clear entire line
+      process.stdout.cursorTo(0) // Move cursor to start of line
+    }
+    const elapsed = (Date.now() - start) / 1000
+    log.success(
+      message + ' done' + (elapsed > 0.5 ? ` in ${elapsed.toFixed(1)}s` : ''),
+    )
+  }
 }
 
 function relativizePathArgs(args: any[]) {

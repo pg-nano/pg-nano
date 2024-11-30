@@ -41,10 +41,11 @@ import {
   type PgType,
 } from '../inspector/types.js'
 import { quoteName, SQLIdentifier } from '../parser/identifier.js'
-import { parseObjectStatements } from '../parser/parse.js'
+import { parseSQLStatements } from '../parser/parse.js'
 import { dedent } from '../util/dedent.js'
 import { memoAsync } from '../util/memoAsync.js'
-import { migrate } from './migrate.js'
+import { migrateSchema } from './migrate/migrateSchema.js'
+import { migrateStaticRows } from './migrate/migrateStaticRows.js'
 import { prepareDatabase } from './prepare.js'
 import { jsTypeByPgName, subtypeByPgName } from './typeMappings.js'
 
@@ -74,21 +75,23 @@ export async function generate(
   const pg = await env.client
   const baseTypes = await inspectBaseTypes(pg, options.signal)
 
+  // Include our internal SQL files in the migration plan.
+  filePaths.push(new URL(import.meta.resolve('pg-nano/sql/nano.sql')).pathname)
+
   const readFile = options.readFile ?? fs.readFileSync
 
-  const objectStmts = (
+  const { objectStmts, insertStmts } = flatMapProperties(
     await map(filePaths, async file => {
       traceParser('parsing schema file:', file)
-      return await parseObjectStatements(
-        readFile(file, 'utf8'),
-        file,
-        baseTypes,
-      )
-    })
-  ).flat()
+      return await parseSQLStatements(readFile(file, 'utf8'), file, baseTypes)
+    }),
+  )
 
-  const { pluginsByStatementId } = await prepareDatabase(
+  events.emit('parser:found', { objectStmts, insertStmts })
+
+  const { pluginsByStatementId, droppedTables } = await prepareDatabase(
     objectStmts,
+    insertStmts,
     baseTypes,
     env,
   )
@@ -97,9 +100,8 @@ export async function generate(
     await options.preMigrate()
   }
 
-  events.emit('migrate:start')
-
-  await migrate(env)
+  await migrateSchema(env, droppedTables)
+  await migrateStaticRows(pg, insertStmts, objectStmts, droppedTables)
 
   if (options.noEmit) {
     return
@@ -973,4 +975,12 @@ function extract<TInput, const TOutput>(
 ): Extract<TOutput, TInput> | IfExists<Exclude<TInput, TOutput>, undefined> {
   const index = outputs.indexOf(input as any)
   return (index === -1 ? undefined : outputs[index]) as any
+}
+
+function flatMapProperties<T extends Record<string, any[]>>(objects: T[]): T {
+  const merged = {} as T
+  for (const key in objects[0]) {
+    merged[key] = objects.flatMap(obj => obj[key]) as any
+  }
+  return merged
 }

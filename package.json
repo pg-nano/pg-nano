@@ -22,6 +22,7 @@
       "types": "./dist/field-mappers.d.ts",
       "default": "./dist/field-mappers.js"
     },
+    "./sql/*": "./sql/*",
     ".": {
       "types": "./dist/pg-nano.d.ts",
       "default": "./dist/pg-nano.js"
@@ -62,9 +63,7 @@
     "type": "git",
     "url": "https://github.com/pg-nano/pg-nano.git"
   },
-  "files": [
-    "dist"
-  ],
+  "files": ["dist", "sql"],
   "dependencies": {
     "@pg-nano/libpq": "workspace:^",
     "@pg-nano/pg-parser": "^16.1.5",

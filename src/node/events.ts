@@ -1,15 +1,13 @@
-import type { ColumnDef, Node } from '@pg-nano/pg-parser'
+import type { ColumnDef, InsertStmt, Node } from '@pg-nano/pg-parser'
 import type { ChildProcess } from 'node:child_process'
 import { EventEmitter } from 'node:events'
-import type { Readable } from 'node:stream'
 import util from 'node:util'
 import { stringifyConnectOptions, type ConnectOptions } from 'pg-native'
-import { capitalize } from 'radashi'
+import { capitalize, counting } from 'radashi'
 import type { Plugin } from './config/plugin.js'
 import { debug } from './debug.js'
-import { parseMigrationPlan } from './generator/parseMigrationPlan.js'
 import { log } from './log.js'
-import type { PgObjectStmt } from './parser/types.js'
+import type { PgInsertStmt, PgObjectStmt } from './parser/types.js'
 
 type EventMap = {
   connecting: [options: ConnectOptions]
@@ -18,12 +16,23 @@ type EventMap = {
   'unsupported-type': [event: { typeOid: number; typeName: string }]
   'create-object': [event: { object: PgObjectStmt }]
   'update-object': [event: { object: PgObjectStmt }]
-  'prepare:mutation': [event: { query: string }]
   'name-collision': [event: { object: PgObjectStmt }]
+  'prepare:start': []
+  'prepare:mutation': [event: { query: string }]
+  'prepare:skip-insert': [event: { insert: PgInsertStmt }]
   'plugin:statements': [event: { plugin: Plugin }]
+  'parser:found': [
+    event: { objectStmts: PgObjectStmt[]; insertStmts: PgInsertStmt[] },
+  ]
   'parser:skip-column': [event: { columnDef: ColumnDef }]
   'parser:unhandled-statement': [event: { query: string; node: Node }]
+  'parser:unhandled-insert': [event: { insertStmt: InsertStmt }]
+  'migrate:plan': []
   'migrate:start': []
+  'migrate:static-rows:start': []
+  'migrate:static-rows:end': [
+    event: { insertedRowCount: number; deletedRowCount: number },
+  ]
   'generate:start': []
   'generate:end': []
   'pg-schema-diff:apply': [event: { proc: ChildProcess }]
@@ -59,8 +68,23 @@ export function enableEventLogging(verbose?: boolean) {
     log.magenta('Updating %s %s', object.kind, object.id.toQualifiedName())
   })
 
+  let done: () => void
+
+  events.on('prepare:start', () => {
+    done = log.task('Preparing for migration...')
+  })
+
   events.on('prepare:mutation', ({ query }) => {
     debug('Applying mutation', query)
+  })
+
+  events.on('prepare:skip-insert', ({ insert }) => {
+    log.warn(
+      'Skipping insert into %s (%s:%s)',
+      insert.relationId.toQualifiedName(),
+      insert.file,
+      insert.line,
+    )
   })
 
   events.on('name-collision', ({ object }) => {
@@ -73,6 +97,28 @@ export function enableEventLogging(verbose?: boolean) {
 
   events.on('plugin:statements', ({ plugin }) => {
     log('Generating SQL statements with plugin', plugin.name)
+  })
+
+  const pluralize = (noun: string, count: number) =>
+    `${noun}${count > 1 ? 's' : ''}`
+
+  events.on('parser:found', ({ objectStmts, insertStmts }) => {
+    const found: string[] = []
+    for (const [kind, count] of Object.entries(
+      counting(objectStmts, stmt => stmt.kind),
+    )) {
+      found.push(count + ' ' + pluralize(kind, count))
+    }
+    const insertCount = insertStmts.reduce(
+      (sum, insert) => sum + insert.tuples.length,
+      0,
+    )
+    if (insertCount > 0) {
+      found.push(insertCount + ' ' + pluralize('insert', insertCount))
+    }
+    log.success(
+      `Found ${found.slice(0, -1).join(', ')}${found.length > 2 ? ',' : ''} and ${found.at(-1)}`,
+    )
   })
 
   const inspect = (value: any) =>
@@ -103,48 +149,52 @@ export function enableEventLogging(verbose?: boolean) {
     dump(node)
   })
 
-  events.on('migrate:start', () => {
-    log('Migrating database...')
+  events.on('parser:unhandled-insert', ({ insertStmt }) => {
+    log.warn('Unhandled INSERT statement:')
+    dump(insertStmt)
   })
 
+  events.on('migrate:plan', () => {
+    done()
+    done = log.task('Planning migration...')
+  })
+
+  events.on('migrate:start', () => {
+    done()
+    done = log.task('Migrating database...')
+  })
+
+  events.on('migrate:static-rows:start', () => {
+    done()
+    done = log.task('Migrating static rows...')
+  })
+
+  events.on(
+    'migrate:static-rows:end',
+    ({ insertedRowCount, deletedRowCount }) => {
+      done()
+      if (insertedRowCount > 0) {
+        log.success(
+          'Inserted %d row%s',
+          insertedRowCount,
+          insertedRowCount > 1 ? 's' : '',
+        )
+      }
+      if (deletedRowCount > 0) {
+        log.success(
+          'Deleted %d row%s',
+          deletedRowCount,
+          deletedRowCount > 1 ? 's' : '',
+        )
+      }
+    },
+  )
+
   events.on('generate:start', () => {
-    log('Generating type definitions...')
+    done = log.task('Generating type definitions...')
   })
 
   events.on('generate:end', () => {
-    if (!process.env.DEBUG) {
-      log.eraseLine()
-    }
-    log.success('Generating type definitions... done')
+    done()
   })
-
-  if (verbose) {
-    const logMigrationPlan = async (stdout: Readable) => {
-      const successRegex = /(No plan generated|Finished executing)/
-      const commentRegex = /^\s+-- /
-
-      let completed = false
-      for await (const line of parseMigrationPlan(stdout)) {
-        if (line.type === 'title') {
-          if (line.text === 'Complete') {
-            completed = true
-          } else {
-            log(line.text)
-          }
-        } else if (line.type === 'body') {
-          if (completed || successRegex.test(line.text)) {
-            log.success(line.text)
-          } else if (commentRegex.test(line.text)) {
-            log.comment(line.text)
-          } else {
-            log.command(line.text)
-          }
-        }
-      }
-    }
-
-    events.on('pg-schema-diff:apply', async event => {
-      logMigrationPlan(event.proc.stdout!)
-    })
-  }
 }

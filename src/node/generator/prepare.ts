@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { type Client, PgResultError, sql } from 'pg-nano'
+import { type Client, sql } from 'pg-nano'
 import { map, sift } from 'radashi'
 import type { Plugin, SQLTemplate } from '../config/plugin.js'
 import { debug, traceDepends } from '../debug.js'
@@ -21,12 +21,13 @@ import type { PgBaseType } from '../inspector/types.js'
 import { linkObjectStatements } from '../linker/link.js'
 import { extractColumnDefinition } from '../parser/column.js'
 import { SQLIdentifier } from '../parser/identifier.js'
-import { parseObjectStatements } from '../parser/parse.js'
-import type { PgObjectStmt } from '../parser/types.js'
-import { cwdRelative } from '../util/path.js'
+import { parseSQLStatements } from '../parser/parse.js'
+import type { PgInsertStmt, PgObjectStmt } from '../parser/types.js'
+import { throwFormattedQueryError } from './error.js'
 
 export async function prepareDatabase(
   objectStmts: PgObjectStmt[],
+  insertStmts: PgInsertStmt[],
   baseTypes: PgBaseType[],
   env: Env,
 ) {
@@ -38,6 +39,7 @@ export async function prepareDatabase(
     env,
     baseTypes,
     objectStmts,
+    insertStmts,
   )
 
   debug('plugin statements prepared')
@@ -64,17 +66,21 @@ export async function prepareDatabase(
     }
   }
 
-  // The "nano" schema is used to store temporary objects during diffing.
+  events.emit('prepare:start')
+
+  const droppedTables = new Set<SQLIdentifier>()
+
+  // The "nano_tmp" schema is used to store temporary objects during diffing.
   await pg.query(sql`
-    DROP SCHEMA IF EXISTS nano CASCADE;
-    CREATE SCHEMA nano;
+    DROP SCHEMA IF EXISTS nano_tmp CASCADE;
+    CREATE SCHEMA nano_tmp;
   `)
   try {
-    await updateObjects(pg, objectStmts)
+    await updateObjects(pg, objectStmts, droppedTables)
   } finally {
-    // Drop the "nano" schema now that diffing is complete.
+    // Drop the "nano_tmp" schema now that diffing is complete.
     await pg.query(sql`
-      DROP SCHEMA IF EXISTS nano CASCADE;
+      DROP SCHEMA IF EXISTS nano_tmp CASCADE;
     `)
   }
 
@@ -99,10 +105,14 @@ export async function prepareDatabase(
     )
   }
 
-  return { pluginsByStatementId }
+  return { pluginsByStatementId, droppedTables }
 }
 
-async function updateObjects(pg: Client, objectStmts: PgObjectStmt[]) {
+async function updateObjects(
+  pg: Client,
+  objectStmts: PgObjectStmt[],
+  droppedTables: Set<SQLIdentifier>,
+) {
   const objectIds = createIdentityCache(pg)
   const objectNames = new Set<string>()
   const objectUpdates = new Map(
@@ -146,7 +156,12 @@ async function updateObjects(pg: Client, objectStmts: PgObjectStmt[]) {
       const drop = dropDependentObject(object)
       if (drop) {
         drops.push(drop)
-        objectIds.delete(new SQLIdentifier(object.name, object.schema))
+
+        const id = new SQLIdentifier(object.name, object.schema)
+        objectIds.delete(id)
+        if (object.relKind === 'r') {
+          droppedTables.add(id)
+        }
       }
     }
     if (drops.length > 0) {
@@ -155,8 +170,9 @@ async function updateObjects(pg: Client, objectStmts: PgObjectStmt[]) {
   }
 
   async function updateObject(stmt: PgObjectStmt): Promise<any> {
-    const nameAlreadyExists = objectNames.has(stmt.id.name)
-    objectNames.add(stmt.id.name)
+    const name = stmt.id.toQualifiedName()
+    const nameAlreadyExists = objectNames.has(name)
+    objectNames.add(name)
 
     // Wait for dependencies to be created/updated before proceeding.
     if (stmt.dependencies.size > 0) {
@@ -200,7 +216,7 @@ async function updateObjects(pg: Client, objectStmts: PgObjectStmt[]) {
           if (debug.enabled) {
             debug(
               'columns being dropped from "%s" table:',
-              stmt.id.toQualifiedName(),
+              name,
               droppedColumns,
             )
           }
@@ -212,11 +228,7 @@ async function updateObjects(pg: Client, objectStmts: PgObjectStmt[]) {
 
         if (addedColumns.length > 0) {
           if (debug.enabled) {
-            debug(
-              'columns being added to "%s" table:',
-              stmt.id.toQualifiedName(),
-              addedColumns,
-            )
+            debug('columns being added to "%s" table:', name, addedColumns)
           }
 
           const alterStmts = await map(addedColumns, async name => {
@@ -306,6 +318,10 @@ async function updateObjects(pg: Client, objectStmts: PgObjectStmt[]) {
         }[conflict.relkind]
 
         if (kind) {
+          if (conflict.relkind === 'r') {
+            droppedTables.add(stmt.id)
+          }
+
           query = sql`
             ${await dropDependentObjects(conflict.oid)}
             DROP ${sql.unsafe(kind)} ${stmt.id.toSQL()} CASCADE;
@@ -327,7 +343,13 @@ async function updateObjects(pg: Client, objectStmts: PgObjectStmt[]) {
       const { resolve } = objectUpdates.get(stmt)!
       return updateObject(stmt).then(resolve, async error => {
         const oid = await objectIds.get(stmt.kind, stmt.id)
-        throwFormattedQueryError(error, stmt, !!oid)
+        throwFormattedQueryError(error, stmt, message => {
+          const id = stmt.id.toQualifiedName()
+          if (!message.includes(id)) {
+            message = `Error ${oid ? 'updating' : 'creating'} ${stmt.kind} (${id}): ${message}`
+          }
+          return message
+        })
       })
     }),
   )
@@ -337,6 +359,7 @@ async function preparePluginStatements(
   env: Env,
   baseTypes: PgBaseType[],
   objects: PgObjectStmt[],
+  inserts: PgInsertStmt[],
 ) {
   // Ensure that removed plugins don't leave behind any SQL files.
   fs.rmSync(env.config.generate.pluginSqlDir, {
@@ -381,12 +404,9 @@ async function preparePluginStatements(
 
       // Immediately parse the generated statements so they can be used by
       // plugins that run after this one.
-      const newObjects = await parseObjectStatements(
-        content,
-        outFile,
-        baseTypes,
-      )
-      for (const object of newObjects) {
+      const parsedOutput = await parseSQLStatements(content, outFile, baseTypes)
+
+      for (const object of parsedOutput.objectStmts) {
         if (objects.some(other => other.id.equals(object.id))) {
           events.emit('name-collision', { object })
           continue
@@ -394,67 +414,21 @@ async function preparePluginStatements(
         objects.push(object)
         pluginsByStatementId.set(object.id.toQualifiedName(), plugin)
       }
+
+      for (const insert of parsedOutput.insertStmts) {
+        const relation = objects.find(object =>
+          object.id.equals(insert.relationId),
+        )
+
+        if (!relation || !parsedOutput.objectStmts.includes(relation)) {
+          events.emit('prepare:skip-insert', { insert })
+          continue
+        }
+
+        inserts.push(insert)
+      }
     }
   }
 
   return pluginsByStatementId
-}
-
-function throwFormattedQueryError(
-  error: Error,
-  object: PgObjectStmt,
-  exists: boolean,
-): never {
-  let message = error.message.replace(/^ERROR:\s+/i, '').trimEnd()
-
-  // Remove "LINE XXX: " if present, and the same number of characters from
-  // any lines that come after.
-  const messageLines = message.split('\n')
-  for (let i = 0; i < messageLines.length; i++) {
-    if (messageLines[i].startsWith('LINE ')) {
-      const colonIndex = messageLines[i].indexOf(':') + 2
-      messageLines[i] =
-        ' '.repeat(colonIndex) + messageLines[i].slice(colonIndex)
-      message = messageLines.join('\n')
-      break
-    }
-  }
-
-  const id = object.id.toQualifiedName()
-  if (!message.includes(id)) {
-    message = `Error ${exists ? 'updating' : 'creating'} ${object.kind} (${id}): ${message}`
-  }
-
-  const line =
-    error instanceof PgResultError && error.statementPosition
-      ? object.line -
-        1 +
-        getLineFromPosition(
-          Number.parseInt(error.statementPosition),
-          object.query,
-        )
-      : object.line
-
-  const stack =
-    '\n    at ' +
-    cwdRelative(object.file) +
-    ':' +
-    line +
-    (error.stack
-      ?.replace(error.name + ': ' + error.message, '')
-      .replace(/^\s*(?=\n)/, '') ?? '')
-
-  error.message = message
-  error.stack = message + stack
-  throw error
-}
-
-function getLineFromPosition(position: number, query: string) {
-  let line = 1
-  for (let i = 0; i < position; i++) {
-    if (query[i] === '\n') {
-      line++
-    }
-  }
-  return line
 }

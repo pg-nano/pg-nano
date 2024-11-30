@@ -126,28 +126,23 @@ export async function hasRoutineSignatureChanged(
   client: Client,
   fn: PgRoutineStmt,
 ) {
-  const tmpId = fn.id.withSchema('nano')
+  const tmpId = fn.id.withSchema('nano_tmp')
   const tmpStmt = fn.query.replace(fn.id.toRegExp(), tmpId.toQualifiedName())
 
-  // Add the latest routine to the database (but under the "nano" schema), so we
-  // can compare it to the existing routine.
-  await client
-    .query(sql`
-      DROP ROUTINE IF EXISTS ${tmpId.toSQL()} CASCADE;
-      ${sql.unsafe(tmpStmt)}
-    `)
-    .catch(error => {
-      if (isPgResultError(error) && error.statementPosition) {
-        appendCodeFrame(
-          error,
-          +error.statementPosition,
-          error.command,
-          fn.line - 2,
-          fn.file,
-        )
-      }
-      throw error
-    })
+  // Create a temporary routine in the "nano_tmp" schema so we can compare it to
+  // the existing routine.
+  await client.query(sql.unsafe(tmpStmt)).catch(error => {
+    if (isPgResultError(error) && error.statementPosition) {
+      appendCodeFrame(
+        error,
+        +error.statementPosition,
+        error.command,
+        fn.line - 2,
+        fn.file,
+      )
+    }
+    throw error
+  })
 
   const selectRoutineById = (id: SQLIdentifier) => sql`
     SELECT
@@ -202,17 +197,15 @@ export async function hasRoutineSignatureChanged(
  * @returns `true` if the view has changed, `false` otherwise.
  */
 export async function hasViewChanged(client: Client, view: PgViewStmt) {
-  const tmpId = view.id.withSchema('nano')
+  const tmpId = view.id.withSchema('nano_tmp')
   const tmpStmt = view.query.replace(
     view.id.toRegExp(),
     tmpId.toQualifiedName(),
   )
 
-  // Create a temporary version of the view in the "nano" schema
-  await client.query(sql`
-    DROP VIEW IF EXISTS ${tmpId.toSQL()} CASCADE;
-    ${sql.unsafe(tmpStmt)}
-  `)
+  // Create a temporary view in the "nano_tmp" schema so we can compare it to
+  // the existing view.
+  await client.query(sql.unsafe(tmpStmt))
 
   const selectViewDefinition = (id: SQLIdentifier) => sql`
     SELECT pg_get_viewdef(${sql.val(id.toQualifiedName())}::regclass) AS view_definition

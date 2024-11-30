@@ -8,6 +8,7 @@ import type {
   CreateSchemaStmt,
   CreateStmt,
   FunctionParameter,
+  InsertStmt,
   ViewStmt,
 } from '../config/plugin.js'
 import type { SQLIdentifier } from './identifier.js'
@@ -25,14 +26,17 @@ export type PgObjectStmt =
   | PgSchemaStmt
   | PgExtensionStmt
 
-interface IPgObjectStmt<TNode extends object> {
+interface IPgStmt<TNode extends object> {
   kind: string
-  id: SQLIdentifier
   node: TNode
   query: string
   line: number
   file: string
   dependencies: Set<PgObjectStmt>
+}
+
+interface IPgObjectStmt<TNode extends object> extends IPgStmt<TNode> {
+  id: SQLIdentifier
   dependents: Set<PgObjectStmt>
 }
 
@@ -100,4 +104,11 @@ export interface PgSchemaStmt extends IPgObjectStmt<CreateSchemaStmt> {
 
 export interface PgExtensionStmt extends IPgObjectStmt<CreateExtensionStmt> {
   kind: 'extension'
+}
+
+export interface PgInsertStmt extends IPgStmt<InsertStmt> {
+  kind: 'insert'
+  relationId: SQLIdentifier
+  targetColumns: string[] | null
+  tuples: string[][]
 }

@@ -2,7 +2,10 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { select } from 'radashi'
 import { globSync } from 'tinyglobby'
-import { migrate } from '../../src/node/generator/migrate.js'
+import {
+  type MigrationPlan,
+  planSchemaMigration,
+} from '../../src/node/generator/plan.js'
 import {
   bufferReadable,
   createProject,
@@ -32,14 +35,15 @@ describe('migrate', () => {
         readFileSync(join(cwd, afterFile), 'utf8'),
       )
 
-      let migrationPlan = ''
+      let plan!: MigrationPlan
+
       await project.generate({
         noEmit: true,
         async preMigrate() {
-          migrationPlan = await migrate(project.env, { dryRun: true })
-          if (/No plan generated/i.test(migrationPlan)) {
-            migrationPlan = ''
-          }
+          plan = await planSchemaMigration({
+            dsn: process.env.PG_TMP_DSN!,
+            schemaDir: project.env.schemaDir,
+          })
         },
       })
 
@@ -51,7 +55,7 @@ describe('migrate', () => {
             event => event[0] === 'prepare:mutation',
           ).join('\n') +
           '\n' +
-          migrationPlan,
+          plan.statements.map(stmt => stmt.ddl + ';').join('\n'),
       ).toMatchFileSnapshot(
         join(__dirname, '__snapshots__', caseName + '.diff.sql'),
       )
