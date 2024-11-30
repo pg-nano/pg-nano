@@ -72,6 +72,7 @@ export function resolveConfig(
         userConfig?.generate?.outFile ?? 'sql/schema.ts',
       ),
       fieldCase: userConfig?.generate?.fieldCase ?? 'camel',
+      preferredExtension: userConfig?.generate?.preferredExtension ?? 'js',
       pluginSqlDir: path.resolve(
         root,
         userConfig?.generate?.pluginSqlDir ?? 'sql/nano_plugins',
