@@ -930,6 +930,8 @@ export async function generate(
     code += prelude.join('\n') + '\n\n'
   }
 
+  const outDir = path.dirname(outFile)
+
   const nameSort = (a: { name: string }, b: { name: string }) =>
     a.name.localeCompare(b.name)
 
@@ -937,14 +939,30 @@ export async function generate(
   for (const nsp of Object.values(namespaces)) {
     let nspCode = ''
 
-    for (const object of [
-      ...nsp.enumTypes.sort(nameSort),
-      ...nsp.compositeTypes.sort(nameSort),
-      ...nsp.tables.sort(nameSort),
-      ...nsp.views.sort(nameSort),
-      ...nsp.routines.sort(nameSort),
-    ]) {
+    let objects: PgObject[] = [
+      ...nsp.enumTypes,
+      ...nsp.compositeTypes,
+      ...nsp.tables,
+      ...nsp.views,
+    ]
+
+    objects.sort(nameSort)
+    objects = objects.concat(nsp.routines.sort(nameSort))
+
+    for (const object of objects) {
       if (renderedObjects.has(object)) {
+        const stmt = objectStmts.find(
+          stmt =>
+            object.name === stmt.id.name &&
+            object.schema === (stmt.id.schema ?? 'public'),
+        )
+        if (stmt) {
+          let file = path.relative(outDir, stmt.file)
+          if (!file.startsWith('..')) {
+            file = './' + file
+          }
+          nspCode += `/**\n * [Source](${file})\n */\n`
+        }
         nspCode += renderedObjects.get(object)!
       }
     }
