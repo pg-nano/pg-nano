@@ -120,10 +120,10 @@ async function loadEnv(cwd: string, options: EnvOptions) {
         const client = new Client({
           debug: true,
           maxRetries: 2,
-          postConnectQuery: sql`
-            SET client_min_messages = ${sql.unsafe(process.env.TEST ? 'NOTICE' : 'WARNING')};
-            SET check_function_bodies = OFF;
-          `,
+          sessionParams: {
+            client_min_messages: process.env.TEST ? 'NOTICE' : 'WARNING',
+            check_function_bodies: false,
+          },
         })
 
         try {
