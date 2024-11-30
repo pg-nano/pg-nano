@@ -7,7 +7,7 @@ import { memo } from '../util/memo.js'
 type ObjectLookupScheme = {
   from: string
   schemaKey: string
-  nameKey: string
+  nameKey: string | undefined
   where?: SQLTemplate
 }
 
@@ -19,10 +19,7 @@ type ObjectLookupScheme = {
  * Currently, functions and composite types need their dependencies created
  * before the pg-schema-diff migration process begins.
  */
-const objectLookupSchemes: Record<
-  Exclude<PgObjectStmtKind, 'schema'>,
-  ObjectLookupScheme
-> = {
+const objectLookupSchemes: Record<PgObjectStmtKind, ObjectLookupScheme> = {
   routine: {
     from: 'pg_proc',
     schemaKey: 'pronamespace',
@@ -45,6 +42,11 @@ const objectLookupSchemes: Record<
     nameKey: 'relname',
     where: sql`relkind = 'v'`,
   },
+  schema: {
+    from: 'pg_namespace',
+    schemaKey: 'nspname',
+    nameKey: undefined,
+  },
   extension: {
     from: 'pg_extension',
     schemaKey: 'extnamespace',
@@ -62,12 +64,6 @@ export function createIdentityCache(pg: Client) {
           traceChecks('does %s exist?', id.toQualifiedName())
         }
 
-        if (kind === 'schema') {
-          return pg.queryValueOrNull<number>(sql`
-            SELECT ${id.schemaVal}::regnamespace;
-          `)
-        }
-
         if (!(kind in objectLookupSchemes)) {
           throw new Error(`Unsupported object kind: ${kind}`)
         }
@@ -77,8 +73,10 @@ export function createIdentityCache(pg: Client) {
         return pg.queryValueOrNull<number>(sql`
           SELECT oid
           FROM ${sql.id(from)}
-          WHERE ${sql.id(schemaKey)} = ${id.schemaVal}::regnamespace
-            AND ${sql.id(nameKey)} = ${id.nameVal}
+          WHERE ${sql.id(schemaKey)} = ${id.schemaVal}${
+            kind !== 'schema' ? sql`::regnamespace` : ''
+          }
+            ${nameKey && sql`AND ${sql.id(nameKey)} = ${id.nameVal}`}
             ${where && sql`AND ${where}`};
         `)
       },
