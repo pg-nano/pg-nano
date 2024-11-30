@@ -139,13 +139,20 @@ export type PgNamespace = {
   names: string[]
 }
 
-export type PgObject =
-  | PgRoutine
-  | PgTable
-  | PgView
-  | PgEnumType
-  | PgCompositeType
-  | PgBaseType
+/**
+ * A database object registered in `pg_class` system table.
+ */
+export type PgClass = PgCompositeType | PgTable | PgView
+
+/**
+ * A database object registered in `pg_type` system table.
+ */
+export type PgType = PgBaseType | PgClass | PgEnumType
+
+/**
+ * A database object registered in any system table.
+ */
+export type PgObject = PgClass | PgRoutine | PgType
 
 export enum PgObjectType {
   Base = 'base type',
@@ -156,13 +163,9 @@ export enum PgObjectType {
   View = 'view',
 }
 
-export type PgType = (
-  | { object: Readonly<PgEnumType> }
-  | { object: Readonly<PgCompositeType> }
-  | { object: Readonly<PgTable> }
-  | { object: Readonly<PgView> }
-  | { object: Readonly<PgBaseType> }
-) & {
+export type PgTypeReference<T extends PgType = PgType> = (T extends any
+  ? { object: Readonly<T> }
+  : never) & {
   isArray?: boolean | undefined
   jsType: string
 }
@@ -173,7 +176,7 @@ export type PgTypeContext = {
   /**
    * The type being mapped.
    */
-  type: Readonly<PgType>
+  type: Readonly<PgTypeReference>
   /**
    * The object that contains this type.
    */
@@ -220,7 +223,7 @@ export type PgFieldContext = {
   /**
    * The type of the field.
    */
-  fieldType: PgType
+  fieldType: PgTypeReference
   /**
    * The depth of array nesting for this field.
    */
@@ -243,31 +246,31 @@ export type PgFieldContext = {
 }
 
 export function isEnumType(
-  type: PgType,
-): type is PgType & { object: Readonly<PgEnumType> } {
+  type: PgTypeReference,
+): type is PgTypeReference<PgEnumType> {
   return type.object.type === PgObjectType.Enum
 }
 
 export function isCompositeType(
-  type: PgType,
-): type is PgType & { object: Readonly<PgCompositeType> } {
+  type: PgTypeReference,
+): type is PgTypeReference<PgCompositeType> {
   return type.object.type === PgObjectType.Composite
 }
 
 export function isTableType(
-  type: PgType,
-): type is PgType & { object: Readonly<PgTable> } {
+  type: PgTypeReference,
+): type is PgTypeReference<PgTable> {
   return type.object.type === PgObjectType.Table
 }
 
 export function isViewType(
-  type: PgType,
-): type is PgType & { object: Readonly<PgView> } {
+  type: PgTypeReference,
+): type is PgTypeReference<PgView> {
   return type.object.type === PgObjectType.View
 }
 
 export function isBaseType(
-  type: PgType,
-): type is PgType & { object: Readonly<PgBaseType> } {
+  type: PgTypeReference,
+): type is PgTypeReference<PgBaseType> {
   return type.object.type === PgObjectType.Base
 }

@@ -6,8 +6,8 @@ import type {
   PgParamKind,
   PgRoutine,
   PgTable,
-  PgType,
   PgTypeContext,
+  PgTypeReference,
 } from '../inspector/types.js'
 import type { PgObjectStmt } from '../parser/types.js'
 import type { ResolvedConfig } from './resolveConfig.js'
@@ -74,8 +74,8 @@ export interface Plugin {
 }
 
 export interface GenerateContext {
-  typesByName: ReadonlyMap<string, PgType>
-  typesByOid: ReadonlyMap<number, PgType>
+  typesByName: ReadonlyMap<string, PgTypeReference>
+  typesByOid: ReadonlyMap<number, PgTypeReference>
   namespaces: Readonly<Record<string, PgNamespace>>
   routines: readonly PgRoutine[]
   tables: readonly PgTable[]
@@ -140,4 +140,3 @@ export * from '../inspector/types.js'
 export { SQLIdentifier } from '../parser/identifier.js'
 export * from '../parser/types.js'
 export type { ResolvedConfig } from './resolveConfig.js'
-

@@ -105,7 +105,11 @@ export async function prepareDatabase(
     )
   }
 
-  return { pluginsByStatementId, droppedTables }
+  return {
+    droppedTables,
+    pluginsByStatementId,
+    sortedObjectStmts,
+  }
 }
 
 async function updateObjects(

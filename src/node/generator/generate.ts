@@ -8,7 +8,6 @@ import { camel, map, mapify, pascal, select, shake, sift } from 'radashi'
 import stringArgv from 'string-argv'
 import type {
   GenerateContext,
-  PgView,
   Plugin,
   PluginContext,
 } from '../config/plugin.js'
@@ -36,9 +35,12 @@ import {
   type PgObject,
   PgObjectType,
   PgParamKind,
+  type PgRoutine,
   type PgTable,
   type PgTableField,
   type PgType,
+  type PgTypeReference,
+  type PgView,
 } from '../inspector/types.js'
 import { quoteName, SQLIdentifier } from '../parser/identifier.js'
 import { parseSQLStatements } from '../parser/parse.js'
@@ -89,12 +91,8 @@ export async function generate(
 
   events.emit('parser:found', { objectStmts, insertStmts })
 
-  const { pluginsByStatementId, droppedTables } = await prepareDatabase(
-    objectStmts,
-    insertStmts,
-    baseTypes,
-    env,
-  )
+  const { pluginsByStatementId, droppedTables, sortedObjectStmts } =
+    await prepareDatabase(objectStmts, insertStmts, baseTypes, env)
 
   if (options.preMigrate) {
     await options.preMigrate()
@@ -125,8 +123,16 @@ export async function generate(
   /** Objects found in the database by introspection. */
   const objects: PgObject[] = []
 
-  const typesByOid = new Map<number, Required<PgType>>()
-  const typesByName = new Map<string, Required<PgType>>()
+  const typesByOid = new Map<number, Required<PgTypeReference>>()
+  const typesByName = new Map<string, Required<PgTypeReference>>()
+
+  const getTypeName = (name: string, schema: string, isArray?: boolean) => {
+    return (
+      (schema !== 'public' && schema !== 'pg_catalog'
+        ? schema + '.' + name
+        : name) + (isArray ? '[]' : '')
+    )
+  }
 
   const registerType = (
     object: PgBaseType | PgEnumType | PgCompositeType | PgTable | PgView,
@@ -134,20 +140,15 @@ export async function generate(
     jsType?: string,
   ) => {
     const oid = isArray ? object.arrayOid : object.oid
-    const type: Required<PgType> = {
+    const type: Required<PgTypeReference> = {
       // The first type assertion provides a bit of type safety, while the any
       // assertion is necessary for assignability.
-      object: object as PgType['object'] as any,
+      object: object as PgTypeReference['object'] as any,
       jsType: jsType ?? pascal(object.name),
       isArray,
     }
     typesByOid.set(oid, type)
-    typesByName.set(
-      (object.schema !== 'public' && object.schema !== 'pg_catalog'
-        ? object.schema + '.' + object.name
-        : object.name) + (isArray ? '[]' : ''),
-      type,
-    )
+    typesByName.set(getTypeName(object.name, object.schema, isArray), type)
   }
 
   for (const baseType of baseTypes) {
@@ -214,11 +215,12 @@ export async function generate(
     postGenerateScript,
   } = env.config.generate
 
+  const renderedObjects = new Map<PgObject, string>()
+  const renderedRowMappers = new Map<PgObject, string>()
+
   const moduleBasename = path.basename(outFile) + '.' + preferredExtension
   const builtinTypeRegex = /\b(Interval|Range|Circle|Point|Timestamp|JSON)\b/
-  const renderedObjects = new Map<PgObject, string>()
-  const renderedRowMappers = new Map<number, string>()
-  const referencedViews = new Set<PgView>()
+  const referencedObjects = new Set<PgObject>()
   const unsupportedTypes = new Set<number>()
   const foreignImports = new Set<string>()
   const imports = new Set<string>()
@@ -486,6 +488,27 @@ export async function generate(
     `
   }
 
+  // Note: View types are not rendered by this function, because their column
+  // types are lazily inferred, which means rendering them is asynchronous.
+  const renderCustomType = (type: PgType) => {
+    switch (type.type) {
+      case PgObjectType.Enum: {
+        renderedObjects.set(type, renderEnumType(type))
+        break
+      }
+      case PgObjectType.Composite: {
+        renderedObjects.set(type, renderCompositeType(type))
+        renderedRowMappers.set(type, renderRowMapper(type))
+        break
+      }
+      case PgObjectType.Table: {
+        renderedObjects.set(type, renderTableType(type))
+        renderedRowMappers.set(type, renderRowMapper(type))
+        break
+      }
+    }
+  }
+
   type TypeReferencePlugin = Plugin & { mapTypeReference: Function }
 
   const typeReferencePlugins = env.config.plugins.filter(
@@ -569,24 +592,11 @@ export async function generate(
           imports.add('type ' + match[1])
         }
       } else {
-        if (isViewType(type)) {
-          referencedViews.add(type.object)
-        } else if (!renderedObjects.has(type.object)) {
-          if (isEnumType(type)) {
-            renderedObjects.set(type.object, renderEnumType(type.object))
-          } else {
-            renderedObjects.set(
-              type.object,
-              isCompositeType(type)
-                ? renderCompositeType(type.object)
-                : renderTableType(type.object),
-            )
-            renderedRowMappers.set(
-              type.object.oid,
-              renderRowMapper(type.object),
-            )
-          }
+        if (!referencedObjects.has(type.object)) {
+          referencedObjects.add(type.object)
+          renderCustomType(type.object)
         }
+
         if (type.object.schema !== container.schema) {
           jsType = addSchemaPrefix(
             type.object.name,
@@ -630,235 +640,257 @@ export async function generate(
 
   const types = Array.from(typesByName.values())
 
-  // Step 4: Render type definitions for each function. This also builds up a
-  // list of dependencies (e.g. imports and type definitions).
-  for (const nsp of Object.values(namespaces)) {
-    for (const routine of nsp.routines) {
-      const jsName = camel(routine.name)
+  const renderRoutine = async (routine: PgRoutine) => {
+    const jsName = camel(routine.name)
 
-      traceRender('renderRoutine', routine)
+    traceRender('renderRoutine', routine)
 
-      const argNames = routine.paramNames
-        ?.slice(0, routine.paramTypes.length)
-        .map(name => name.replace(/^p_/, ''))
+    const argNames = routine.paramNames
+      ?.slice(0, routine.paramTypes.length)
+      .map(name => name.replace(/^p_/, ''))
 
-      const jsArgTypes = routine.paramTypes.map((typeOid, index) =>
-        renderTypeReference(typeOid, routine, {
-          paramKind: routine.paramKinds?.[index] ?? PgParamKind.In,
-          paramIndex: index,
-          fieldName: argNames?.[index] ?? `$${index + 1}`,
-        }),
-      )
+    const jsArgTypes = routine.paramTypes.map((typeOid, index) =>
+      renderTypeReference(typeOid, routine, {
+        paramKind: routine.paramKinds?.[index] ?? PgParamKind.In,
+        paramIndex: index,
+        fieldName: argNames?.[index] ?? `$${index + 1}`,
+      }),
+    )
 
-      const jsArgEntries = argNames?.some(Boolean)
-        ? argNames.map((name, index) => {
-            const optionalToken =
-              index >= routine.paramTypes.length - routine.numDefaultParams
-                ? '?'
-                : ''
+    const jsArgEntries = argNames?.some(Boolean)
+      ? argNames.map((name, index) => {
+          const optionalToken =
+            index >= routine.paramTypes.length - routine.numDefaultParams
+              ? '?'
+              : ''
 
-            return `${name === '' ? '$' + (index + 1) : formatFieldName(name)}${optionalToken}: ${jsArgTypes[index]}`
-          })
-        : null
-
-      /** When true, a row type is used in the return type, either with or without SETOF. */
-      let returnRow = false
-
-      /** TypeScript type for the function's return value. */
-      let jsResultType: string | undefined
-
-      /** Runtime parsing hints for result fields. */
-      const outputMappers: [string, string][] = []
-
-      // Find the function's CREATE statement, which contains metadata that is
-      // useful for type generation.
-      const id = new SQLIdentifier(routine.name, routine.schema)
-      const stmt = routineStmts.get(id.toQualifiedName())!
-
-      if (!stmt.returnType) {
-        jsResultType = 'void'
-      } else if (stmt.returnType instanceof SQLIdentifier) {
-        jsResultType = renderTypeReference(routine.returnTypeOid, routine, {
-          paramKind: PgParamKind.Out,
+          return `${name === '' ? '$' + (index + 1) : formatFieldName(name)}${optionalToken}: ${jsArgTypes[index]}`
         })
+      : null
 
-        const type = typesByOid.get(routine.returnTypeOid)
-        if (type && type.object.type !== PgObjectType.Base) {
-          if ((isTableType(type) || isViewType(type)) && !type.isArray) {
-            returnRow = true
-          }
+    /** When true, a row type is used in the return type, either with or without SETOF. */
+    let returnRow = false
 
-          // Determine if any of the table fields are composite types. If so, we
-          // need to generate runtime parsing hints for them.
-          if (!isEnumType(type)) {
-            const fields = isViewType(type)
-              ? await getViewFields(type.object)
-              : type.object.fields
+    /** TypeScript type for the function's return value. */
+    let jsResultType: string | undefined
 
-            fields.forEach(field => {
-              const fieldType = typesByOid.get(field.typeOid)
-              if (fieldType && 'fields' in fieldType.object) {
-                const fieldMapper = renderFieldMapper(field.typeOid, {
-                  fieldName: field.name,
-                  ndims: field.ndims,
-                  container: routine,
-                  paramKind: PgParamKind.Out,
-                  rowType: fieldType.object,
-                })
-                if (fieldMapper) {
-                  outputMappers.push([field.name, fieldMapper])
-                }
-              }
-            })
-          }
+    /** Runtime parsing hints for result fields. */
+    const outputMappers: [string, string][] = []
+
+    // Find the function's CREATE statement, which contains metadata that is
+    // useful for type generation.
+    const id = new SQLIdentifier(routine.name, routine.schema)
+    const stmt = routineStmts.get(id.toQualifiedName())!
+
+    if (!stmt.returnType) {
+      jsResultType = 'void'
+    } else if (stmt.returnType instanceof SQLIdentifier) {
+      jsResultType = renderTypeReference(routine.returnTypeOid, routine, {
+        paramKind: PgParamKind.Out,
+      })
+
+      const type = typesByOid.get(routine.returnTypeOid)
+      if (type && type.object.type !== PgObjectType.Base) {
+        if ((isTableType(type) || isViewType(type)) && !type.isArray) {
+          returnRow = true
         }
-      } else {
-        returnRow = true
-        jsResultType = `{ ${stmt.returnType
-          .map(field => {
-            const fieldType = types.find(
-              type =>
-                type.object.name === field.type.name &&
-                (type.object.type === PgObjectType.Base
-                  ? !field.type.schema || field.type.schema === 'pg_catalog'
-                  : type.object.schema === (field.type.schema ?? 'public')) &&
-                type.isArray === !!field.type.arrayBounds,
-            )
 
+        // Determine if any of the table fields are composite types. If so, we
+        // need to generate runtime parsing hints for them.
+        if (!isEnumType(type)) {
+          const fields = isViewType(type)
+            ? await getViewFields(type.object)
+            : type.object.fields
+
+          fields.forEach(field => {
+            const fieldType = typesByOid.get(field.typeOid)
             if (fieldType && 'fields' in fieldType.object) {
-              const fieldMapper = renderFieldMapper(fieldType.object.oid, {
+              const fieldMapper = renderFieldMapper(field.typeOid, {
                 fieldName: field.name,
-                ndims: field.type.arrayBounds?.length,
+                ndims: field.ndims,
                 container: routine,
-                paramKind: PgParamKind.Table,
+                paramKind: PgParamKind.Out,
+                rowType: fieldType.object,
               })
               if (fieldMapper) {
                 outputMappers.push([field.name, fieldMapper])
               }
             }
-
-            const jsName = formatFieldName(field.name)
-            const jsType = fieldType
-              ? renderTypeReference(fieldType.object.oid, routine, {
-                  paramKind: PgParamKind.Table,
-                  fieldName: field.name,
-                  ndims: field.type.arrayBounds?.length,
-                })
-              : 'unknown'
-
-            // Assume nullable until we can infer otherwise.
-            return `${jsName}?: ${jsType}`
           })
-          .join(', ')} }`
-      }
-
-      const minArgCount = routine.paramTypes.length - routine.numDefaultParams
-      const maxArgCount = routine.paramTypes.length
-
-      let builder = `$ => $.arity(${minArgCount}, ${maxArgCount})`
-      if (argNames) {
-        if (argNames.length) {
-          builder += `.namedArgs(${JSON.stringify(argNames.map(formatFieldName))})`
         }
-        argNames.forEach((name, index) => {
-          const typeOid = routine.paramTypes[index]
-          const fieldMapper = renderFieldMapper(typeOid, {
-            fieldName: name,
-            container: routine,
-            paramKind: routine.paramKinds?.[index] ?? PgParamKind.In,
-            paramIndex: index,
-          })
-          if (fieldMapper) {
-            builder += `.mapInput(${index}, ${fieldMapper})`
+      }
+    } else {
+      returnRow = true
+      jsResultType = `{ ${stmt.returnType
+        .map(field => {
+          const fieldType = types.find(
+            type =>
+              type.object.name === field.type.name &&
+              (type.object.type === PgObjectType.Base
+                ? !field.type.schema || field.type.schema === 'pg_catalog'
+                : type.object.schema === (field.type.schema ?? 'public')) &&
+              type.isArray === !!field.type.arrayBounds,
+          )
+
+          if (fieldType && 'fields' in fieldType.object) {
+            const fieldMapper = renderFieldMapper(fieldType.object.oid, {
+              fieldName: field.name,
+              ndims: field.type.arrayBounds?.length,
+              container: routine,
+              paramKind: PgParamKind.Table,
+            })
+            if (fieldMapper) {
+              outputMappers.push([field.name, fieldMapper])
+            }
           }
+
+          const jsName = formatFieldName(field.name)
+          const jsType = fieldType
+            ? renderTypeReference(fieldType.object.oid, routine, {
+                paramKind: PgParamKind.Table,
+                fieldName: field.name,
+                ndims: field.type.arrayBounds?.length,
+              })
+            : 'unknown'
+
+          // Assume nullable until we can infer otherwise.
+          return `${jsName}?: ${jsType}`
         })
-      } else {
-        routine.paramTypes.forEach((typeOid, index) => {
-          const fieldMapper = renderFieldMapper(typeOid, {
-            fieldName: `$${index + 1}`,
-            container: routine,
-            paramKind: routine.paramKinds?.[index] ?? PgParamKind.In,
-            paramIndex: index,
-          })
-          if (fieldMapper) {
-            builder += `.mapInput(${index}, ${fieldMapper})`
-          }
+        .join(', ')} }`
+    }
+
+    const minArgCount = routine.paramTypes.length - routine.numDefaultParams
+    const maxArgCount = routine.paramTypes.length
+
+    let builder = `$ => $.arity(${minArgCount}, ${maxArgCount})`
+    if (argNames) {
+      if (argNames.length) {
+        builder += `.namedArgs(${JSON.stringify(argNames.map(formatFieldName))})`
+      }
+      argNames.forEach((name, index) => {
+        const typeOid = routine.paramTypes[index]
+        const fieldMapper = renderFieldMapper(typeOid, {
+          fieldName: name,
+          container: routine,
+          paramKind: routine.paramKinds?.[index] ?? PgParamKind.In,
+          paramIndex: index,
         })
-      }
-      if (returnRow && !routine.returnSet) {
-        builder += `.returnsRecord()`
-      }
-      if (outputMappers.length) {
-        for (const [key, type] of outputMappers) {
-          builder += `.mapOutput(${JSON.stringify(key)}, ${type})`
+        if (fieldMapper) {
+          builder += `.mapInput(${index}, ${fieldMapper})`
         }
-      }
-
-      const pgName =
-        routine.schema !== 'public'
-          ? `[${quoteName(routine.schema)}, ${quoteName(routine.name)}]`
-          : quoteName(routine.name)
-
-      const binding: RoutineBindingContext = {
-        name: routine.name,
-        bindingFunction:
-          routine.bindingFunction ??
-          (returnRow
-            ? routine.returnSet
-              ? 'bindQueryRowList'
-              : 'bindQueryRowOrNull'
-            : routine.returnSet
-              ? 'bindQueryValueList'
-              : 'bindQueryValue'),
-      }
-
-      applyFunctionPatterns?.(binding)
-      imports.add(binding.bindingFunction)
-
-      const routineScript = dedent`
-        export declare namespace ${jsName} {
-          type Params = ${jsArgEntries ? `{ ${jsArgEntries.join(', ')} }` : `[${jsArgTypes.join(', ')}]`}
-          type Result = ${jsResultType}
+      })
+    } else {
+      routine.paramTypes.forEach((typeOid, index) => {
+        const fieldMapper = renderFieldMapper(typeOid, {
+          fieldName: `$${index + 1}`,
+          container: routine,
+          paramKind: routine.paramKinds?.[index] ?? PgParamKind.In,
+          paramIndex: index,
+        })
+        if (fieldMapper) {
+          builder += `.mapInput(${index}, ${fieldMapper})`
         }
+      })
+    }
+    if (returnRow && !routine.returnSet) {
+      builder += `.returnsRecord()`
+    }
+    if (outputMappers.length) {
+      for (const [key, type] of outputMappers) {
+        builder += `.mapOutput(${JSON.stringify(key)}, ${type})`
+      }
+    }
 
-        export const ${jsName} = /* @__PURE__ */ ${binding.bindingFunction}<${jsName}.Params, ${jsName}.Result>(${pgName}, ${builder})\n\n
-      `
+    const pgName =
+      routine.schema !== 'public'
+        ? `[${quoteName(routine.schema)}, ${quoteName(routine.name)}]`
+        : quoteName(routine.name)
 
-      renderedObjects.set(routine, routineScript)
+    const binding: RoutineBindingContext = {
+      name: routine.name,
+      bindingFunction:
+        routine.bindingFunction ??
+        (returnRow
+          ? routine.returnSet
+            ? 'bindQueryRowList'
+            : 'bindQueryRowOrNull'
+          : routine.returnSet
+            ? 'bindQueryValueList'
+            : 'bindQueryValue'),
+    }
+
+    applyFunctionPatterns?.(binding)
+    imports.add(binding.bindingFunction)
+
+    return dedent`
+      export declare namespace ${jsName} {
+        type Params = ${jsArgEntries ? `{ ${jsArgEntries.join(', ')} }` : `[${jsArgTypes.join(', ')}]`}
+        type Result = ${jsResultType}
+      }
+
+      export const ${jsName} = /* @__PURE__ */ ${binding.bindingFunction}<${jsName}.Params, ${jsName}.Result>(${pgName}, ${builder})\n\n
+    `
+  }
+
+  // Step 4: Render bindings for each Postgres routine. At the same time,
+  // collect any referenced types to be imported or generated.
+  for (const nsp of Object.values(namespaces)) {
+    for (const routine of nsp.routines) {
+      renderedObjects.set(routine, await renderRoutine(routine))
     }
   }
 
-  for (const view of referencedViews) {
-    const fields = await getViewFields(view)
-    renderedRowMappers.set(view.oid, renderRowMapper(view, fields))
-    renderedObjects.set(view, await renderViewType(view))
+  // Step 5: Infer the column types of each view that's been referenced by a
+  // routine (directly or indirectly), then render its type definition and row
+  // mapper.
+  for (const object of referencedObjects) {
+    if (object.type === PgObjectType.View) {
+      renderedObjects.set(object, await renderViewType(object))
+      renderedRowMappers.set(
+        object,
+        renderRowMapper(object, await getViewFields(object)),
+      )
+    }
   }
 
   const renderedFieldMappers = Object.values(fieldMappers).map(
     fieldMapper => `export { ${fieldMapper.name} } from "${fieldMapper.path}"`,
   )
 
-  // Step 5: Write the "typeData.ts" module.
+  // Step 6: Write the "typeData.ts" module.
   if (renderedRowMappers.size + renderedFieldMappers.length) {
     foreignImports.add(`* as t from './typeData.${preferredExtension}'`)
-    const prelude = dedent`
+
+    let code = dedent`
       /* BEWARE: This file was generated by pg-nano. Any changes you make will be overwritten. */
       import * as t from './typeData.${preferredExtension}'
 
       export * from 'pg-nano/field-mappers'
     `
-    fs.writeFileSync(
-      path.resolve(outFile, '../typeData.ts'),
-      prelude +
-        (renderedFieldMappers.length > 0
-          ? '\n\n// Field mappers\n' + renderedFieldMappers.join('\n')
-          : '') +
-        (renderedRowMappers.size > 0
-          ? '\n\n// Composite types\n' +
-            Array.from(renderedRowMappers.values()).join('\n\n')
-          : '') +
-        '\n',
-    )
+
+    if (renderedFieldMappers.length > 0) {
+      code += '\n\n// Field mappers\n' + renderedFieldMappers.join('\n')
+    }
+
+    if (renderedRowMappers.size > 0) {
+      code += '\n\n// Composite types\n'
+
+      // By iterating the topologically sorted statements, we can ensure that
+      // row mappers are defined in topological order.
+      for (const objectStmt of sortedObjectStmts) {
+        const id = objectStmt.id
+        const typeName = getTypeName(id.name, id.schema ?? 'public')
+        const type = typesByName.get(typeName)
+        if (type) {
+          const rowMapper = renderedRowMappers.get(type.object)
+          if (rowMapper) {
+            code += rowMapper + '\n\n'
+          }
+        }
+      }
+    }
+
+    fs.writeFileSync(path.resolve(outFile, '../typeData.ts'), code + '\n')
   }
 
   type GenerateEndPlugin = Plugin & { generateEnd: Function }
@@ -869,7 +901,7 @@ export async function generate(
 
   const prelude: string[] = []
 
-  // Step 6: Run the "generateEnd" hook of each plugin.
+  // Step 7: Run the "generateEnd" hook of each plugin.
   if (generateEndPlugins.length > 0) {
     const generateEndContext: PluginContext['generateEnd'] = {
       renderedObjects,
@@ -901,7 +933,7 @@ export async function generate(
   const nameSort = (a: { name: string }, b: { name: string }) =>
     a.name.localeCompare(b.name)
 
-  // Step 7: Concatenate type definitions for each namespace.
+  // Step 8: Concatenate type definitions for each namespace.
   for (const nsp of Object.values(namespaces)) {
     let nspCode = ''
 
@@ -925,12 +957,12 @@ export async function generate(
         : `export namespace ${pascal(nsp.schema)} {\n${indent(nspCode)}\n}\n\n`
   }
 
-  // Step 8: Write the TypeScript schema to a file.
+  // Step 9: Write the TypeScript schema to a file.
   fs.writeFileSync(outFile, code.replace(/\s+$/, '\n'))
 
   events.emit('generate:end')
 
-  // Step 9: Warn about any unsupported types.
+  // Step 10: Warn about any unsupported types.
   for (const typeOid of unsupportedTypes) {
     const typeName = await pg.queryValue<string>(sql`
       SELECT typname FROM pg_type WHERE oid = ${sql.val(typeOid)}
