@@ -10,24 +10,23 @@ export async function importCustomTypeParsers(
   host: string,
   port: string | number,
   dbname: string,
-): Promise<{ default: Record<number, TextParser> }> {
+): Promise<Record<number, TextParser>> {
   // Runtime-generated modules are stored in the user's home directory, so that
   // pg-nano's "dev" command can purge them when the schema changes.
   const cacheDir = path.join(os.homedir(), `.pg-nano/${host}+${port}+${dbname}`)
 
   const cachedModulePath = path.join(cacheDir, 'customTypeParsers.mjs')
-  if (fs.existsSync(cachedModulePath)) {
-    return import(cachedModulePath)
+  if (!fs.existsSync(cachedModulePath)) {
+    debug('building custom type parsers')
+
+    const code = await buildCustomTypeParsers(conn)
+
+    fs.mkdirSync(cacheDir, { recursive: true })
+    fs.writeFileSync(cachedModulePath, code)
   }
 
-  debug('building custom type parsers')
-
-  const code = await buildCustomTypeParsers(conn)
-
-  fs.mkdirSync(cacheDir, { recursive: true })
-  fs.writeFileSync(cachedModulePath, code)
-
-  return import(cachedModulePath)
+  const exports = await import(cachedModulePath)
+  return exports.default(await import('pg-native'))
 }
 
 async function buildCustomTypeParsers(conn: Connection) {
@@ -56,9 +55,9 @@ async function buildCustomTypeParsers(conn: Connection) {
     }
   }
 
-  code += `export default {\n${textParsersByOid}\n}\n`
+  code += `\nreturn {\n${textParsersByOid}}\n`
 
-  return `import { ${[...imports].join(', ')} } from 'pg-nano'\n\n` + code
+  return `export default ({ ${[...imports].join(', ')} }) => {\n  ${code.replace(/\n+/g, '$&  ').trimEnd()}\n}`
 }
 
 type CustomType = {

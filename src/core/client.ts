@@ -262,9 +262,12 @@ export class Client {
 
     // Assume no custom types have been created in the `postgres` database.
     if (dbname !== 'postgres') {
-      customTypeParsers = (
-        await importCustomTypeParsers(connection, host, port, dbname)
-      ).default
+      customTypeParsers = await importCustomTypeParsers(
+        connection,
+        host,
+        port,
+        dbname,
+      )
 
       if (dsn !== this.dsn) {
         return // Bail if the connection string has changed.
