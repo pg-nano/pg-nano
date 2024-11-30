@@ -19,12 +19,11 @@ const createDevGenerator = (options: Options = {}) =>
   jumpgen<Store>('pg-nano', async ctx => {
     const { fs, store } = ctx
 
-    // Close the previous database connection.
-    await store.env?.close()
-
     const { config, configDependencies } = (store.env = await getEnv(ctx.root, {
       ...options,
-      reloadEnv: true,
+      reloadEnv:
+        !!store.env?.configFilePath &&
+        ctx.changes.some(change => change.file === store.env.configFilePath),
     }))
 
     fs.watch(configDependencies)
