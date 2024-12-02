@@ -45,14 +45,13 @@ export async function migrateSchema(
     return ident[0] === '"' ? ident.slice(1, -1) : ident
   }
 
-  const pg = await env.client
-
   for (const stmt of plan.statements) {
-    await pg.query(sql`
-      SET LOCAL statement_timeout = ${sql.val(stmt.timeout_ms)};
-      SET LOCAL lock_timeout = ${sql.val(stmt.lock_timeout_ms)};
-      ${sql.unsafe(stmt.ddl)};
-    `)
+    const pg = (await env.client).extend({
+      statement_timeout: stmt.timeout_ms,
+      lock_timeout: stmt.lock_timeout_ms,
+    })
+
+    await pg.query(sql.unsafe(stmt.ddl))
 
     if (stmt.ddl.startsWith('DROP TABLE')) {
       const tokens = scanSync(stmt.ddl)
