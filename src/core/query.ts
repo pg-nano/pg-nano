@@ -1,4 +1,3 @@
-import { isPromise } from 'node:util/types'
 import {
   type Connection,
   type PgNativeError,
@@ -20,7 +19,7 @@ type UnwrapArray<T> = T extends readonly (infer U)[] ? U : T
 interface QueryClient {
   config: Client['config']
   getConnection: Client['getConnection']
-  onQueryFinished: Client['onQueryFinished']
+  onIdleConnection: Client['onIdleConnection']
   parseText: Client['parseText']
 }
 
@@ -113,8 +112,8 @@ export class Query<
   protected send(): Promise<TPromiseResult>
   protected send(singleRowMode: true): AsyncIterable<TIteratorResult>
   protected send(singleRowMode?: boolean): Promise<any> | AsyncIterable<any> {
-    const connection = this.client.getConnection(this.signal)
-    const promise = this.promise(connection, this.input, {
+    const connecting = this.client.getConnection(this.signal)
+    const queryPromise = this.promise(connecting, this.input, {
       ...this.options,
       singleRowMode,
       mapFieldName:
@@ -139,31 +138,27 @@ export class Query<
         }
         throw error
       })
-      .finally(() => {
+      .finally(async () => {
         try {
-          this.client.onQueryFinished()
+          this.client.onIdleConnection(await connecting)
         } catch (error) {
           console.error(error)
         }
       })
 
     if (singleRowMode) {
-      return this.stream(connection, promise)
+      return this.stream(connecting, queryPromise)
     }
-    return promise
+    return queryPromise
   }
 
   protected async promise(
-    connection: Connection | Promise<Connection>,
+    connecting: Promise<Connection>,
     input: SQLTemplate | QueryHook<any>,
     options?: QueryOptions | null,
   ): Promise<any> {
-    if (isPromise(connection)) {
-      // Only await the connection if necessary, so the connection status can
-      // change to QUERY_WRITING as soon as possible.
-      connection = await connection
-      this.signal?.throwIfAborted()
-    }
+    const connection = await connecting
+    this.signal?.throwIfAborted()
 
     const promise = connection.query(
       this.type,
@@ -195,14 +190,10 @@ export class Query<
   }
 
   protected async *stream(
-    conn: Connection | Promise<Connection>,
+    connecting: Promise<Connection>,
     queryPromise: Promise<any>,
   ) {
-    if (isPromise(conn)) {
-      conn = await conn
-    }
-
-    yield* conn.stream()
+    yield* (await connecting).stream()
 
     // Propagate any errors from the query.
     await queryPromise

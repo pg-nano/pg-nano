@@ -113,7 +113,10 @@ export class Client {
   /** Up to `config.maxConnections` connections are maintained in the pool. */
   protected connected: Connection[] = []
   /** A queue of queries waiting for a connection. */
-  protected backlog: ((err?: Error) => void)[] = []
+  protected backlog: {
+    (err: Error): void
+    (err: null, connection: Connection): void
+  }[] = []
   /** Any initialization work that needs to be done before queries can be run. */
   protected initPromise: Promise<void> | null = null
   /**
@@ -212,9 +215,10 @@ export class Client {
 
   protected async connectWithRetry(
     connection: Connection,
-    triesRemaining: number,
+    maxRetries: number,
     signal?: AbortSignal,
     delay = Math.max(this.config.initialRetryDelay, 0),
+    attempts = 0,
   ): Promise<string> {
     const { dsn } = this
     if (dsn == null) {
@@ -225,7 +229,7 @@ export class Client {
       await connection.connect(dsn, this.config.sessionParams)
       return dsn
     } catch (error) {
-      if (triesRemaining > 0) {
+      if (attempts < maxRetries) {
         signal?.throwIfAborted()
 
         if (delay > 0) {
@@ -236,9 +240,10 @@ export class Client {
         }
         return this.connectWithRetry(
           connection,
-          triesRemaining - 1,
+          maxRetries,
           signal,
           Math.min(delay * 2, this.config.maxRetryDelay),
+          attempts + 1,
         )
       }
       throw error
@@ -282,7 +287,8 @@ export class Client {
   }
 
   protected addConnection(
-    signal?: AbortSignal,
+    signal: AbortSignal | undefined,
+    initialStatus: ConnectionStatus,
     idleTimeout = this.config.idleTimeout,
     maxRetries = Math.max(this.config.maxRetries, 0),
   ): Promise<Connection> {
@@ -299,9 +305,16 @@ export class Client {
         const index = this.connecting.indexOf(connecting)
         this.connecting.splice(index, 1)
 
+        connection.status = initialStatus
+        this.connected.push(connection)
+
         connection.on('close', () => {
           this.removeConnection(connection)
         })
+
+        if (initialStatus === ConnectionStatus.IDLE) {
+          this.onIdleConnection(connection)
+        }
 
         return connection
       })
@@ -352,36 +365,48 @@ export class Client {
   protected async getConnection(signal?: AbortSignal): Promise<Connection> {
     signal?.throwIfAborted()
 
-    let conn = this.connected.find(
-      conn =>
-        conn.status === ConnectionStatus.IDLE &&
-        conn.sessionHash === this.sessionHash,
+    const existingConnection = this.connected.find(
+      connection =>
+        connection.status === ConnectionStatus.IDLE &&
+        connection.sessionHash === this.sessionHash,
     )
-    if (conn) {
-      conn.status = ConnectionStatus.RESERVED
-      return conn
+    if (existingConnection) {
+      existingConnection.status = ConnectionStatus.RESERVED
+      return existingConnection
     }
 
     if (this.numConnections < this.config.maxConnections) {
-      conn = await this.addConnection(signal)
-      conn.status = ConnectionStatus.RESERVED
-      return conn
+      return this.addConnection(signal, ConnectionStatus.RESERVED)
     }
 
     return new Promise((resolve, reject) => {
-      this.backlog.push(err => {
-        if (err) {
-          reject(err)
-        } else {
-          resolve(this.getConnection(signal))
-        }
-      })
+      let onAbort: () => void
+      let onResolve: (err: Error | null, connection?: Connection) => void
+
+      signal?.addEventListener(
+        'abort',
+        (onAbort = () => {
+          this.backlog.splice(this.backlog.indexOf(onResolve), 1)
+          reject(signal.reason)
+        }),
+      )
+
+      this.backlog.push(
+        (onResolve = (err, connection?) => {
+          signal?.removeEventListener('abort', onAbort)
+          if (err) {
+            reject(err)
+          } else if (connection) {
+            connection.status = ConnectionStatus.RESERVED
+            resolve(connection)
+          }
+        }),
+      )
     })
   }
 
-  // Signals an idle connection.
-  protected onQueryFinished() {
-    this.backlog.shift()?.()
+  protected onIdleConnection(connection: Connection) {
+    this.backlog.shift()?.(null, connection)
   }
 
   /**
@@ -394,20 +419,19 @@ export class Client {
     this.dsn = isString(target) ? target : stringifyConnectOptions(target)
     if (this.config.minConnections > 0) {
       // Wait for the first connection to be established before adding more.
-      const connection = await this.addConnection(
+      await this.addConnection(
         signal,
+        ConnectionStatus.IDLE,
         Number.POSITIVE_INFINITY,
         Number.POSITIVE_INFINITY,
       )
-      this.connected.push(connection)
       for (let i = 0; i < this.config.minConnections - 1; i++) {
         this.addConnection(
           signal,
+          ConnectionStatus.IDLE,
           Number.POSITIVE_INFINITY,
           Number.POSITIVE_INFINITY,
-        ).then(connection => {
-          this.connected.push(connection)
-        }, noop)
+        ).catch(noop)
       }
     }
     return this
@@ -425,17 +449,19 @@ export class Client {
     this.initPromise = null
 
     const closing = Promise.all(
-      this.connecting.map(promise => promise.then(conn => conn.close())),
+      this.connecting.map(promise =>
+        promise.then(connection => connection.close()),
+      ),
     )
     this.connecting.length = 0
 
-    this.connected.forEach(conn => conn.close())
+    this.connected.forEach(connection => connection.close())
     this.connected.length = 0
 
     // Clear the backlog by rejecting all promises.
     if (this.backlog.length > 0) {
       const error = new ConnectionError('Postgres client was closed')
-      this.backlog.forEach(fn => fn(error))
+      this.backlog.forEach(resolve => resolve(error))
       this.backlog = []
     }
 
