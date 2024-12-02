@@ -356,19 +356,7 @@ export class Client {
     // Once the connection is established, log the number of open connections if
     // debug logs are enabled.
     if (process.env.NODE_ENV !== 'production' && debug.enabled) {
-      const count = this.connected.length
-      connecting.then(
-        () =>
-          setImmediate(
-            () =>
-              count === this.connected.length - 1 &&
-              debug(
-                `open connections: ${this.connected.length} of ${this.config.maxConnections}`,
-              ),
-          ),
-        // Ignore errors from the connecting promise.
-        noop,
-      )
+      logOpenConnections(this, connecting)
     }
 
     return connecting
@@ -381,14 +369,7 @@ export class Client {
 
       // Log the number of open connections if debug logs are enabled.
       if (process.env.NODE_ENV !== 'production' && debug.enabled) {
-        const count = this.connected.length
-        setImmediate(
-          () =>
-            count === this.connected.length &&
-            debug(
-              `open connections: ${this.connected.length} of ${this.config.maxConnections}`,
-            ),
-        )
+        logOpenConnections(this)
       }
     }
   }
@@ -638,4 +619,22 @@ export type ClientProxy<TSchema extends object> = Omit<
   ) => infer TResult
     ? (...args: TArgs) => TResult
     : never
+}
+
+const lastLoggedConnectedCount = /* @__PURE__ */ new WeakMap<Client, number>()
+
+async function logOpenConnections(client: Client, connecting?: Promise<any>) {
+  if (connecting) {
+    await connecting.catch(noop)
+  }
+
+  await sleep(500)
+
+  // biome-ignore lint/complexity/useLiteralKeys:
+  const count = client['connected'].length
+
+  if (count !== lastLoggedConnectedCount.get(client)) {
+    lastLoggedConnectedCount.set(client, count)
+    debug(`open connections: ${count} of ${client.config.maxConnections}`)
+  }
 }
