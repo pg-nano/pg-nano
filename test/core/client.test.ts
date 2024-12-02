@@ -214,3 +214,45 @@ describe('Client.prototype', () => {
     expect(result).toBeNull()
   })
 })
+
+describe('connection pooling', () => {
+  test('multiple connections are opened for parallel queries', async () => {
+    vi.useFakeTimers()
+
+    client = await getClient({
+      minConnections: 0,
+      maxConnections: 2,
+      idleTimeout: 1000,
+    })
+
+    const getConnection = vi.spyOn(client as any, 'getConnection')
+
+    const queries = [
+      client.queryRow(sql`SELECT pg_sleep(0.1)`),
+      client.queryRow(sql`SELECT pg_sleep(0.1)`),
+      client.queryRow(sql`SELECT pg_sleep(0.1)`),
+    ]
+
+    // No connections are opened until the first query is awaited.
+    expect(client.numConnections).toBe(0)
+    expect(getConnection).toHaveBeenCalledTimes(0)
+
+    const queriesPromise = Promise.all(queries)
+    await Promise.resolve()
+
+    // Only 2 connections are opened, even though there are 3 queries, because
+    // of the maxConnections limit.
+    expect(client.numConnections).toBe(2)
+    expect(getConnection).toHaveBeenCalledTimes(3)
+
+    await queriesPromise
+
+    // The 2 connections should still be open.
+    expect(client.numConnections).toBe(2)
+
+    await vi.advanceTimersByTimeAsync(1000)
+
+    // All connections are closed after the idle timeout.
+    expect(client.numConnections).toBe(0)
+  })
+})
