@@ -96,6 +96,23 @@ export interface ClientConfig {
    * @default false
    */
   debug: boolean
+
+  /**
+   * React to a new connection being established.
+   */
+  onConnection: ((connection: Connection) => void) | undefined
+
+  /**
+   * React to a connection being closed.
+   */
+  onConnectionClose: ((connection: Connection) => void) | undefined
+
+  /**
+   * React to a connection attempt failing and being retried.
+   */
+  onConnectionRetry:
+    | ((attempts: number, connection: Connection) => void)
+    | undefined
 }
 
 /**
@@ -147,6 +164,9 @@ export class Client {
     sessionParams,
     textParsers = null,
     debug = false,
+    onConnection,
+    onConnectionClose,
+    onConnectionRetry,
   }: Partial<ClientConfig> = {}) {
     this.config = {
       minConnections,
@@ -159,6 +179,9 @@ export class Client {
       sessionParams: sessionParams ? shake(sessionParams) : {},
       textParsers,
       debug,
+      onConnection,
+      onConnectionClose,
+      onConnectionRetry,
     }
     this.sessionHash = hashSessionParameters(this.config.sessionParams)
   }
@@ -238,6 +261,7 @@ export class Client {
         if (this.numConnections >= this.config.maxConnections) {
           throw error
         }
+        this.config.onConnectionRetry?.(attempts + 1, connection)
         return this.connectWithRetry(
           connection,
           maxRetries,
@@ -307,8 +331,10 @@ export class Client {
 
         connection.status = initialStatus
         this.connected.push(connection)
+        this.config.onConnection?.(connection)
 
         connection.on('close', () => {
+          this.config.onConnectionClose?.(connection)
           this.removeConnection(connection)
         })
 
