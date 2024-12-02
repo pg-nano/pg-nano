@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process'
 import path from 'node:path'
 import type { Readable } from 'node:stream'
 import type { MigrationHazardType } from 'pg-nano/config'
+import { resolveImport } from 'src/node/util/resolveImport.js'
 
 export interface MigrationPlan {
   current_schema_hash: string
@@ -24,18 +25,9 @@ export function planSchemaMigration(options: {
   dsn: string
   schemaDir: string
 }) {
-  const pkgSpecifier = '@pg-nano/pg-schema-diff/package.json'
-
-  // Once Vite supports import.meta.resolve, we can remove the require.resolve
-  // fallback. See: https://github.com/vitejs/vite/discussions/15871
-  let pkgPath: string
-  if (typeof import.meta.resolve === 'function') {
-    pkgPath = new URL(import.meta.resolve(pkgSpecifier)).pathname
-  } else {
-    pkgPath = require.resolve(pkgSpecifier)
-  }
-
+  const pkgPath = resolveImport('@pg-nano/pg-schema-diff/package.json')
   const binaryPath = path.resolve(pkgPath, '../pg-schema-diff')
+
   const proc = spawn(binaryPath, [
     'plan',
     '--dsn',

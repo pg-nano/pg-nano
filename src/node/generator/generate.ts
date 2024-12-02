@@ -46,6 +46,7 @@ import { quoteName, SQLIdentifier } from '../parser/identifier.js'
 import { parseSQLStatements } from '../parser/parse.js'
 import { dedent } from '../util/dedent.js'
 import { memoAsync } from '../util/memoAsync.js'
+import { resolveImport } from '../util/resolveImport.js'
 import { migrateSchema } from './migrate/migrateSchema.js'
 import { migrateStaticRows } from './migrate/migrateStaticRows.js'
 import { prepareDatabase } from './prepare.js'
@@ -78,7 +79,7 @@ export async function generate(
   const baseTypes = await inspectBaseTypes(pg, options.signal)
 
   // Include our internal SQL files in the migration plan.
-  filePaths.push(new URL(import.meta.resolve('pg-nano/sql/nano.sql')).pathname)
+  filePaths.push(resolveImport('pg-nano/sql/nano.sql'))
 
   const readFile = options.readFile ?? fs.readFileSync
 
