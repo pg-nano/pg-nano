@@ -16,6 +16,8 @@ import type {
   PgView,
 } from './types.js'
 
+const ignoredSchemas = ['pg_catalog', 'information_schema', 'nano']
+
 export async function inspectNamespaces(client: Client, signal?: AbortSignal) {
   const [routines, compositeTypes, enumTypes, tables, views] =
     await Promise.all([
@@ -82,7 +84,7 @@ export function inspectRoutines(client: Client, signal?: AbortSignal) {
     LEFT JOIN pg_catalog.pg_extension e ON e.oid = d.refobjid
     WHERE
       (p.prokind = 'f' OR p.prokind = 'p')
-      AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+      AND n.nspname NOT IN ${sql.list(ignoredSchemas)}
       AND e.oid IS NULL
       AND p.prorettype != 2279 -- trigger
     ORDER BY n.nspname, p.proname
@@ -160,7 +162,7 @@ export function inspectCompositeTypes(client: Client, signal?: AbortSignal) {
     JOIN pg_catalog.pg_type t ON t.oid = c.reltype
     JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace
     WHERE c.relkind = 'c'
-      AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+      AND n.nspname NOT IN ${sql.list(ignoredSchemas)}
   `
 
   return client.queryRowList<PgCompositeType>(query).cancelWithSignal(signal)
@@ -197,7 +199,7 @@ export function inspectTables(client: Client, signal?: AbortSignal) {
     JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
     JOIN pg_catalog.pg_type t ON t.oid = c.reltype
     WHERE c.relkind = 'r'
-      AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+      AND n.nspname NOT IN ${sql.list(ignoredSchemas)}
   `
 
   return client.queryRowList<PgTable>(query).cancelWithSignal(signal)
@@ -222,7 +224,7 @@ export function inspectViews(client: Client, signal?: AbortSignal) {
       ON v.schemaname = n.nspname
       AND v.viewname = c.relname
     WHERE c.relkind = 'v'
-      AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+      AND n.nspname NOT IN ${sql.list(ignoredSchemas)}
   `
 
   return client.queryRowList<PgView>(query).cancelWithSignal(signal)
