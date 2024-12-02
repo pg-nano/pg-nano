@@ -25,7 +25,7 @@ export function linkObjectStatements(objects: PgObjectStmt[]) {
 
   const link = (stmt: PgObjectStmt, id: SQLIdentifier) => {
     const dep = objectsByName.get(id.toQualifiedName())
-    if (dep) {
+    if (dep && dep !== stmt) {
       stmt.dependencies.add(dep)
       dep.dependents.add(stmt)
     }
