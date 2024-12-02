@@ -1,5 +1,18 @@
 -- noqa: disable=all
 
+CREATE SCHEMA nano;
+
+SET default_tablespace = '';
+
+SET default_table_access_method = heap;
+
+CREATE TABLE nano.inserts (
+    hash character(32) NOT NULL,
+    relname name,
+    relnamespace name,
+    pk text[]
+);
+
 CREATE TABLE public.bar (
     bar_id integer NOT NULL
 );
@@ -108,6 +121,9 @@ ALTER TABLE ONLY public.foo ALTER COLUMN foo_id SET DEFAULT nextval('public.foo_
 ALTER TABLE ONLY public.product ALTER COLUMN id SET DEFAULT nextval('public.product_id_seq'::regclass);
 
 ALTER TABLE ONLY public."user" ALTER COLUMN id SET DEFAULT nextval('public.user_id_seq'::regclass);
+
+ALTER TABLE ONLY nano.inserts
+    ADD CONSTRAINT inserts_pkey PRIMARY KEY (hash);
 
 ALTER TABLE ONLY public.bar
     ADD CONSTRAINT bar_pkey PRIMARY KEY (bar_id);

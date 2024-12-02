@@ -5,11 +5,10 @@ import { globSync } from 'tinyglobby'
 import {
   type MigrationPlan,
   planSchemaMigration,
-} from '../../src/node/generator/plan.js'
+} from '../../src/node/generator/migrate/planSchemaMigration.js'
 import {
   bufferReadable,
   createProject,
-  dedent,
   resetPublicSchema,
   spawn,
 } from '../util.js'
@@ -51,11 +50,12 @@ describe('migrate', () => {
         '-- noqa: disable=all\n' +
           select(
             project.eventLog,
-            event => dedent(event[1].query),
+            event => event[1].query.replace(/\n *\n/gm, '\n').trim(),
             event => event[0] === 'prepare:mutation',
           ).join('\n') +
           '\n' +
-          plan.statements.map(stmt => stmt.ddl + ';').join('\n'),
+          (plan.statements?.map(stmt => stmt.ddl + ';').join('\n\n') ?? '') +
+          '\n',
       ).toMatchFileSnapshot(
         join(__dirname, '__snapshots__', caseName + '.diff.sql'),
       )
