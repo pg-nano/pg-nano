@@ -359,10 +359,15 @@ export class Client {
       const count = this.connected.length
       connecting.then(
         () =>
-          count === this.connected.length &&
-          debug(
-            `open connections: ${this.connected.length} of ${this.config.maxConnections}`,
+          setImmediate(
+            () =>
+              count === this.connected.length - 1 &&
+              debug(
+                `open connections: ${this.connected.length} of ${this.config.maxConnections}`,
+              ),
           ),
+        // Ignore errors from the connecting promise.
+        noop,
       )
     }
 
