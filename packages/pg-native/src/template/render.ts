@@ -13,7 +13,7 @@ import {
 export function renderTemplate(
   template: SQLTemplate,
   pq: Libpq,
-  options?: { reindent?: boolean; cache?: boolean },
+  options?: { reindent?: boolean },
   parentIndent?: string,
 ): string {
   let command = ''
