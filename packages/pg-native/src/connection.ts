@@ -175,7 +175,7 @@ export class Connection extends EventEmitter<ConnectionEvents> {
    */
   close() {
     if (this.pq) {
-      this.currentQuery?.ctrl.abort('connection closed')
+      this.currentQuery?.ctrl.abort(new PgNativeError('Connection closed'))
       reset(unprotect(this), ConnectionStatus.CLOSED)
       this.pq.finish()
       this.pq = null!
