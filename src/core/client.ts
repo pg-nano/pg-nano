@@ -52,12 +52,21 @@ export interface ClientConfig {
   /**
    * The maximum number of times to retry connecting before giving up.
    *
-   * Note that the number of retries are unlimited for connections that are
-   * required to exist according to the `minConnections` option.
+   * Note that `preconnectMaxRetries` exists to limit the number of retries for
+   * connections that are required to exist according to the `minConnections`
+   * option.
    *
    * @default Number.POSITIVE_INFINITY
    */
   maxRetries: number
+
+  /**
+   * When establishing connections to meet the `minConnections` requirement,
+   * the number of retries is limited by this option.
+   *
+   * @default Number.POSITIVE_INFINITY
+   */
+  preconnectMaxRetries: number
 
   /**
    * The time (in milliseconds) after which an idle connection is closed.
@@ -165,6 +174,7 @@ export class Client {
     initialRetryDelay = 250,
     maxRetryDelay = 10e3,
     maxRetries = Number.POSITIVE_INFINITY,
+    preconnectMaxRetries = Number.POSITIVE_INFINITY,
     idleTimeout = 30e3,
     fieldCase = FieldCase.camel,
     sessionParams,
@@ -180,6 +190,7 @@ export class Client {
       initialRetryDelay,
       maxRetryDelay,
       maxRetries,
+      preconnectMaxRetries,
       idleTimeout,
       fieldCase,
       sessionParams: sessionParams ? shake(sessionParams) : {},
@@ -320,7 +331,7 @@ export class Client {
     connection: Connection,
     initialStatus: ConnectionStatus,
     signal?: AbortSignal | null,
-    maxRetries = Math.max(this.config.maxRetries, 0),
+    maxRetries = this.config.maxRetries,
   ): Promise<Connection> {
     const connecting = this.connectWithRetry(
       connection,
@@ -468,14 +479,14 @@ export class Client {
         new Connection(),
         ConnectionStatus.IDLE,
         null,
-        Number.POSITIVE_INFINITY,
+        this.config.preconnectMaxRetries,
       )
       for (let i = 0; i < this.config.minConnections - 1; i++) {
         this.addConnection(
           new Connection(),
           ConnectionStatus.IDLE,
           null,
-          Number.POSITIVE_INFINITY,
+          this.config.preconnectMaxRetries,
         ).catch(noop)
       }
     }
