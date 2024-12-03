@@ -415,6 +415,7 @@ export class Client {
       if (signal?.aborted) {
         // Ensure the new connection can be reused.
         newConnection.status = ConnectionStatus.IDLE
+        newConnection.setIdleTimeout()
         throw signal.reason
       }
       return newConnection

@@ -74,6 +74,13 @@ export class Connection extends EventEmitter<ConnectionEvents> {
     }
   }
 
+  setIdleTimeout() {
+    if (Number.isFinite(this.idleTimeout)) {
+      clearTimeout(this.idleTimeoutId)
+      this.idleTimeoutId = setTimeout(() => this.close(), this.idleTimeout)
+    }
+  }
+
   /**
    * Execute a dynamic query which may contain multiple statements.
    */
@@ -101,11 +108,7 @@ export class Connection extends EventEmitter<ConnectionEvents> {
 
     const promise = sendQuery(conn, query).finally(() => {
       reset(conn, ConnectionStatus.IDLE)
-
-      if (Number.isFinite(this.idleTimeout)) {
-        clearTimeout(this.idleTimeoutId)
-        this.idleTimeoutId = setTimeout(() => this.close(), this.idleTimeout)
-      }
+      conn.setIdleTimeout()
     }) as QueryPromise<TResult>
 
     promise.cancel = () => {
@@ -202,6 +205,7 @@ interface IConnection extends EventEmitter<ConnectionEvents> {
   id: string
   status: ConnectionStatus
   currentQuery: QueryDescriptor | null
+  setIdleTimeout(): void
 }
 
 function unprotect(conn: Connection): IConnection {
