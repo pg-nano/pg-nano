@@ -495,7 +495,7 @@ export class Client {
 
     this.abortCtrl!.abort()
 
-    const closing = Promise.all(
+    const closing = Promise.allSettled(
       this.connecting.map(promise =>
         promise.then(connection => connection.close()),
       ),
