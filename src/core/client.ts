@@ -51,6 +51,10 @@ export interface ClientConfig {
 
   /**
    * The maximum number of times to retry connecting before giving up.
+   *
+   * Note that the number of retries are unlimited for connections that are
+   * required to exist according to the `minConnections` option.
+   *
    * @default Number.POSITIVE_INFINITY
    */
   maxRetries: number
@@ -313,13 +317,11 @@ export class Client {
   }
 
   protected addConnection(
-    signal: AbortSignal | undefined,
+    connection: Connection,
     initialStatus: ConnectionStatus,
-    idleTimeout = this.config.idleTimeout,
+    signal?: AbortSignal | null,
     maxRetries = Math.max(this.config.maxRetries, 0),
   ): Promise<Connection> {
-    const connection = new Connection(idleTimeout)
-
     const connecting = this.connectWithRetry(
       connection,
       maxRetries,
@@ -345,6 +347,14 @@ export class Client {
         connection.on('close', () => {
           this.config.onConnectionClose?.(connection)
           this.removeConnection(connection)
+
+          // For ad-hoc connections, the initial status is `RESERVED`.
+          // Therefore, a connection with an initial status of `IDLE` is assumed
+          // to be a “required connection” (according to the `minConnections`
+          // option) which must be re-established automatically.
+          if (initialStatus === ConnectionStatus.IDLE) {
+            this.addConnection(connection, initialStatus, signal, maxRetries)
+          }
         })
 
         if (initialStatus === ConnectionStatus.IDLE) {
@@ -397,7 +407,17 @@ export class Client {
     }
 
     if (this.numConnections < this.config.maxConnections) {
-      return this.addConnection(signal, ConnectionStatus.RESERVED)
+      const newConnection = await this.addConnection(
+        new Connection(this.config.idleTimeout),
+        ConnectionStatus.RESERVED,
+        signal,
+      )
+      if (signal?.aborted) {
+        // Ensure the new connection can be reused.
+        newConnection.status = ConnectionStatus.IDLE
+        throw signal.reason
+      }
+      return newConnection
     }
 
     return new Promise((resolve, reject) => {
@@ -433,24 +453,27 @@ export class Client {
   /**
    * Connects to the database and initializes the connection pool.
    */
-  async connect(target: string | ConnectOptions, signal?: AbortSignal) {
+  async connect(target: string | ConnectOptions) {
     if (this.dsn != null) {
       throw new ConnectionError('Postgres client is already connected')
     }
+
     this.dsn = isString(target) ? target : stringifyConnectOptions(target)
+    this.abortCtrl = new AbortController()
+
     if (this.config.minConnections > 0) {
       // Wait for the first connection to be established before adding more.
       await this.addConnection(
-        signal,
+        new Connection(),
         ConnectionStatus.IDLE,
-        Number.POSITIVE_INFINITY,
+        null,
         Number.POSITIVE_INFINITY,
       )
       for (let i = 0; i < this.config.minConnections - 1; i++) {
         this.addConnection(
-          signal,
+          new Connection(),
           ConnectionStatus.IDLE,
-          Number.POSITIVE_INFINITY,
+          null,
           Number.POSITIVE_INFINITY,
         ).catch(noop)
       }

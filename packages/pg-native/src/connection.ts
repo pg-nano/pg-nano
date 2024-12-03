@@ -56,7 +56,7 @@ export class Connection extends EventEmitter<ConnectionEvents> {
    */
   sessionHash = ''
 
-  constructor(readonly idleTimeout: number) {
+  constructor(readonly idleTimeout: number = Number.POSITIVE_INFINITY) {
     super()
   }
 
