@@ -125,6 +125,8 @@ export interface ClientConfig {
  * want to lower this value by dividing it by the number of application servers.
  */
 export class Client {
+  /** Used to abort connections when the client is closed. */
+  protected abortCtrl: AbortController | null = null
   /** All connections that are being established. */
   protected connecting: Promise<Connection>[] = []
   /** Up to `config.maxConnections` connections are maintained in the pool. */
@@ -239,7 +241,7 @@ export class Client {
   protected async connectWithRetry(
     connection: Connection,
     maxRetries: number,
-    signal?: AbortSignal,
+    signal: AbortSignal,
     delay = Math.max(this.config.initialRetryDelay, 0),
     attempts = 0,
   ): Promise<string> {
@@ -247,13 +249,13 @@ export class Client {
     if (dsn == null) {
       throw new ConnectionError('Postgres client was closed')
     }
-    signal?.throwIfAborted()
+    signal.throwIfAborted()
     try {
       await connection.connect(dsn, this.config.sessionParams)
       return dsn
     } catch (error) {
       if (attempts < maxRetries) {
-        signal?.throwIfAborted()
+        signal.throwIfAborted()
 
         if (delay > 0) {
           await sleep(delay)
@@ -318,7 +320,14 @@ export class Client {
   ): Promise<Connection> {
     const connection = new Connection(idleTimeout)
 
-    const connecting = this.connectWithRetry(connection, maxRetries, signal)
+    const connecting = this.connectWithRetry(
+      connection,
+      maxRetries,
+      // Ensure the connection is aborted if the client is closed.
+      signal
+        ? combineSignals([signal, this.abortCtrl!.signal])
+        : this.abortCtrl!.signal,
+    )
       .then(async dsn => {
         if (!this.parseText) {
           await (this.initPromise ??= this.init(dsn, connection).finally(() => {
@@ -459,6 +468,8 @@ export class Client {
 
     this.dsn = null
     this.initPromise = null
+
+    this.abortCtrl!.abort()
 
     const closing = Promise.all(
       this.connecting.map(promise =>
@@ -637,4 +648,14 @@ async function logOpenConnections(client: Client, connecting?: Promise<any>) {
     lastLoggedConnectedCount.set(client, count)
     debug(`open connections: ${count} of ${client.config.maxConnections}`)
   }
+}
+
+function combineSignals(signals: AbortSignal[]): AbortSignal {
+  const controller = new AbortController()
+  const abort = () => {
+    controller.abort()
+    signals.forEach(signal => signal.removeEventListener('abort', abort))
+  }
+  signals.forEach(signal => signal.addEventListener('abort', abort))
+  return controller.signal
 }
