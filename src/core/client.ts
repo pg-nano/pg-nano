@@ -270,7 +270,11 @@ export class Client {
       await connection.connect(dsn, this.config.sessionParams)
       return dsn
     } catch (error: any) {
-      if (attempts < maxRetries && !isFatalError(error.message)) {
+      if (isFatalError(error.message)) {
+        this.close().catch(noop)
+        throw error
+      }
+      if (attempts < maxRetries) {
         signal.throwIfAborted()
 
         if (delay > 0) {
