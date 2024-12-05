@@ -23,13 +23,19 @@ export function createNameResolver(pg: Client) {
   }
 
   type NameSource = keyof typeof sourceColumns
+  type ResolvedName = {
+    schema: string
+    source: NameSource | null
+    oid: number | null
+    pos: number
+  }
 
   const defaultSources: NameSource[] = ['pg_class', 'pg_type']
 
   return {
     resolve: memoAsync(
       async (name: string, sources: NameSource[] = defaultSources) => {
-        const query = pg.queryRow<{ schema: string; oid: number }>(sql`
+        const query = pg.queryRow<ResolvedName>(sql`
           WITH search_path AS (
             SELECT array_remove(
               string_to_array(current_setting('search_path'), ','),
@@ -42,9 +48,9 @@ export function createNameResolver(pg: Client) {
               array_position(
                 (SELECT schema_list FROM search_path),
                 nspname
-              ) AS "pos"
+              ) AS "rank"
             FROM unnest((SELECT schema_list FROM search_path)) AS nspname
-            ORDER BY pos
+            ORDER BY rank
           ),
           lookup AS (
             ${sql.join(
@@ -63,15 +69,32 @@ export function createNameResolver(pg: Client) {
             )}
             LIMIT 1
           )
-          SELECT
-            l.nspname AS "schema",
-            l.source,
-            l.oid,
-            s.pos
-          FROM search_schema s
-          JOIN lookup l ON l.nspname = s.nspname
-          WHERE l.oid IS NOT NULL
-          ORDER BY s.pos
+          SELECT *
+          FROM (
+            (SELECT
+                l.nspname AS "schema",
+                l.source,
+                l.oid,
+                rank
+              FROM search_schema s
+              JOIN lookup l ON l.nspname = s.nspname
+              WHERE l.oid IS NOT NULL
+              ORDER BY rank ASC
+              LIMIT 1)
+
+            -- If the lookup finds nothing, return the first schema that exists.
+            UNION ALL
+            (SELECT
+                s.nspname AS "schema",
+                NULL AS "source",
+                NULL AS "oid",
+                rank + 1000 AS "rank" -- Ensure that this result is always last.
+              FROM search_schema s
+              JOIN pg_namespace n ON n.nspname = s.nspname
+              ORDER BY rank ASC
+              LIMIT 1)
+          )
+          ORDER BY rank ASC
           LIMIT 1
         `)
 
