@@ -29,8 +29,7 @@ export function createNameResolver(pg: Client) {
   return {
     resolve: memoAsync(
       async (name: string, sources: NameSource[] = defaultSources) => {
-        const result = await pg
-          .queryRow<{ schema: string; oid: number }>(sql`
+        const query = pg.queryRow<{ schema: string; oid: number }>(sql`
           WITH search_path AS (
             SELECT array_remove(
               string_to_array(current_setting('search_path'), ','),
@@ -75,12 +74,11 @@ export function createNameResolver(pg: Client) {
           ORDER BY s.pos
           LIMIT 1
         `)
-          .catch(error => {
-            error.message = `Failed to resolve name "${name}". Checked the following sources: ${sources.join(', ')}\n\n    ${error.message}`
-            throw error
-          })
-        console.log('names.resolve', { name, result })
-        return result
+
+        return query.catch(error => {
+          error.message = `Failed to resolve name "${name}". Checked the following sources: ${sources.join(', ')}\n\n    ${error.message}`
+          throw error
+        })
       },
       {
         toKey: (name, types = defaultSources) => `${name}|${types.join(',')}`,
