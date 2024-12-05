@@ -17,6 +17,8 @@ export async function migrateStaticRows(
   objectStmts: PgObjectStmt[],
   droppedTables: Set<SQLIdentifier>,
 ) {
+  events.emit('migrate:static-rows:start')
+
   // If any of the dropped tables had static INSERT statements applied, forget
   // those inserts ever existed.
   if (droppedTables.size > 0) {
@@ -117,8 +119,6 @@ export async function migrateStaticRows(
         })
       }
     }
-
-    events.emit('migrate:static-rows:start')
 
     // Perform deletions before insertions, to avoid primary key conflicts.
     for (const hash of previousHashes) {
