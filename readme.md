@@ -190,6 +190,7 @@ Here are some caveats with the pg-nano approach.
    - [Transforms](https://www.postgresql.org/docs/current/sql-createtransform.html)
    - Circular foreign key constraints ([#34](https://github.com/pg-nano/pg-nano/issues/34))
    - Custom range types ([#39](https://github.com/pg-nano/pg-nano/issues/39))
+   - Custom collations ([#51](https://github.com/pg-nano/pg-nano/issues/51))
    - Multi-dimensional arrays as input parameters ([#47](https://github.com/pg-nano/pg-nano/issues/47))
 
 ### What Postgres features are definitely supported?
