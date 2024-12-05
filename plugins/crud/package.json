@@ -1,7 +1,7 @@
 {
   "name": "@pg-nano/plugin-crud",
   "type": "module",
-  "version": "0.1.0-beta.7",
+  "version": "0.1.0-beta.8",
   "sideEffects": false,
   "exports": {
     "./field-mappers": {
