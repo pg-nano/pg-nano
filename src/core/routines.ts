@@ -29,6 +29,7 @@ type UnwrapSingleKey<T> = keyof T extends infer TKey
           | RegExp
           | NodeJS.TypedArray
           | Buffer
+          | BigInt
         ? T[TKey]
         : Exclude<T[TKey], object>
       : never
