@@ -32,6 +32,10 @@ export type SQLTemplateValue =
   | null
   | undefined
 
+declare class TypeCheckError<Reason extends string> {
+  private readonly __error: Reason
+}
+
 /**
  * Create a `SQLTemplate` object. The client is responsible for serializing the
  * template to a SQL string and binding the parameters.
@@ -51,7 +55,17 @@ export const sql = /* @__PURE__ */ (() => {
         )
 
   /** A literal value, escaped with single quotes. */
-  sql.val = (value: unknown): SQLToken => ({ type: 'val', value, inline: true })
+  sql.val = ((value: unknown): SQLToken => ({
+    type: 'val',
+    value,
+    inline: true,
+  })) as <T>(
+    value: T,
+  ) => T extends SQLTemplate
+    ? TypeCheckError<'sql.val cannot be used with SQLTemplate'>
+    : T extends SQLToken
+      ? TypeCheckError<'sql.val cannot be used with SQLToken'>
+      : SQLToken
 
   /**
    * A value to be parameterized. If a `SQLTemplate` contains a `sql.param`
