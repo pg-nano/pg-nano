@@ -269,8 +269,8 @@ export class Client {
     try {
       await connection.connect(dsn, this.config.sessionParams)
       return dsn
-    } catch (error) {
-      if (attempts < maxRetries) {
+    } catch (error: any) {
+      if (attempts < maxRetries && !isFatalError(error.message)) {
         signal.throwIfAborted()
 
         if (delay > 0) {
@@ -703,4 +703,17 @@ function combineSignals(signals: AbortSignal[]): AbortSignal {
   }
   signals.forEach(signal => signal.addEventListener('abort', abort))
   return controller.signal
+}
+
+function isFatalError(message: string): boolean {
+  return (
+    // Database doesn't exist
+    /database ".+?" does not exist/.test(message) ||
+    // Invalid password
+    /password authentication failed/.test(message) ||
+    // Invalid user
+    /role ".+?" does not exist/.test(message) ||
+    // Invalid host
+    /could not translate host name/.test(message)
+  )
 }
