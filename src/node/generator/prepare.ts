@@ -21,7 +21,7 @@ import {
   createIdentityCache,
   type IdentityCache,
 } from '../inspector/identity.js'
-import { createNameResolver, type NameResolver } from '../inspector/name.js'
+import { createNameResolver } from '../inspector/name.js'
 import type { PgBaseType } from '../inspector/types.js'
 import { linkStatements } from '../linker/link.js'
 import { extractColumnDefinition } from '../parser/column.js'
@@ -124,7 +124,7 @@ async function updateObjects(
   droppedTables: Set<SQLIdentifier>,
 ) {
   const names = createNameResolver(pg)
-  const objectIds = createIdentityCache(pg)
+  const objectIds = createIdentityCache(pg, names)
   const collations = createCollationCache(pg)
 
   const objectNames = new Set<string>()
@@ -231,7 +231,7 @@ async function updateObjects(
     if (oid) {
       if (stmt.kind === 'type') {
         if (stmt.subkind === 'composite') {
-          if (await hasCompositeTypeChanged(pg, stmt)) {
+          if (await hasCompositeTypeChanged(pg, stmt, objectIds)) {
             query = sql`
               ${await dropDependentObjects(oid)}
               DROP TYPE ${stmt.id.toSQL()} CASCADE;
@@ -479,14 +479,13 @@ async function updateObjects(
     }),
   )
 
-  await updateCasts(pg, schema, objectIds, names)
+  await updateCasts(pg, schema, objectIds)
 }
 
 async function updateCasts(
   pg: Client,
   schema: PgSchema,
   objectIds: IdentityCache,
-  names: NameResolver,
 ) {
   type Cast = {
     castsource: number
@@ -516,9 +515,6 @@ async function updateCasts(
 
   await Promise.all(
     schema.casts.map(async stmt => {
-      stmt.sourceId.schema ??= (await names.resolve(stmt.sourceId.name))?.schema
-      stmt.targetId.schema ??= (await names.resolve(stmt.targetId.name))?.schema
-
       const sourceTypeOid = await objectIds.get('type', stmt.sourceId)
       const targetTypeOid = await objectIds.get('type', stmt.targetId)
 

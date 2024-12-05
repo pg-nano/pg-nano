@@ -12,6 +12,7 @@ import type {
 import { arrayEquals } from '../util/arrayEquals.js'
 import { appendCodeFrame } from '../util/codeFrame.js'
 import { compareCollations, type CollationCache } from './collation.js'
+import type { IdentityCache } from './identity.js'
 import type { NameResolver } from './name.js'
 
 /**
@@ -189,6 +190,7 @@ function diffTypeIdentifiers(
 export async function hasCompositeTypeChanged(
   client: Client,
   type: PgCompositeTypeStmt,
+  objectIds: IdentityCache,
 ) {
   if (traceChecks.enabled) {
     traceChecks('did %s change?', type.id.toQualifiedName())
@@ -216,20 +218,7 @@ export async function hasCompositeTypeChanged(
         AND NOT a.attisdropped
       ORDER BY a.attnum
     `),
-    client.queryValueList<number>(sql`
-      SELECT
-        a.atttypid
-      FROM
-        pg_type t
-      JOIN
-        pg_attribute a ON a.attrelid = t.typrelid
-      WHERE
-        t.typname = ${type.id.nameVal}
-        AND t.typnamespace = ${type.id.schemaVal}::regnamespace
-        AND a.attnum > 0
-        AND NOT a.attisdropped
-      ORDER BY a.attnum
-    `),
+    Promise.all(type.columns.map(col => objectIds.get('type', col.type))),
   ])
 
   return (

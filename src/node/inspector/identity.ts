@@ -3,6 +3,7 @@ import type { PgObjectStmtKind, SQLIdentifier } from 'pg-nano/plugin'
 import { sql, type SQLTemplate } from 'pg-native'
 import { traceChecks } from '../debug.js'
 import { memo } from '../util/memo.js'
+import type { NameResolver } from './name.js'
 
 type ObjectLookupScheme = {
   from: string
@@ -56,37 +57,44 @@ const objectLookupSchemes: Record<PgObjectStmtKind, ObjectLookupScheme> = {
 
 export type IdentityCache = ReturnType<typeof createIdentityCache>
 
-export function createIdentityCache(pg: Client) {
+export function createIdentityCache(pg: Client, names?: NameResolver) {
   const cache: Record<string, Promise<number | null>> = {}
+  const getObjectId = memo(
+    async (kind: PgObjectStmtKind, id: SQLIdentifier) => {
+      if (traceChecks.enabled) {
+        traceChecks('does %s exist?', id.toQualifiedName())
+      }
+
+      if (!(kind in objectLookupSchemes)) {
+        throw new Error(`Unsupported object kind: ${kind}`)
+      }
+
+      const { from, schemaKey, nameKey, where } = objectLookupSchemes[kind]
+
+      return pg.queryValueOrNull<number>(sql`
+        SELECT oid
+        FROM ${sql.id(from)}
+        WHERE ${sql.id(schemaKey)} = ${id.schemaVal}${
+          kind !== 'schema' ? sql`::regnamespace` : ''
+        }
+          ${nameKey && sql`AND ${sql.id(nameKey)} = ${id.nameVal}`}
+          ${where && sql`AND ${where}`};
+      `)
+    },
+    {
+      key: (_, id) => id.toQualifiedName(),
+      cache,
+    },
+  )
 
   return {
-    get: memo(
-      async (kind: PgObjectStmtKind, id: SQLIdentifier) => {
-        if (traceChecks.enabled) {
-          traceChecks('does %s exist?', id.toQualifiedName())
-        }
-
-        if (!(kind in objectLookupSchemes)) {
-          throw new Error(`Unsupported object kind: ${kind}`)
-        }
-
-        const { from, schemaKey, nameKey, where } = objectLookupSchemes[kind]
-
-        return pg.queryValueOrNull<number>(sql`
-          SELECT oid
-          FROM ${sql.id(from)}
-          WHERE ${sql.id(schemaKey)} = ${id.schemaVal}${
-            kind !== 'schema' ? sql`::regnamespace` : ''
-          }
-            ${nameKey && sql`AND ${sql.id(nameKey)} = ${id.nameVal}`}
-            ${where && sql`AND ${where}`};
-        `)
-      },
-      {
-        key: (_, id) => id.toQualifiedName(),
-        cache,
-      },
-    ),
+    async get(kind: PgObjectStmtKind, id: SQLIdentifier) {
+      if (!id.schema && names) {
+        const { schema } = await names.resolve(id.name)
+        id = id.withSchema(schema)
+      }
+      return await getObjectId(kind, id)
+    },
     delete(id: SQLIdentifier) {
       delete cache[id.toQualifiedName()]
     },

@@ -4,7 +4,7 @@ CREATE SCHEMA nano;
 
 CREATE TYPE public.email AS (
 	local_part text,
-	domain text
+	domain character varying(256)
 );
 
 CREATE FUNCTION public.email_to_text(public.email) RETURNS text
