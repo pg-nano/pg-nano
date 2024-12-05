@@ -204,9 +204,28 @@ export async function generate(
     outFile,
     fieldCase,
     preferredExtension,
+    notNullCompositeFields,
     applyFunctionPatterns,
     postGenerateScript,
   } = env.config.generate
+
+  const getCompositeFieldNullability = (
+    type: PgCompositeType,
+    field: PgField,
+  ) => {
+    if (notNullCompositeFields === true) {
+      return false
+    }
+    if (notNullCompositeFields) {
+      if (notNullCompositeFields.includes(type.name)) {
+        return false
+      }
+      if (notNullCompositeFields.includes(type.name + '.' + field.name)) {
+        return false
+      }
+    }
+    return field.nullable
+  }
 
   const renderedObjects = new Map<PgObject, string>()
   const renderedRowMappers = new Map<PgObject, string>()
@@ -262,7 +281,9 @@ export async function generate(
               field,
             })
 
-            const optionalToken = field.nullable ? '?' : ''
+            const optionalToken = getCompositeFieldNullability(type, field)
+              ? '?'
+              : ''
 
             return `${jsName}${optionalToken}: ${jsType}`
           })
