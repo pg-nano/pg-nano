@@ -41,16 +41,16 @@ export function linkObjectStatements(objects: PgObjectStmt[]) {
     }
     if (stmt.kind === 'routine') {
       for (const param of stmt.params) {
-        link(stmt, param.type)
+        link(stmt, param.type.toIdentifier())
       }
       if (!stmt.returnType) {
         continue
       }
       if (stmt.returnType instanceof SQLIdentifier) {
-        link(stmt, stmt.returnType)
+        link(stmt, stmt.returnType.toIdentifier())
       } else {
         for (const columnDef of stmt.returnType) {
-          link(stmt, columnDef.type)
+          link(stmt, columnDef.type.toIdentifier())
         }
       }
     } else if (
@@ -58,7 +58,7 @@ export function linkObjectStatements(objects: PgObjectStmt[]) {
       (stmt.kind === 'type' && stmt.subkind === 'composite')
     ) {
       for (const column of stmt.columns) {
-        link(stmt, column.type)
+        link(stmt, column.type.toIdentifier())
         if (column.refs) {
           for (const ref of column.refs) {
             link(stmt, ref)

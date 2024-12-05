@@ -1,29 +1,72 @@
-import { type Client, isPgResultError, sql } from 'pg-nano'
+import { isPgResultError, sql, type Client } from 'pg-nano'
 import { traceChecks } from '../debug.js'
-import type { SQLIdentifier } from '../parser/identifier.js'
+import { SQLIdentifier } from '../parser/identifier.js'
+import { SQLTypeIdentifier } from '../parser/typeIdentifier.js'
 import type {
   PgCompositeTypeStmt,
   PgRoutineStmt,
+  PgTableColumnDef,
   PgTableStmt,
   PgViewStmt,
 } from '../parser/types.js'
+import { arrayEquals } from '../util/arrayEquals.js'
 import { appendCodeFrame } from '../util/codeFrame.js'
+import { compareCollations, type CollationCache } from './collation.js'
+import type { NameResolver } from './name.js'
 
 /**
  * Returns a set of column names that were added to the table.
  */
-export async function diffTableColumns(client: Client, table: PgTableStmt) {
+export async function diffTableColumns(
+  client: Client,
+  table: PgTableStmt,
+  names: NameResolver,
+  collations: CollationCache,
+) {
   if (traceChecks.enabled) {
     traceChecks('did %s change its columns?', table.id.toQualifiedName())
   }
 
-  const previousColumns = await client.queryValueList<string>(sql`
+  type ColumnInfo = {
+    name: string
+    type: string
+    typeOid: number
+    collationSchema: string | null
+    collationName: string | null
+  }
+
+  const existingColumns = await client.queryRowList<ColumnInfo>(sql`
     SELECT
-      a.attname
+      a.attname AS name,
+      n.nspname || '.' || t.typname ||
+        CASE
+          WHEN a.atttypmod = -1 THEN ''
+          ELSE '(' ||
+            COALESCE(
+              information_schema._pg_char_max_length(a.atttypid, a.atttypmod),
+              a.atttypmod
+            ) || ')'
+        END ||
+        repeat('[]', a.attndims) AS type,
+      t.oid AS type_oid,
+      (
+        SELECT n.nspname
+        FROM pg_namespace n
+        WHERE n.oid = co.collnamespace
+      ) AS collation_schema,
+      co.collname AS collation_name
     FROM
-      pg_class c
+      pg_attribute a
     JOIN
-      pg_attribute a ON a.attrelid = c.oid
+      pg_class c ON c.oid = a.attrelid
+    JOIN
+      pg_type t
+        ON (t.oid = a.atttypid AND t.typcategory <> 'A')
+        OR t.typarray = a.atttypid
+    LEFT JOIN
+      pg_collation co ON co.oid = a.attcollation
+    JOIN
+      pg_namespace n ON n.oid = t.typnamespace
     WHERE
       c.relname = ${table.id.nameVal}
       AND c.relnamespace = ${table.id.schemaVal}::regnamespace
@@ -31,24 +74,111 @@ export async function diffTableColumns(client: Client, table: PgTableStmt) {
       AND NOT a.attisdropped
   `)
 
+  type ColumnChange =
+    | {
+        kind: 'type'
+        column: PgTableColumnDef
+        oldType: SQLTypeIdentifier
+        newType: SQLTypeIdentifier
+      }
+    | {
+        kind: 'collation'
+        column: PgTableColumnDef
+        oldCollation: SQLIdentifier | null
+        newCollation: SQLIdentifier | null
+      }
+
   const addedColumns: string[] = []
+  const changedColumns: ColumnChange[] = []
   const droppedColumns: string[] = []
-  const currentColumns: string[] = []
 
   for (const col of table.columns) {
-    if (previousColumns.includes(col.name)) {
-      currentColumns.push(col.name)
-    } else {
+    if (!existingColumns.some(c => c.name === col.name)) {
       addedColumns.push(col.name)
     }
   }
-  for (const name of previousColumns) {
-    if (!currentColumns.includes(name)) {
-      droppedColumns.push(name)
+  for (const old of existingColumns) {
+    const col = table.columns.find(col => {
+      return col.name === old.name
+    })
+    if (!col) {
+      droppedColumns.push(old.name)
+    } else {
+      const oldType = SQLTypeIdentifier.parse(old.type)
+      const newType = col.type
+
+      // Infer the schema from the type name if it's not explicitly set.
+      oldType.schema ??= (await names.resolve(oldType.name)).schema
+      newType.schema ??= (await names.resolve(newType.name)).schema
+
+      const typeDiff = diffTypeIdentifiers(oldType, newType)
+
+      // If the type is unchanged, check if the collation has changed.
+      if (!typeDiff) {
+        const defaultCollation = await collations.getDefaultCollation(
+          old.typeOid,
+        )
+
+        let oldCollation: SQLIdentifier | null
+        if (old.collationName) {
+          oldCollation = new SQLIdentifier(
+            old.collationName,
+            old.collationSchema ??
+              (await names.resolve(old.collationName, ['pg_collation'])).schema,
+          )
+        } else {
+          oldCollation = defaultCollation
+        }
+
+        if (
+          !compareCollations(oldCollation, col.collationName, defaultCollation)
+        ) {
+          changedColumns.push({
+            kind: 'collation',
+            column: col,
+            oldCollation,
+            newCollation: col.collationName ?? defaultCollation,
+          })
+        }
+      } else {
+        if (col.isPrimaryKey && /^(bp)?char$/.test(col.type.name)) {
+          console.warn(
+            `[pg-nano] Using "${col.type.name}" in a primary key is discouraged.\n` +
+              `Consider changing ${table.id.withField(col.name).toQualifiedName()} to use varchar instead:\n` +
+              `  https://wiki.postgresql.org/wiki/Don%27t_Do_This#Don.27t_use_char.28n.29_even_for_fixed-length_identifiers`,
+          )
+        }
+
+        changedColumns.push({
+          kind: 'type',
+          column: col,
+          oldType,
+          newType: col.type,
+        })
+      }
     }
   }
 
-  return { addedColumns, droppedColumns }
+  return { addedColumns, changedColumns, droppedColumns }
+}
+
+function diffTypeIdentifiers(
+  left: SQLTypeIdentifier,
+  right: SQLTypeIdentifier,
+) {
+  if (left.schema !== right.schema) {
+    return 'schema'
+  }
+  if (left.name !== right.name) {
+    return 'name'
+  }
+  if (!arrayEquals(left.typeModifiers, right.typeModifiers)) {
+    return 'typeModifiers'
+  }
+  if (!arrayEquals(left.arrayBounds, right.arrayBounds)) {
+    return 'arrayBounds'
+  }
+  return null
 }
 
 /**

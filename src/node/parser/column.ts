@@ -1,12 +1,12 @@
-import { $, type ColumnDef, scanSync, select } from '@pg-nano/pg-parser'
-import type { PgColumnDef, PgTableStmt } from './types.js'
+import { $, scanSync, select } from '@pg-nano/pg-parser'
+import type { PgTableColumnDef, PgTableStmt } from './types.js'
 
 /**
  * Given a column node and its table statement, extract the part of the query
  * that defines the column's name, type, and constraints.
  */
 export function extractColumnDefinition(
-  col: PgColumnDef<ColumnDef>,
+  col: PgTableColumnDef,
   table: PgTableStmt,
 ): string {
   const index = table.node.tableElts!.findIndex(

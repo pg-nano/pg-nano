@@ -16,11 +16,13 @@ import { events } from '../events.js'
 import type { PgBaseType } from '../inspector/types.js'
 import { appendCodeFrame } from '../util/codeFrame.js'
 import { SQLIdentifier, toUniqueIdList } from './identifier.js'
+import { SQLTypeIdentifier } from './typeIdentifier.js'
 import type {
   PgColumnDef,
   PgInsertStmt,
   PgObjectStmt,
   PgParamDef,
+  PgTableColumnDef,
 } from './types.js'
 
 const whitespace = ' \n\t\r'.split('').map(c => c.charCodeAt(0))
@@ -99,7 +101,7 @@ export async function parseSQLStatements(
           ) {
             inParams.push({
               name: param.name,
-              type: SQLIdentifier.fromTypeName(param.argType),
+              type: SQLTypeIdentifier.fromTypeName(param.argType),
               variadic:
                 param.mode === FunctionParameterMode.FUNC_PARAM_VARIADIC,
             })
@@ -111,7 +113,7 @@ export async function parseSQLStatements(
           ) {
             outParams.push({
               name: param.name!,
-              type: SQLIdentifier.fromTypeName(param.argType),
+              type: SQLTypeIdentifier.fromTypeName(param.argType),
               node: param,
             })
           }
@@ -121,7 +123,7 @@ export async function parseSQLStatements(
       const returnType = outParams.length
         ? outParams
         : fn.returnType
-          ? SQLIdentifier.fromTypeName(fn.returnType)
+          ? SQLTypeIdentifier.fromTypeName(fn.returnType)
           : undefined
 
       objectStmts.push({
@@ -141,18 +143,18 @@ export async function parseSQLStatements(
       }
 
       const id = new SQLIdentifier(relation.relname, relation.schemaname)
-      const columns: PgColumnDef<ColumnDef>[] = []
+      const columns: PgTableColumnDef[] = []
       const primaryKeyColumns: string[] = []
 
       for (const elt of tableElts) {
         if ($.isColumnDef(elt)) {
-          const { colname, typeName, constraints } = $(elt)
+          const { colname, typeName, constraints, collClause } = $(elt)
           if (!colname || !typeName) {
             events.emit('parser:skip-column', { columnDef: elt.ColumnDef })
             continue
           }
 
-          const type = SQLIdentifier.fromTypeName(typeName)
+          const type = SQLTypeIdentifier.fromTypeName(typeName)
           if (
             type.schema == null &&
             baseTypes.some(t => t.name === type.name)
@@ -186,6 +188,10 @@ export async function parseSQLStatements(
           columns.push({
             name: colname,
             type,
+            collationName: collClause
+              ? SQLIdentifier.fromQualifiedName(collClause.collname)
+              : null,
+            isPrimaryKey: false,
             refs,
             node: elt.ColumnDef,
           })
@@ -212,6 +218,12 @@ export async function parseSQLStatements(
         }
       }
 
+      for (const col of columns) {
+        if (primaryKeyColumns.includes(col.name)) {
+          col.isPrimaryKey = true
+        }
+      }
+
       objectStmts.push({
         kind: 'table',
         node: node.CreateStmt,
@@ -234,7 +246,7 @@ export async function parseSQLStatements(
           }
           return {
             name: colname,
-            type: SQLIdentifier.fromTypeName(typeName),
+            type: SQLTypeIdentifier.fromTypeName(typeName),
             node: col.ColumnDef,
           }
         },
@@ -279,7 +291,7 @@ export async function parseSQLStatements(
         },
         TypeCast(path) {
           const { typeName } = path.node
-          refs.push(SQLIdentifier.fromTypeName(typeName))
+          refs.push(SQLTypeIdentifier.fromTypeName(typeName).toIdentifier())
         },
       })
 

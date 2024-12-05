@@ -1,8 +1,18 @@
-import { select, type QualifiedName, type TypeName } from '@pg-nano/pg-parser'
+import type { QualifiedName } from '@pg-nano/pg-parser'
 import { sql, type SQLTemplateValue } from 'pg-native'
 import { unique } from 'radashi'
 
 export class SQLIdentifier {
+  static fromQualifiedName(
+    names: QualifiedName,
+    includesField?: boolean,
+  ): SQLIdentifier {
+    return Object.assign(
+      new SQLIdentifier(''),
+      parseQualifiedName(names, includesField),
+    )
+  }
+
   constructor(
     public name: string,
     public schema: string | undefined = undefined,
@@ -11,22 +21,7 @@ export class SQLIdentifier {
   ) {}
 
   /** Optional field name being referenced */
-  public field?: string
-
-  /**
-   * Exists if referencing an array type. One element indicates a 1-dimensional
-   * array, two elements indicates a 2-dimensional array, etc. If a dimension is
-   * `-1` or `null`, then the array is unbounded in that dimension. Otherwise,
-   * the value is the upper bound of the array in that dimension.
-   */
-  public arrayBounds?: (number | null)[]
-
-  /**
-   * Exists if referencing a type with type modifiers.
-   *
-   * @example varchar(10) => [10]
-   */
-  public typeModifiers?: number[]
+  public field?: string | undefined
 
   /**
    * Returns a literal string containing the identifier name (not including the
@@ -51,27 +46,9 @@ export class SQLIdentifier {
   toSQL(defaultSchema?: string): SQLTemplateValue {
     const schema = this.schema ?? defaultSchema ?? 'public'
     if (this.name) {
-      const id =
-        schema === 'pg_catalog'
-          ? sql.unsafe(this.name)
-          : sql.id(schema, this.name)
-
-      const typeModifiers = this.typeModifiers
-        ? sql.unsafe(`(${this.typeModifiers.join(', ')})`)
-        : ''
-
-      const arrayBounds = this.arrayBounds
-        ? sql.unsafe(
-            this.arrayBounds
-              .map(bound => `[${bound === -1 ? '' : bound ?? ''}]`)
-              .join(''),
-          )
-        : ''
-
-      if (typeModifiers || arrayBounds) {
-        return [id, typeModifiers, arrayBounds]
-      }
-      return id
+      return schema === 'pg_catalog'
+        ? sql.unsafe(this.name)
+        : sql.id(schema, this.name)
     }
     return sql.id(schema)
   }
@@ -112,8 +89,10 @@ export class SQLIdentifier {
   /**
    * Copy this identifier with a new schema.
    */
-  withSchema(schema: string) {
-    return new SQLIdentifier(this.name, schema)
+  withSchema(schema: string): this {
+    const id = Object.create(this) as this
+    id.schema = schema
+    return id
   }
 
   /**
@@ -131,43 +110,9 @@ export class SQLIdentifier {
   equals(other: SQLIdentifier) {
     return (
       this.name === other.name &&
-      (this.schema ?? 'public') === (other.schema ?? 'public')
+      (this.schema ?? 'public') === (other.schema ?? 'public') &&
+      this.field === other.field
     )
-  }
-
-  static fromQualifiedName(names: QualifiedName, includesField?: boolean) {
-    const id = new SQLIdentifier('')
-    let index = names.length
-    if (includesField) {
-      id.field = names[--index].String.sval
-    }
-    id.name = names[--index].String.sval
-    if (index > 0) {
-      id.schema = names[--index].String.sval
-    }
-    return id
-  }
-
-  static fromTypeName(typeName: TypeName) {
-    const id = SQLIdentifier.fromQualifiedName(
-      typeName.names,
-      typeName.pct_type,
-    )
-    if (typeName.typmods) {
-      id.typeModifiers = typeName.typmods.map(typmod => {
-        const ival = select(typmod, 'ival.ival')
-        if (ival === undefined) {
-          throw new Error('expected ival')
-        }
-        return ival
-      })
-    }
-    if (typeName.arrayBounds) {
-      id.arrayBounds = typeName.arrayBounds.map(
-        bound => bound.Integer.ival ?? null,
-      )
-    }
-    return id
   }
 }
 
@@ -200,4 +145,23 @@ export function unsafelyQuotedName(name: string, moreUnquotedChars = '') {
     quotedName += char === '"' ? '""' : char
   }
   return needsQuotes ? `"${quotedName}"` : quotedName
+}
+
+export function parseQualifiedName(
+  names: QualifiedName,
+  includesField?: boolean,
+) {
+  let schema: string | undefined
+  let field: string | undefined
+
+  let index = names.length
+  if (includesField) {
+    field = names[--index].String.sval
+  }
+  const name = names[--index].String.sval
+  if (index > 0) {
+    schema = names[--index].String.sval
+  }
+
+  return { schema, name, field }
 }

@@ -12,6 +12,7 @@ import type {
   ViewStmt,
 } from '../config/plugin.js'
 import type { SQLIdentifier } from './identifier.js'
+import type { SQLTypeIdentifier } from './typeIdentifier.js'
 
 export type PgObjectStmtKind<T = PgObjectStmt> = T extends PgObjectStmt
   ? T['kind']
@@ -42,7 +43,7 @@ interface IPgObjectStmt<TNode extends object> extends IPgStmt<TNode> {
 
 export type PgParamDef = {
   name: string | undefined
-  type: SQLIdentifier
+  type: SQLTypeIdentifier
   variadic: boolean
 }
 
@@ -50,7 +51,9 @@ export type PgColumnDef<
   TNode extends ColumnDef | FunctionParameter = ColumnDef | FunctionParameter,
 > = {
   name: string
-  type: SQLIdentifier
+  type: SQLTypeIdentifier
+  collationName?: SQLIdentifier | null
+  isPrimaryKey?: boolean
   refs?: SQLIdentifier[]
   /**
    * This will be a `FunctionParameter` node if declared as an OUT or INOUT
@@ -59,17 +62,22 @@ export type PgColumnDef<
   node: TNode
 }
 
+export type PgTableColumnDef = PgColumnDef<ColumnDef> & {
+  collationName: SQLIdentifier | null
+  isPrimaryKey: boolean
+}
+
 export interface PgRoutineStmt extends IPgObjectStmt<CreateFunctionStmt> {
   kind: 'routine'
   params: PgParamDef[]
-  returnType: SQLIdentifier | PgColumnDef<FunctionParameter>[] | undefined
+  returnType: SQLTypeIdentifier | PgColumnDef<FunctionParameter>[] | undefined
   returnSet: boolean
   isProcedure: boolean
 }
 
 export interface PgTableStmt extends IPgObjectStmt<CreateStmt> {
   kind: 'table'
-  columns: PgColumnDef<ColumnDef>[]
+  columns: PgTableColumnDef[]
   primaryKeyColumns: string[]
 }
 

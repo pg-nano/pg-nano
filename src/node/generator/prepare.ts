@@ -6,6 +6,7 @@ import type { Plugin, SQLTemplate } from '../config/plugin.js'
 import { debug, traceDepends } from '../debug.js'
 import type { Env } from '../env.js'
 import { events } from '../events.js'
+import { createCollationCache } from '../inspector/collation.js'
 import {
   inspectDependencies,
   type PgDependentObject,
@@ -17,12 +18,14 @@ import {
   hasViewChanged,
 } from '../inspector/diff.js'
 import { createIdentityCache } from '../inspector/identity.js'
+import { createNameResolver } from '../inspector/name.js'
 import type { PgBaseType } from '../inspector/types.js'
 import { linkObjectStatements } from '../linker/link.js'
 import { extractColumnDefinition } from '../parser/column.js'
 import { SQLIdentifier } from '../parser/identifier.js'
 import { parseSQLStatements } from '../parser/parse.js'
 import type { PgInsertStmt, PgObjectStmt } from '../parser/types.js'
+import { memoAsync } from '../util/memoAsync.js'
 import { throwFormattedQueryError } from './error.js'
 
 export async function prepareDatabase(
@@ -117,10 +120,30 @@ async function updateObjects(
   objectStmts: PgObjectStmt[],
   droppedTables: Set<SQLIdentifier>,
 ) {
+  const names = createNameResolver(pg)
   const objectIds = createIdentityCache(pg)
+  const collations = createCollationCache(pg)
+
   const objectNames = new Set<string>()
   const objectUpdates = new Map(
     objectStmts.map(stmt => [stmt, Promise.withResolvers<any>()] as const),
+  )
+
+  // The schema-qualified names of objects that will be dropped.
+  const droppedNames = new Set<string>()
+
+  const getCastContext = memoAsync(
+    async (sourceOid: number, targetOid: number) => {
+      return pg.queryValueOrNull<'a' | 'e' | 'i'>(sql`
+        SELECT castcontext
+        FROM pg_cast
+        WHERE castsource = ${sql.val(sourceOid)}
+          AND casttarget = ${sql.val(targetOid)}
+      `)
+    },
+    {
+      toKey: (sourceOid, targetOid) => `${sourceOid}>${targetOid}`,
+    },
   )
 
   /**
@@ -157,11 +180,18 @@ async function updateObjects(
     const cascade = await inspectDependencies(pg, oid, columns)
     const drops: SQLTemplate[] = []
     for (const object of cascade) {
+      const id = new SQLIdentifier(object.name, object.schema)
+      const name = id.toQualifiedName()
+      if (droppedNames.has(name)) {
+        continue
+      }
+      droppedNames.add(name)
+
+      // Generate a DROP command but don't execute it yet.
       const drop = dropDependentObject(object)
       if (drop) {
         drops.push(drop)
 
-        const id = new SQLIdentifier(object.name, object.schema)
         objectIds.delete(id)
         if (object.relKind === 'r') {
           droppedTables.add(id)
@@ -215,10 +245,85 @@ async function updateObjects(
           `
         }
       } else if (stmt.kind === 'table') {
-        const { addedColumns, droppedColumns } = await diffTableColumns(
-          pg,
-          stmt,
-        )
+        const { addedColumns, droppedColumns, changedColumns } =
+          await diffTableColumns(pg, stmt, names, collations)
+
+        if (changedColumns.length > 0) {
+          if (debug.enabled) {
+            debug('columns being changed in "%s" table:', name, changedColumns)
+          }
+
+          // Drop any objects that depend on the columns being changed.
+          const drops = await dropDependentObjects(
+            oid,
+            changedColumns.map(change => change.column.name),
+          )
+          if (drops) {
+            query = sql`${drops}`
+          }
+
+          const alterStmts: SQLTemplate[] = []
+          for (const change of changedColumns) {
+            const { column } = change
+            switch (change.kind) {
+              case 'type': {
+                const { oldType, newType } = change
+
+                let transform: SQLTemplate
+                if (
+                  oldType.name === 'bigint' &&
+                  newType.name === 'timestamptz'
+                ) {
+                  transform = sql`to_timestamp(${sql.id(column.name)} / 1000)`
+                } else {
+                  const castContext = await getCastContext(
+                    (await objectIds.get('type', oldType))!,
+                    (await objectIds.get('type', newType))!,
+                  )
+
+                  // If no type cast is defined, drop the column and
+                  // pg-schema-diff will re-add it with the new type.
+                  if (!castContext) {
+                    alterStmts.push(sql`
+                      ${await dropDependentObjects(oid, [column.name])}
+
+                      ALTER TABLE ${stmt.id.toSQL()}
+                      DROP COLUMN ${sql.id(column.name)} CASCADE;
+
+                      ALTER TABLE ${stmt.id.toSQL()}
+                      ADD COLUMN ${sql.unsafe(extractColumnDefinition(column, stmt))};
+                    `)
+                    continue
+                  }
+
+                  transform = sql`${sql.id(column.name)}::${newType.toSQL()}`
+                }
+
+                alterStmts.push(sql`
+                  ALTER TABLE ${stmt.id.toSQL()}
+                  ALTER COLUMN ${sql.id(column.name)}
+                    TYPE ${newType.toSQL()}
+                    USING ${transform};
+                `)
+                break
+              }
+              case 'collation': {
+                if (change.newCollation) {
+                  alterStmts.push(sql`
+                    ALTER TABLE ${stmt.id.toSQL()}
+                    ALTER COLUMN ${sql.id(column.name)}
+                      TYPE ${column.type.toSQL()}
+                      COLLATE ${change.newCollation.toSQL()};
+                  `)
+                }
+                break
+              }
+            }
+          }
+          if (alterStmts.length > 0) {
+            query = sql`${sql.join('\n', [query, ...alterStmts])}`
+          }
+        }
 
         // Drop any objects that depend on the columns being dropped.
         if (droppedColumns.length > 0) {
@@ -231,7 +336,10 @@ async function updateObjects(
           }
           const drops = await dropDependentObjects(oid, droppedColumns)
           if (drops) {
-            query = sql`${drops}`
+            query = sql`
+              ${query}
+              ${drops}
+            `
           }
         }
 
@@ -271,7 +379,8 @@ async function updateObjects(
             }
 
             const addColumnStmt = sql`
-              ALTER TABLE ${stmt.id.toSQL()} ADD COLUMN ${sql.unsafe(columnDDL)};
+              ALTER TABLE ${stmt.id.toSQL()}
+              ADD COLUMN ${sql.unsafe(columnDDL)};
             `
 
             return sql`
@@ -338,6 +447,9 @@ async function updateObjects(
           `
         }
       }
+
+      // This object will exist the next time we query its OID.
+      objectIds.delete(stmt.id)
     }
 
     if (query) {
