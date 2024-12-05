@@ -467,11 +467,10 @@ async function updateObjects(
     schema.objects.map(stmt => {
       const { resolve } = objectUpdates.get(stmt)!
       return updateObject(stmt).then(resolve, async error => {
-        const oid = await objectIds.get(stmt.kind, stmt.id)
         throwFormattedQueryError(error, stmt, message => {
           const id = stmt.id.toQualifiedName()
           if (!message.includes(id)) {
-            message = `Error ${oid ? 'updating' : 'creating'} ${stmt.kind} (${id}): ${message}`
+            message = `Error preparing ${stmt.kind} (${id}): ${message}`
           }
           return message
         })
