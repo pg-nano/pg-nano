@@ -1,6 +1,7 @@
 import {
   $,
   type ColumnDef,
+  type Constraint,
   ConstrType,
   type FunctionParameter,
   FunctionParameterMode,
@@ -179,6 +180,8 @@ export async function parseSQLStatements(
                 if (pktable) {
                   refs.add(pktable.relname, pktable.schemaname)
                 }
+              } else if (contype === ConstrType.CONSTR_CHECK) {
+                parseCheckConstraint(constraint.Constraint, refs)
               }
             }
           }
@@ -209,6 +212,8 @@ export async function parseSQLStatements(
                 refs.add(pktable.relname, pktable.schemaname)
               }
             }
+          } else if (contype === ConstrType.CONSTR_CHECK) {
+            parseCheckConstraint(elt.Constraint, refs)
           }
         }
       }
@@ -444,6 +449,18 @@ function findStatementStart(content: string, start: number, end: number) {
     else {
       return Math.min(i, end)
     }
+  }
+}
+
+function parseCheckConstraint(constraint: Constraint, refs: RefTracker) {
+  const { raw_expr } = $(constraint)
+  if (raw_expr) {
+    walk(raw_expr, {
+      FuncCall(path) {
+        const { funcname } = path.node
+        refs.addQualifiedName(funcname)
+      },
+    })
   }
 }
 
