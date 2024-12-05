@@ -169,6 +169,11 @@ async function updateObjects(
       }
     }
     if (drops.length > 0) {
+      if (debug.enabled) {
+        debug(
+          `dropping dependent objects => \n${drops.map(drop => pg.stringify(drop)).join('\n')}`,
+        )
+      }
       return sql.join('\n', drops)
     }
   }
