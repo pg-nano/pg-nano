@@ -493,8 +493,8 @@ async function updateCasts(
     castfunc: number
   }
 
-  // Note: Custom casts between built-in types are not supported. Custom casts
-  // which don't use a function are also not supported.
+  // Note: Custom casts between two built-in (or extension) types are not
+  // supported. Custom casts which don't use a function are also not supported.
   const existingCasts = await pg.queryRowList<Cast>(sql`
     SELECT
       castsource,
@@ -504,9 +504,11 @@ async function updateCasts(
     FROM pg_cast
     JOIN pg_type s ON s.oid = castsource
     JOIN pg_type t ON t.oid = casttarget
+    LEFT JOIN pg_depend ds ON ds.objid = s.oid AND ds.classid = 'pg_type'::regclass AND ds.deptype = 'e'
+    LEFT JOIN pg_depend dt ON dt.objid = t.oid AND dt.classid = 'pg_type'::regclass AND dt.deptype = 'e'
     WHERE castmethod = 'f'
-      AND (s.typnamespace <> 'pg_catalog'::regnamespace
-        OR t.typnamespace <> 'pg_catalog'::regnamespace)
+      AND ((ds.objid IS NULL AND s.typnamespace <> 'pg_catalog'::regnamespace)
+        OR (dt.objid IS NULL AND t.typnamespace <> 'pg_catalog'::regnamespace))
   `)
 
   const queries: SQLTemplate[] = []
