@@ -181,6 +181,7 @@ function renderTableQueries(table: Readonly<PgTableStmt>) {
       col,
       con =>
         con.contype === ConstrType.CONSTR_GENERATED ||
+        con.contype === ConstrType.CONSTR_IDENTITY ||
         con.contype === ConstrType.CONSTR_DEFAULT,
     ),
   )
@@ -190,9 +191,16 @@ function renderTableQueries(table: Readonly<PgTableStmt>) {
       !findConstraint(
         col,
         con =>
-          con.contype === ConstrType.CONSTR_GENERATED &&
+          (con.contype === ConstrType.CONSTR_GENERATED ||
+            con.contype === ConstrType.CONSTR_IDENTITY) &&
           con.generated_when === 'a',
       ),
+  )
+
+  const pkColumnsAlwaysGenerated = table.columns.filter(
+    col =>
+      table.primaryKeyColumns.includes(col.name) &&
+      findConstraint(col, con => con.generated_when === 'a'),
   )
 
   const fn = objectify(
@@ -206,7 +214,10 @@ function renderTableQueries(table: Readonly<PgTableStmt>) {
   )
 
   let updateRoutine: SQLTemplateValue = ''
+  let upsertRoutine: SQLTemplateValue = ''
 
+  // If every column in a table is a primary key, there's no point in having an
+  // update routine.
   if (columnsExceptPKs.length) {
     updateRoutine = sql`
       -- Update a row by primary key
@@ -256,9 +267,52 @@ function renderTableQueries(table: Readonly<PgTableStmt>) {
     `
   }
 
+  // The upsert routine is only useful if there are no primary key columns that
+  // are always generated. Otherwise, the upsert routine can't guarantee the
+  // stability of the primary key values.
+  if (!pkColumnsAlwaysGenerated.length) {
+    upsertRoutine = sql`
+      -- Upsert a row by primary key
+      CREATE FUNCTION ${fn.upsert}(text[])
+      RETURNS ${tableId}
+      LANGUAGE plpgsql
+      AS $$
+      DECLARE
+        _ctid tid;
+        _result ${tableId};
+      BEGIN
+        SELECT ctid FROM ${tableId}
+          WHERE ${sql.join(
+            sql.unsafe(' AND '),
+            table.primaryKeyColumns.map(pk => {
+              const index = table.columns.findIndex(col => col.name === pk)
+
+              return sql`${sql.id(pk)} = ${castColumnFromText(
+                arrayAccess(sql.unsafe('$1'), index),
+                table.columns[index],
+              )}`
+            }),
+          )}
+          LIMIT 1
+          INTO _ctid
+          FOR UPDATE;
+
+        IF FOUND THEN
+          DELETE FROM ${tableId} WHERE ctid = _ctid;
+        END IF;
+
+        SELECT * FROM ${fn.create}($1) INTO _result;
+        RETURN _result;
+      END;
+      $$;
+    `
+  }
+
   return sql`
     ${updateRoutine}
-  
+
+    ${upsertRoutine}
+
     -- Get a row by primary key
     CREATE FUNCTION ${fn.get}(${pkParams})
     RETURNS ${tableId}
@@ -328,40 +382,6 @@ function renderTableQueries(table: Readonly<PgTableStmt>) {
           : ''
       }
 
-      RETURN _result;
-    END;
-    $$;
-
-    -- Upsert a row by primary key
-    CREATE FUNCTION ${fn.upsert}(text[])
-    RETURNS ${tableId}
-    LANGUAGE plpgsql
-    AS $$
-    DECLARE
-      _ctid tid;
-      _result ${tableId};
-    BEGIN
-      SELECT ctid FROM ${tableId}
-        WHERE ${sql.join(
-          sql.unsafe(' AND '),
-          table.primaryKeyColumns.map(pk => {
-            const index = table.columns.findIndex(col => col.name === pk)
-
-            return sql`${sql.id(pk)} = ${castColumnFromText(
-              arrayAccess(sql.unsafe('$1'), index),
-              table.columns[index],
-            )}`
-          }),
-        )}
-        LIMIT 1
-        INTO _ctid
-        FOR UPDATE;
-
-      IF FOUND THEN
-        DELETE FROM ${tableId} WHERE ctid = _ctid;
-      END IF;
-
-      SELECT * FROM ${fn.create}($1) INTO _result;
       RETURN _result;
     END;
     $$;

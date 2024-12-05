@@ -2,9 +2,9 @@ import { createProject, dedent, resetPublicSchema } from '../util.js'
 
 const sql = dedent
 
-beforeEach(resetPublicSchema)
-
 describe('@pg-nano/plugin-crud', () => {
+  beforeEach(resetPublicSchema)
+
   test('basic cases', async () => {
     const project = await createProject(
       {
@@ -13,6 +13,11 @@ describe('@pg-nano/plugin-crud', () => {
             id bigint PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
             name text NOT NULL,
             tags text[] DEFAULT '{}'
+          );
+
+          CREATE TABLE "book" (
+            sku text PRIMARY KEY,
+            title text NOT NULL
           );
         `,
       },
@@ -31,46 +36,30 @@ describe('@pg-nano/plugin-crud', () => {
 
     // Create a record
     expect(await client.createUser({ name: 'John' })).toEqual({
-      id: 1, // <== generated id
+      id: 1n, // <== generated id
       name: 'John',
       tags: [], // <== default value
     })
 
     // Get a record
     expect(await client.getUser(1)).toEqual({
-      id: 1,
+      id: 1n,
       name: 'John',
       tags: [],
     })
 
     // Update a record
     expect(await client.updateUser(1, { name: 'Jonny' })).toEqual({
-      id: 1,
+      id: 1n,
       name: 'Jonny',
       tags: [],
     })
 
     // Verify update
     expect(await client.getUser(1)).toEqual({
-      id: 1,
+      id: 1n,
       name: 'Jonny',
       tags: [],
-    })
-
-    // Upsert a record
-    expect(
-      await client.upsertUser({ id: 1, name: 'John', tags: ['married'] }),
-    ).toEqual({
-      id: 1,
-      name: 'John',
-      tags: ['married'],
-    })
-
-    // Verify upsert
-    expect(await client.getUser(1)).toEqual({
-      id: 1,
-      name: 'John',
-      tags: ['married'],
     })
 
     // Delete a record
@@ -78,6 +67,40 @@ describe('@pg-nano/plugin-crud', () => {
 
     // Verify deletion
     expect(await client.getUser(1)).toEqual(null)
+
+    // Upsert a non-existent record
+    expect(
+      await client.upsertBook({
+        sku: 'abc',
+        title: 'The Art of Computer Programming',
+      }),
+    ).toEqual({
+      sku: 'abc',
+      title: 'The Art of Computer Programming',
+    })
+
+    // Verify upsert
+    expect(await client.getBook('abc')).toEqual({
+      sku: 'abc',
+      title: 'The Art of Computer Programming',
+    })
+
+    // Upsert an existing record
+    expect(
+      await client.upsertBook({
+        sku: 'abc',
+        title: 'The Art of Computer Programming Vol. 1',
+      }),
+    ).toEqual({
+      sku: 'abc',
+      title: 'The Art of Computer Programming Vol. 1',
+    })
+
+    // Verify upsert
+    expect(await client.getBook('abc')).toEqual({
+      sku: 'abc',
+      title: 'The Art of Computer Programming Vol. 1',
+    })
   })
 
   test('get - null', async () => {
