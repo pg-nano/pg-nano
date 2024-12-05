@@ -336,9 +336,10 @@ async function updateObjects(
     }
 
     if (query) {
-      const result = await pg.query(query)
-      events.emit('prepare:mutation', { query: query.command! })
-      return result
+      events.emit('mutation:apply', {
+        query: pg.stringify(query),
+      })
+      return pg.query(query)
     }
   }
 

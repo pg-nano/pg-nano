@@ -51,6 +51,10 @@ export async function migrateSchema(
       lock_timeout: stmt.lock_timeout_ms,
     })
 
+    events.emit('mutation:apply', {
+      query: stmt.ddl,
+    })
+
     await pg.query(sql.unsafe(stmt.ddl))
 
     if (stmt.ddl.startsWith('DROP TABLE')) {

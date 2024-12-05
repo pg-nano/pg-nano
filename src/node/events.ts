@@ -5,7 +5,7 @@ import util from 'node:util'
 import { stringifyConnectOptions, type ConnectOptions } from 'pg-native'
 import { capitalize, counting } from 'radashi'
 import type { Plugin } from './config/plugin.js'
-import { debug } from './debug.js'
+import { debug, traceMutations } from './debug.js'
 import { log } from './log.js'
 import type { PgInsertStmt, PgObjectStmt } from './parser/types.js'
 
@@ -18,7 +18,7 @@ type EventMap = {
   'update-object': [event: { object: PgObjectStmt }]
   'name-collision': [event: { object: PgObjectStmt }]
   'prepare:start': []
-  'prepare:mutation': [event: { query: string }]
+  'mutation:apply': [event: { query: string }]
   'prepare:skip-insert': [event: { insert: PgInsertStmt }]
   'plugin:statements': [event: { plugin: Plugin }]
   'parser:found': [
@@ -74,8 +74,8 @@ export function enableEventLogging(verbose?: boolean) {
     done = log.task('Preparing for migration...')
   })
 
-  events.on('prepare:mutation', ({ query }) => {
-    debug('Applying mutation', query)
+  events.on('mutation:apply', ({ query }) => {
+    traceMutations('Applying mutation', query)
   })
 
   events.on('prepare:skip-insert', ({ insert }) => {

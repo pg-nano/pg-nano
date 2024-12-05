@@ -87,11 +87,17 @@ export async function migrateStaticRows(
       if (!previousHashes.includes(tupleHash)) {
         insertQueue.push(async () => {
           try {
+            const insertionCTE = sql`
+              INSERT INTO ${target}
+              VALUES ${sql.list(tuple, sql.unsafe)}
+              ${returning}
+            `
+            events.emit('mutation:apply', {
+              query: pg.stringify(insertionCTE),
+            })
             await pg.query(sql`
               WITH inserted AS (
-                INSERT INTO ${target}
-                VALUES ${sql.list(tuple, sql.unsafe)}
-                ${returning}
+                ${insertionCTE}
               )
               INSERT INTO nano.inserts (hash, relname, relnamespace, pk)
               SELECT
@@ -143,7 +149,7 @@ export async function migrateStaticRows(
       }
 
       try {
-        await pg.query(sql`
+        const deletion = sql`
           DELETE FROM ${relationStmt.id.toSQL()}
           WHERE ${sql.join(
             sql.unsafe(' AND '),
@@ -151,7 +157,12 @@ export async function migrateStaticRows(
               return sql`${sql.id(name)} = ${sql.val(pk[index])}`
             }),
           )};
-
+        `
+        events.emit('mutation:apply', {
+          query: pg.stringify(deletion),
+        })
+        await pg.query(sql`
+          ${deletion}
           DELETE FROM nano.inserts WHERE hash = ${sql.val(hash)};
         `)
         deletedRowCount++
