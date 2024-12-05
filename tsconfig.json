@@ -12,6 +12,7 @@
     "moduleResolution": "bundler",
     "target": "esnext",
     "lib": ["esnext"],
+    "baseUrl": "./",
     "paths": {
       "pg-nano": ["./src/core/mod.ts"],
       "pg-nano/node": ["./src/node/index.ts"],
