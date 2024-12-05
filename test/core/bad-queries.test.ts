@@ -1,5 +1,5 @@
 import { Client, sql, type ClientConfig } from 'pg-nano'
-import { randomId } from '../util.js'
+import { uid } from 'radashi'
 
 let client: Client
 
@@ -24,14 +24,14 @@ test('SELECT from non-existent table', async () => {
 
 test('rollback on query error', async () => {
   client = await getClient()
-  const tableId = randomId()
+  const tableId = uid(20)
   try {
     await client.query(sql`
       BEGIN;
-      CREATE TABLE ${tableId} (id bigint PRIMARY KEY GENERATED ALWAYS AS IDENTITY, name text);
-      INSERT INTO ${tableId} (name) VALUES ('Bob');
+      CREATE TABLE ${sql.id(tableId)} (id bigint PRIMARY KEY GENERATED ALWAYS AS IDENTITY, name text);
+      INSERT INTO ${sql.id(tableId)} (name) VALUES ('Bob');
       SELECT 1/0; -- Error
-      INSERT INTO ${tableId} (name) VALUES ('Alice'); -- Should not run
+      INSERT INTO ${sql.id(tableId)} (name) VALUES ('Alice'); -- Should not run
       COMMIT;
     `)
   } catch (error) {
@@ -42,7 +42,7 @@ test('rollback on query error', async () => {
   }
   // Check that the table does not exist.
   const exists = await client.queryValue<boolean>(
-    sql`SELECT EXISTS (SELECT 1 FROM ${tableId})`,
+    sql`SELECT EXISTS (SELECT oid FROM pg_class WHERE relname = ${sql.val(tableId)})`,
   )
   expect(exists).toBe(false)
 })

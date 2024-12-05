@@ -6,10 +6,10 @@ import {
 import fs from 'node:fs'
 import path from 'node:path'
 import type { Readable } from 'node:stream'
-import { Client, sql } from 'pg-nano'
+import { Client } from 'pg-nano'
 import type { UserConfig } from 'pg-nano/config'
 import { events, generate, getEnv } from 'pg-nano/node'
-import { select, shake, uid } from 'radashi'
+import { select, shake } from 'radashi'
 import type { GenerateOptions } from '../src/node/generator/generate.js'
 import { dedent } from '../src/node/util/dedent.js'
 
@@ -51,10 +51,6 @@ export async function resetPublicSchema() {
     '-c',
     'DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO public',
   ])
-}
-
-export function randomId() {
-  return sql.id(uid(20))
 }
 
 export function addFixtures(
