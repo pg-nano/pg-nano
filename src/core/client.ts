@@ -6,14 +6,15 @@ import {
   hashSessionParameters,
   parseConnectionString,
   QueryType,
+  renderTemplate,
   renderTemplateValue,
+  SQLTemplate,
   stringifyConnectOptions,
   type CommandResult,
   type ConnectOptions,
   type QueryHook,
   type Row,
   type SessionParameters,
-  type SQLTemplate,
   type SQLTemplateValue,
   type TextParser,
 } from 'pg-native'
@@ -530,8 +531,7 @@ export class Client {
   }
 
   /**
-   * Returns a stringified version of the template. It's async because it uses
-   * libpq's escaping functions.
+   * Returns a stringified version of the template.
    */
   stringify(input: SQLTemplateValue, options: { reindent?: boolean } = {}) {
     // Since we're not sending anything to the server, it's perfectly fine to
@@ -541,7 +541,17 @@ export class Client {
       throw new ConnectionError('Postgres client is not connected')
     }
     // biome-ignore lint/complexity/useLiteralKeys: Protected access
-    return renderTemplateValue(input, connection['pq'], options)
+    const pq = connection['pq']
+    if (SQLTemplate.isTemplate(input)) {
+      if (!input.params || !input.command) {
+        input.params = []
+        input.command = renderTemplate(input, pq, {
+          reindent: process.env.NODE_ENV !== 'production',
+        })
+      }
+      return input.command
+    }
+    return renderTemplateValue(input, pq, options)
   }
 
   /**

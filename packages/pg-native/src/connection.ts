@@ -253,10 +253,12 @@ async function sendQuery(
   if (isFunction(input)) {
     sent = input(conn.pq, query)
   } else {
-    input.params = []
-    input.command = renderTemplate(input, conn.pq, {
-      reindent: process.env.NODE_ENV !== 'production',
-    })
+    if (!input.params || !input.command) {
+      input.params = []
+      input.command = renderTemplate(input, conn.pq, {
+        reindent: process.env.NODE_ENV !== 'production',
+      })
+    }
 
     if (process.env.NODE_ENV !== 'production' && debugQuery.enabled) {
       debugQuery(
