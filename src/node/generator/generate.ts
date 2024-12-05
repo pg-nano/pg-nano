@@ -43,7 +43,7 @@ import {
   type PgView,
 } from '../inspector/types.js'
 import { quoteName, SQLIdentifier } from '../parser/identifier.js'
-import { parseSQLStatements } from '../parser/parse.js'
+import { parseSchemaFile } from '../parser/parse.js'
 import { dedent } from '../util/dedent.js'
 import { memoAsync } from '../util/memoAsync.js'
 import { resolveImport } from '../util/resolveImport.js'
@@ -79,32 +79,32 @@ export async function generate(
 
   const readFile = options.readFile ?? fs.readFileSync
 
-  const { objectStmts, insertStmts } = flatMapProperties(
+  const schema = flatMapProperties(
     await map(filePaths, async file => {
       traceParser('parsing schema file:', file)
-      return await parseSQLStatements(readFile(file, 'utf8'), file, baseTypes)
+      return await parseSchemaFile(readFile(file, 'utf8'), file, baseTypes)
     }),
   )
 
-  events.emit('parser:found', { objectStmts, insertStmts })
+  events.emit('schema:parsed', { schema })
 
   const { pluginsByStatementId, droppedTables, sortedObjectStmts } =
-    await prepareDatabase(objectStmts, insertStmts, baseTypes, env)
+    await prepareDatabase(schema, baseTypes, env)
 
   await migrateSchema(env, droppedTables)
-  await migrateStaticRows(pg, insertStmts, objectStmts, droppedTables)
+  await migrateStaticRows(pg, schema, droppedTables)
 
   if (options.noEmit) {
     return
   }
 
   const tableStmts = mapify(
-    objectStmts.filter(obj => obj.kind === 'table'),
+    schema.objects.filter(obj => obj.kind === 'table'),
     obj => obj.id.toQualifiedName(),
   )
 
   const routineStmts = mapify(
-    objectStmts.filter(obj => obj.kind === 'routine'),
+    schema.objects.filter(obj => obj.kind === 'routine'),
     obj => obj.id.toQualifiedName(),
   )
 
@@ -965,7 +965,7 @@ export async function generate(
 
     for (const object of objects) {
       if (renderedObjects.has(object)) {
-        const stmt = objectStmts.find(
+        const stmt = schema.objects.find(
           stmt =>
             object.name === stmt.id.name &&
             object.schema === (stmt.id.schema ?? 'public'),

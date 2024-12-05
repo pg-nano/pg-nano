@@ -2,6 +2,7 @@ import type { Field } from 'pg-native'
 import type {
   ColumnDef,
   CompositeTypeStmt,
+  CreateCastStmt,
   CreateEnumStmt,
   CreateExtensionStmt,
   CreateFunctionStmt,
@@ -38,7 +39,7 @@ interface IPgStmt<TNode extends object> {
 
 interface IPgObjectStmt<TNode extends object> extends IPgStmt<TNode> {
   id: SQLIdentifier
-  dependents: Set<PgObjectStmt>
+  dependents: Set<PgObjectStmt | PgCastStmt>
 }
 
 export type PgParamDef = {
@@ -112,6 +113,14 @@ export interface PgSchemaStmt extends IPgObjectStmt<CreateSchemaStmt> {
 
 export interface PgExtensionStmt extends IPgObjectStmt<CreateExtensionStmt> {
   kind: 'extension'
+}
+
+export interface PgCastStmt extends IPgStmt<CreateCastStmt> {
+  kind: 'cast'
+  sourceId: SQLTypeIdentifier
+  targetId: SQLTypeIdentifier
+  funcId: SQLIdentifier
+  context: 'a' | 'e' | 'i'
 }
 
 export interface PgInsertStmt extends IPgStmt<InsertStmt> {

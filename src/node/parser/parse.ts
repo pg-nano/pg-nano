@@ -1,5 +1,6 @@
 import {
   $,
+  CoercionContext,
   type ColumnDef,
   type Constraint,
   ConstrType,
@@ -20,6 +21,7 @@ import { appendCodeFrame } from '../util/codeFrame.js'
 import { parseQualifiedName, SQLIdentifier } from './identifier.js'
 import { SQLTypeIdentifier } from './typeIdentifier.js'
 import type {
+  PgCastStmt,
   PgColumnDef,
   PgInsertStmt,
   PgObjectStmt,
@@ -37,18 +39,24 @@ const serialTypes = [
   'serial8',
 ]
 
-export async function parseSQLStatements(
+export type PgSchema = {
+  inserts: PgInsertStmt[]
+  objects: PgObjectStmt[]
+  casts: PgCastStmt[]
+}
+
+export async function parseSchemaFile(
   content: string,
   file: string,
   baseTypes: PgBaseType[],
-) {
-  const stmts = splitWithScannerSync(content)
-  const objectStmts: PgObjectStmt[] = []
-  const insertStmts: PgInsertStmt[] = []
+): Promise<PgSchema> {
+  const inserts: PgInsertStmt[] = []
+  const objects: PgObjectStmt[] = []
+  const casts: PgCastStmt[] = []
 
   const lineBreaks = getLineBreakLocations(content)
 
-  for (const { location, length } of stmts) {
+  for (const { location, length } of splitWithScannerSync(content)) {
     const end = location + length
     const start = findStatementStart(content, location, end)
 
@@ -128,7 +136,7 @@ export async function parseSQLStatements(
           ? SQLTypeIdentifier.fromTypeName(fn.returnType)
           : undefined
 
-      objectStmts.push({
+      objects.push({
         kind: 'routine',
         node: fn,
         id,
@@ -224,7 +232,7 @@ export async function parseSQLStatements(
         }
       }
 
-      objectStmts.push({
+      objects.push({
         kind: 'table',
         node: node.CreateStmt,
         id,
@@ -253,7 +261,7 @@ export async function parseSQLStatements(
         },
       )
 
-      objectStmts.push({
+      objects.push({
         kind: 'type',
         subkind: 'composite',
         node: node.CompositeTypeStmt,
@@ -267,7 +275,7 @@ export async function parseSQLStatements(
       const id = SQLIdentifier.fromQualifiedName(typeName)
       const labels = vals.map(val => $(val).sval)
 
-      objectStmts.push({
+      objects.push({
         kind: 'type',
         subkind: 'enum',
         node: node.CreateEnumStmt,
@@ -296,7 +304,7 @@ export async function parseSQLStatements(
         },
       })
 
-      objectStmts.push({
+      objects.push({
         kind: 'view',
         node: node.ViewStmt,
         id,
@@ -308,7 +316,7 @@ export async function parseSQLStatements(
       const { schemaname } = $(node)
       const id = new SQLIdentifier('', schemaname!)
 
-      objectStmts.push({
+      objects.push({
         kind: 'schema',
         node: node.CreateSchemaStmt,
         id,
@@ -318,10 +326,30 @@ export async function parseSQLStatements(
       const { extname } = $(node)
       const id = new SQLIdentifier(extname)
 
-      objectStmts.push({
+      objects.push({
         kind: 'extension',
         node: node.CreateExtensionStmt,
         id,
+        ...stmt,
+      })
+    } else if ($.isCreateCastStmt(node)) {
+      const { sourcetype, targettype, func, context } = $(node)
+      if (!func) {
+        events.emit('parser:unhandled-statement', { query, node })
+        continue
+      }
+      casts.push({
+        kind: 'cast',
+        node: node.CreateCastStmt,
+        sourceId: SQLTypeIdentifier.fromTypeName(sourcetype),
+        targetId: SQLTypeIdentifier.fromTypeName(targettype),
+        funcId: SQLIdentifier.fromQualifiedName(func.objname),
+        context:
+          context === CoercionContext.COERCION_IMPLICIT
+            ? 'i'
+            : context === CoercionContext.COERCION_EXPLICIT
+              ? 'e'
+              : 'a',
         ...stmt,
       })
     } else if ($.isInsertStmt(node)) {
@@ -389,7 +417,7 @@ export async function parseSQLStatements(
           return name
         }) ?? null
 
-      insertStmts.push({
+      inserts.push({
         kind: 'insert',
         node: node.InsertStmt,
         relationId: new SQLIdentifier(relation.relname, relation.schemaname),
@@ -411,7 +439,11 @@ export async function parseSQLStatements(
     }
   }
 
-  return { objectStmts, insertStmts }
+  return {
+    inserts,
+    objects,
+    casts,
+  }
 }
 
 function getLineBreakLocations(content: string) {

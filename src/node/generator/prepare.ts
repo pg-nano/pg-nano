@@ -17,20 +17,24 @@ import {
   hasRoutineSignatureChanged,
   hasViewChanged,
 } from '../inspector/diff.js'
-import { createIdentityCache } from '../inspector/identity.js'
-import { createNameResolver } from '../inspector/name.js'
+import {
+  createIdentityCache,
+  type IdentityCache,
+} from '../inspector/identity.js'
+import { createNameResolver, type NameResolver } from '../inspector/name.js'
 import type { PgBaseType } from '../inspector/types.js'
-import { linkObjectStatements } from '../linker/link.js'
+import { linkStatements } from '../linker/link.js'
 import { extractColumnDefinition } from '../parser/column.js'
 import { SQLIdentifier } from '../parser/identifier.js'
-import { parseSQLStatements } from '../parser/parse.js'
-import type { PgInsertStmt, PgObjectStmt } from '../parser/types.js'
+import { parseSchemaFile, type PgSchema } from '../parser/parse.js'
+import { SQLTypeIdentifier } from '../parser/typeIdentifier.js'
+import type { PgObjectStmt } from '../parser/types.js'
+import { memo } from '../util/memo.js'
 import { memoAsync } from '../util/memoAsync.js'
 import { throwFormattedQueryError } from './error.js'
 
 export async function prepareDatabase(
-  objectStmts: PgObjectStmt[],
-  insertStmts: PgInsertStmt[],
+  schema: PgSchema,
   baseTypes: PgBaseType[],
   env: Env,
 ) {
@@ -39,10 +43,9 @@ export async function prepareDatabase(
   // Plugins may add to the object list, so run them before linking the object
   // dependencies together.
   const pluginsByStatementId = await preparePluginStatements(
-    env,
+    schema,
     baseTypes,
-    objectStmts,
-    insertStmts,
+    env,
   )
 
   debug('plugin statements prepared')
@@ -50,7 +53,7 @@ export async function prepareDatabase(
   // Since pg-schema-diff is still somewhat limited, we have to create our own
   // dependency graph, so we can ensure all objects (and their dependencies)
   // exist before pg-schema-diff works its magic.
-  const sortedObjectStmts = linkObjectStatements(objectStmts)
+  const sortedObjectStmts = linkStatements(schema)
 
   if (traceDepends.enabled) {
     for (const stmt of sortedObjectStmts) {
@@ -79,7 +82,7 @@ export async function prepareDatabase(
     CREATE SCHEMA nano_tmp;
   `)
   try {
-    await updateObjects(pg, objectStmts, droppedTables)
+    await updateObjects(pg, schema, droppedTables)
   } finally {
     // Drop the "nano_tmp" schema now that diffing is complete.
     await pg.query(sql`
@@ -117,7 +120,7 @@ export async function prepareDatabase(
 
 async function updateObjects(
   pg: Client,
-  objectStmts: PgObjectStmt[],
+  schema: PgSchema,
   droppedTables: Set<SQLIdentifier>,
 ) {
   const names = createNameResolver(pg)
@@ -126,7 +129,7 @@ async function updateObjects(
 
   const objectNames = new Set<string>()
   const objectUpdates = new Map(
-    objectStmts.map(stmt => [stmt, Promise.withResolvers<any>()] as const),
+    schema.objects.map(stmt => [stmt, Promise.withResolvers<any>()] as const),
   )
 
   // The schema-qualified names of objects that will be dropped.
@@ -461,7 +464,7 @@ async function updateObjects(
   }
 
   await Promise.all(
-    objectStmts.map(stmt => {
+    schema.objects.map(stmt => {
       const { resolve } = objectUpdates.get(stmt)!
       return updateObject(stmt).then(resolve, async error => {
         const oid = await objectIds.get(stmt.kind, stmt.id)
@@ -475,13 +478,135 @@ async function updateObjects(
       })
     }),
   )
+
+  await updateCasts(pg, schema, objectIds, names)
+}
+
+async function updateCasts(
+  pg: Client,
+  schema: PgSchema,
+  objectIds: IdentityCache,
+  names: NameResolver,
+) {
+  type Cast = {
+    castsource: number
+    casttarget: number
+    castcontext: 'a' | 'e' | 'i'
+    castfunc: number
+  }
+
+  // Note: Custom casts between built-in types are not supported. Custom casts
+  // which don't use a function are also not supported.
+  const existingCasts = await pg.queryRowList<Cast>(sql`
+    SELECT
+      castsource,
+      casttarget,
+      castcontext,
+      castfunc
+    FROM pg_cast
+    JOIN pg_type s ON s.oid = castsource
+    JOIN pg_type t ON t.oid = casttarget
+    WHERE castmethod = 'f'
+      AND (s.typnamespace <> 'pg_catalog'::regnamespace
+        OR t.typnamespace <> 'pg_catalog'::regnamespace)
+  `)
+
+  const queries: SQLTemplate[] = []
+  const undroppedCasts = new Set<Cast>()
+
+  await Promise.all(
+    schema.casts.map(async stmt => {
+      stmt.sourceId.schema ??= (await names.resolve(stmt.sourceId.name))?.schema
+      stmt.targetId.schema ??= (await names.resolve(stmt.targetId.name))?.schema
+
+      const sourceTypeOid = await objectIds.get('type', stmt.sourceId)
+      const targetTypeOid = await objectIds.get('type', stmt.targetId)
+
+      if (!sourceTypeOid) {
+        throw new Error(
+          `Could not update cast. Source type not found: ${stmt.sourceId.toQualifiedName()}.`,
+        )
+      }
+      if (!targetTypeOid) {
+        throw new Error(
+          `Could not update cast. Target type not found: ${stmt.targetId.toQualifiedName()}.`,
+        )
+      }
+
+      const cast = existingCasts.find(
+        cast =>
+          cast.castsource === sourceTypeOid &&
+          cast.casttarget === targetTypeOid,
+      )
+
+      if (!cast) {
+        queries.push(sql.unsafe(stmt.query))
+        return
+      }
+
+      undroppedCasts.add(cast)
+
+      let changed = false
+      if (cast.castcontext !== stmt.context) {
+        changed = true
+      } else {
+        const funcOid = await objectIds.get('routine', stmt.funcId)
+        // TODO: check if the function arguments have changed
+        if (cast.castfunc !== funcOid) {
+          changed = true
+        }
+      }
+
+      if (changed) {
+        queries.push(sql`
+          DROP CAST (${stmt.sourceId.toSQL()} AS ${stmt.targetId.toSQL()}) CASCADE;
+          ${sql.unsafe(stmt.query)}
+        `)
+      }
+    }),
+  )
+
+  const identifyTypeByOid = memo(async (oid: number) => {
+    const { name, schema } = await pg.queryRow<{
+      name: string
+      schema: string
+    }>(sql`
+      SELECT
+        typname AS "name",
+        nspname AS "schema"
+      FROM pg_type t
+      JOIN pg_namespace n ON n.oid = t.typnamespace
+      WHERE t.oid = ${sql.val(oid)}
+    `)
+
+    return new SQLTypeIdentifier(name, schema)
+  })
+
+  for (const cast of existingCasts) {
+    if (!undroppedCasts.has(cast)) {
+      const sourceId = await identifyTypeByOid(cast.castsource)
+      const targetId = await identifyTypeByOid(cast.casttarget)
+
+      queries.push(sql`
+        DROP CAST (${sourceId.toSQL()} AS ${targetId.toSQL()}) CASCADE;
+      `)
+    }
+  }
+
+  await Promise.all(
+    queries.map(query => {
+      events.emit('mutation:apply', {
+        query: pg.stringify(query),
+      })
+      return pg.query(query)
+    }),
+  )
 }
 
 async function preparePluginStatements(
-  env: Env,
+  schema: PgSchema,
   baseTypes: PgBaseType[],
-  objects: PgObjectStmt[],
-  inserts: PgInsertStmt[],
+  env: Env,
 ) {
   // Ensure that removed plugins don't leave behind any SQL files.
   fs.rmSync(env.config.generate.pluginSqlDir, {
@@ -504,7 +629,7 @@ async function preparePluginStatements(
   fs.mkdirSync(env.config.generate.pluginSqlDir, { recursive: true })
 
   const context: PluginContext['statements'] = {
-    objects: objects.filter(object => object.id.schema !== 'nano'),
+    objects: schema.objects.filter(object => object.id.schema !== 'nano'),
   }
 
   for (const plugin of plugins) {
@@ -530,28 +655,28 @@ async function preparePluginStatements(
 
       // Immediately parse the generated statements so they can be used by
       // plugins that run after this one.
-      const parsedOutput = await parseSQLStatements(content, outFile, baseTypes)
+      const pluginSchema = await parseSchemaFile(content, outFile, baseTypes)
 
-      for (const object of parsedOutput.objectStmts) {
-        if (objects.some(other => other.id.equals(object.id))) {
+      for (const object of pluginSchema.objects) {
+        if (schema.objects.some(other => other.id.equals(object.id))) {
           events.emit('name-collision', { object })
           continue
         }
-        objects.push(object)
+        schema.objects.push(object)
         pluginsByStatementId.set(object.id.toQualifiedName(), plugin)
       }
 
-      for (const insert of parsedOutput.insertStmts) {
-        const relation = objects.find(object =>
+      for (const insert of pluginSchema.inserts) {
+        const relation = schema.objects.find(object =>
           object.id.equals(insert.relationId),
         )
 
-        if (!relation || !parsedOutput.objectStmts.includes(relation)) {
+        if (!relation || !pluginSchema.objects.includes(relation)) {
           events.emit('prepare:skip-insert', { insert })
           continue
         }
 
-        inserts.push(insert)
+        schema.inserts.push(insert)
       }
     }
   }

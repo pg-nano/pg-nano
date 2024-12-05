@@ -1,20 +1,15 @@
 import { createHash } from 'node:crypto'
 import { type Client, sql } from 'pg-nano'
-import {
-  type PgInsertStmt,
-  type PgObjectStmt,
-  type PgTableStmt,
-  SQLIdentifier,
-} from 'pg-nano/plugin'
+import { type PgTableStmt, SQLIdentifier } from 'pg-nano/plugin'
 import { map } from 'radashi'
 import { debug } from '../../debug.js'
 import { events } from '../../events.js'
+import type { PgSchema } from '../../parser/parse.js'
 import { throwFormattedQueryError } from '../error.js'
 
 export async function migrateStaticRows(
   pg: Client,
-  insertStmts: PgInsertStmt[],
-  objectStmts: PgObjectStmt[],
+  schema: PgSchema,
   droppedTables: Set<SQLIdentifier>,
 ) {
   events.emit('migrate:static-rows:start')
@@ -48,8 +43,8 @@ export async function migrateStaticRows(
 
   // Note: Static INSERTs must not depend on each other, since they're not
   // sorted before they're applied.
-  for (const insertStmt of insertStmts) {
-    const relationStmt = objectStmts.find(objectStmt =>
+  for (const insertStmt of schema.inserts) {
+    const relationStmt = schema.objects.find(objectStmt =>
       objectStmt.id.equals(insertStmt.relationId),
     ) as PgTableStmt | undefined
 
@@ -126,21 +121,21 @@ export async function migrateStaticRows(
         continue
       }
 
-      const { name, schema, pk } = await pg.queryRow<{
-        name: string
+      const row = await pg.queryRow<{
+        table: string
         schema: string
         pk: string[]
       }>(sql`
         SELECT
-          relname AS "name",
+          relname AS "table",
           relnamespace AS "schema",
           pk
         FROM nano.inserts
         WHERE hash = ${sql.val(hash)};
       `)
 
-      const relationId = new SQLIdentifier(name, schema)
-      const relationStmt = objectStmts.find(objectStmt =>
+      const relationId = new SQLIdentifier(row.table, row.schema)
+      const relationStmt = schema.objects.find(objectStmt =>
         objectStmt.id.equals(relationId),
       ) as PgTableStmt | undefined
 
@@ -154,7 +149,7 @@ export async function migrateStaticRows(
           WHERE ${sql.join(
             sql.unsafe(' AND '),
             relationStmt.primaryKeyColumns.map((name, index) => {
-              return sql`${sql.id(name)} = ${sql.val(pk[index])}`
+              return sql`${sql.id(name)} = ${sql.val(row.pk[index])}`
             }),
           )};
         `

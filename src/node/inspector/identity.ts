@@ -54,6 +54,8 @@ const objectLookupSchemes: Record<PgObjectStmtKind, ObjectLookupScheme> = {
   },
 }
 
+export type IdentityCache = ReturnType<typeof createIdentityCache>
+
 export function createIdentityCache(pg: Client) {
   const cache: Record<string, Promise<number | null>> = {}
 

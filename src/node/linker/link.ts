@@ -1,15 +1,16 @@
 import { SQLIdentifier } from '../parser/identifier.js'
-import type { PgObjectStmt } from '../parser/types.js'
+import type { PgSchema } from '../parser/parse.js'
+import type { PgCastStmt, PgObjectStmt } from '../parser/types.js'
 import { TopologicalSet } from './topologicalSet.js'
 
 /**
  * Populate the dependencies and dependents of each object statement. Returns a
  * topological set of the objects.
  */
-export function linkObjectStatements(objects: PgObjectStmt[]) {
+export function linkStatements(schema: PgSchema) {
   const objectsByName = new Map<string, PgObjectStmt>()
 
-  const idSortedObjects = objects.toSorted((left, right) => {
+  const idSortedObjects = schema.objects.toSorted((left, right) => {
     const cmp = (left.id.schema ?? 'public').localeCompare(
       right.id.schema ?? 'public',
     )
@@ -23,7 +24,7 @@ export function linkObjectStatements(objects: PgObjectStmt[]) {
     objectsByName.set(object.id.toQualifiedName(), object)
   }
 
-  const link = (stmt: PgObjectStmt, id: SQLIdentifier) => {
+  const link = (stmt: PgCastStmt | PgObjectStmt, id: SQLIdentifier) => {
     const dep = objectsByName.get(id.toQualifiedName())
     if (dep && dep !== stmt) {
       stmt.dependencies.add(dep)
@@ -65,6 +66,11 @@ export function linkObjectStatements(objects: PgObjectStmt[]) {
         }
       }
     }
+  }
+
+  for (const stmt of schema.casts) {
+    link(stmt, stmt.sourceId)
+    link(stmt, stmt.targetId)
   }
 
   return new TopologicalSet(idSortedObjects)

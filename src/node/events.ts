@@ -7,6 +7,7 @@ import { capitalize, counting } from 'radashi'
 import type { Plugin } from './config/plugin.js'
 import { debug, traceMutations } from './debug.js'
 import { log } from './log.js'
+import type { PgSchema } from './parser/parse.js'
 import type { PgInsertStmt, PgObjectStmt } from './parser/types.js'
 
 type EventMap = {
@@ -21,9 +22,7 @@ type EventMap = {
   'mutation:apply': [event: { query: string }]
   'prepare:skip-insert': [event: { insert: PgInsertStmt }]
   'plugin:statements': [event: { plugin: Plugin }]
-  'parser:found': [
-    event: { objectStmts: PgObjectStmt[]; insertStmts: PgInsertStmt[] },
-  ]
+  'schema:parsed': [event: { schema: PgSchema }]
   'parser:skip-column': [event: { columnDef: ColumnDef }]
   'parser:unhandled-statement': [event: { query: string; node: Node }]
   'parser:unhandled-insert': [event: { insertStmt: InsertStmt }]
@@ -102,14 +101,14 @@ export function enableEventLogging(verbose?: boolean) {
   const pluralize = (noun: string, count: number) =>
     `${noun}${count > 1 ? 's' : ''}`
 
-  events.on('parser:found', ({ objectStmts, insertStmts }) => {
+  events.on('schema:parsed', ({ schema }) => {
     const found: string[] = []
     for (const [kind, count] of Object.entries(
-      counting(objectStmts, stmt => stmt.kind),
+      counting(schema.objects, stmt => stmt.kind),
     )) {
       found.push(count + ' ' + pluralize(kind, count))
     }
-    const insertCount = insertStmts.reduce(
+    const insertCount = schema.inserts.reduce(
       (sum, insert) => sum + insert.tuples.length,
       0,
     )
