@@ -1,5 +1,5 @@
 CREATE TABLE person (
-  id serial PRIMARY KEY,
+  id bigint PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
   name text
 );
 

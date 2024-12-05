@@ -28,7 +28,7 @@ test('rollback on query error', async () => {
   try {
     await client.query(sql`
       BEGIN;
-      CREATE TABLE ${tableId} (id serial PRIMARY KEY, name text);
+      CREATE TABLE ${tableId} (id bigint PRIMARY KEY GENERATED ALWAYS AS IDENTITY, name text);
       INSERT INTO ${tableId} (name) VALUES ('Bob');
       SELECT 1/0; -- Error
       INSERT INTO ${tableId} (name) VALUES ('Alice'); -- Should not run

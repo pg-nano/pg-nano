@@ -24,6 +24,14 @@ import type {
 } from './types.js'
 
 const whitespace = ' \n\t\r'.split('').map(c => c.charCodeAt(0))
+const serialTypes = [
+  'smallserial',
+  'serial',
+  'bigserial',
+  'serial2',
+  'serial4',
+  'serial8',
+]
 
 export async function parseSQLStatements(
   content: string,
@@ -144,6 +152,19 @@ export async function parseSQLStatements(
             continue
           }
 
+          const type = SQLIdentifier.fromTypeName(typeName)
+          if (
+            type.schema == null &&
+            baseTypes.some(t => t.name === type.name)
+          ) {
+            type.schema = 'pg_catalog'
+          }
+          if (type.schema === 'pg_catalog' && serialTypes.includes(type.name)) {
+            throw new Error(
+              `Serial types are not supported by pg-nano. Please change ${id.withField(colname).toSQL()} to a supported type.`,
+            )
+          }
+
           const refs: SQLIdentifier[] = []
 
           if (constraints) {
@@ -160,14 +181,6 @@ export async function parseSQLStatements(
                 }
               }
             }
-          }
-
-          const type = SQLIdentifier.fromTypeName(typeName)
-          if (
-            type.schema == null &&
-            baseTypes.some(t => t.name === type.name)
-          ) {
-            type.schema = 'pg_catalog'
           }
 
           columns.push({

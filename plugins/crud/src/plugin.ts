@@ -10,7 +10,6 @@ import {
   type PgTableStmt,
   type Plugin,
   sql,
-  type SQLIdentifier,
   type SQLTemplateValue,
 } from 'pg-nano/plugin'
 import { isString, objectify } from 'radashi'
@@ -108,10 +107,6 @@ export default function (): Plugin {
   }
 }
 
-function isSerialType(id: SQLIdentifier) {
-  return id.name === 'serial' && !id.schema
-}
-
 function castColumnFromText(
   value: SQLTemplateValue,
   col: PgColumnDef<ColumnDef>,
@@ -125,11 +120,6 @@ function castColumnFromText(
     type.schema === 'pg_catalog'
   ) {
     return value
-  }
-  // The "serial" column type is a pseudo type, so we need to cast to "int",
-  // which is the real type that it maps to.
-  if (isSerialType(type)) {
-    return sql`${value}::int`
   }
   return sql`${value}::${type.toSQL()}`
 }
@@ -186,15 +176,13 @@ function renderTableQueries(table: Readonly<PgTableStmt>) {
     col => !table.primaryKeyColumns.includes(col.name),
   )
 
-  const columnsWithDefault = table.columns.filter(
-    col =>
-      isSerialType(col.type) ||
-      findConstraint(
-        col,
-        con =>
-          con.contype === ConstrType.CONSTR_GENERATED ||
-          con.contype === ConstrType.CONSTR_DEFAULT,
-      ),
+  const columnsWithDefault = table.columns.filter(col =>
+    findConstraint(
+      col,
+      con =>
+        con.contype === ConstrType.CONSTR_GENERATED ||
+        con.contype === ConstrType.CONSTR_DEFAULT,
+    ),
   )
 
   const columnsWithDefaultNotAlwaysGenerated = columnsWithDefault.filter(

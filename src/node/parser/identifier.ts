@@ -82,9 +82,12 @@ export class SQLIdentifier {
    * specified.
    */
   toQualifiedName(defaultSchema?: string) {
+    const schema = this.schema ?? defaultSchema ?? 'public'
+
     return (
-      unsafelyQuotedName(this.schema ?? defaultSchema ?? 'public') +
-      (this.name ? '.' + unsafelyQuotedName(this.name) : '')
+      (schema ? unsafelyQuotedName(schema) : '') +
+      (this.name ? (schema ? '.' : '') + unsafelyQuotedName(this.name) : '') +
+      (this.field ? '.' + unsafelyQuotedName(this.field) : '')
     )
   }
 
@@ -111,6 +114,15 @@ export class SQLIdentifier {
    */
   withSchema(schema: string) {
     return new SQLIdentifier(this.name, schema)
+  }
+
+  /**
+   * Copy this identifier with a new field name.
+   */
+  withField(field: string): this {
+    const id = Object.create(this) as this
+    id.field = field
+    return id
   }
 
   /**

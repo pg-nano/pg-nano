@@ -10,7 +10,7 @@ describe('@pg-nano/plugin-crud', () => {
       {
         'sql/schema.sql': sql`
           CREATE TABLE "user" (
-            id serial PRIMARY KEY,
+            id bigint PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
             name text NOT NULL,
             tags text[] DEFAULT '{}'
           );
@@ -31,7 +31,7 @@ describe('@pg-nano/plugin-crud', () => {
 
     // Create a record
     expect(await client.createUser({ name: 'John' })).toEqual({
-      id: 1, // <== serial id
+      id: 1, // <== generated id
       name: 'John',
       tags: [], // <== default value
     })
