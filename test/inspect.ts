@@ -27,4 +27,4 @@ function inspectProperties(ctor: any, properties: string[]) {
 }
 
 inspectProperties(ChildProcess, ['spawnfile', 'spawnargs'])
-inspectCustom(SQLIdentifier, id => id.toQualifiedName())
+inspectCustom(SQLIdentifier, id => id.toQualifiedName(''))
