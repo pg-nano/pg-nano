@@ -385,7 +385,7 @@ export async function generate(
     let type = typesByOid.get(oid)
 
     if (fieldMapperPlugins.length > 0) {
-      const mapFieldContext = {
+      const mapFieldContext: PluginContext['mapField'] = {
         ...generateContext,
         ...fieldContext,
         fieldType: type ?? typesByName.get('unknown')!,

@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { type Client, sql } from 'pg-nano'
 import { map, sift } from 'radashi'
-import type { Plugin, SQLTemplate } from '../config/plugin.js'
+import type { Plugin, PluginContext, SQLTemplate } from '../config/plugin.js'
 import { debug, traceDepends } from '../debug.js'
 import type { Env } from '../env.js'
 import { events } from '../events.js'
@@ -503,10 +503,14 @@ async function preparePluginStatements(
 
   fs.mkdirSync(env.config.generate.pluginSqlDir, { recursive: true })
 
+  const context: PluginContext['statements'] = {
+    objects: objects.filter(object => object.id.schema !== 'nano'),
+  }
+
   for (const plugin of plugins) {
     events.emit('plugin:statements', { plugin })
 
-    const template = await plugin.statements({ objects }, env.config)
+    const template = await plugin.statements(context, env.config)
 
     if (template) {
       const outFile = path.join(
