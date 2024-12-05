@@ -53,21 +53,16 @@ export function linkObjectStatements(objects: PgObjectStmt[]) {
           link(stmt, columnDef.type.toIdentifier())
         }
       }
-    } else if (
-      stmt.kind === 'table' ||
-      (stmt.kind === 'type' && stmt.subkind === 'composite')
-    ) {
-      for (const column of stmt.columns) {
-        link(stmt, column.type.toIdentifier())
-        if (column.refs) {
-          for (const ref of column.refs) {
-            link(stmt, ref)
-          }
+    } else {
+      if ('columns' in stmt) {
+        for (const column of stmt.columns) {
+          link(stmt, column.type.toIdentifier())
         }
       }
-    } else if (stmt.kind === 'view') {
-      for (const ref of stmt.refs) {
-        link(stmt, ref)
+      if ('refs' in stmt) {
+        for (const ref of stmt.refs) {
+          link(stmt, ref)
+        }
       }
     }
   }

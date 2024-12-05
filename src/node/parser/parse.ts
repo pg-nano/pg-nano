@@ -5,6 +5,7 @@ import {
   type FunctionParameter,
   FunctionParameterMode,
   parseQuery,
+  type QualifiedName,
   scanSync,
   select,
   splitWithScannerSync,
@@ -15,7 +16,7 @@ import { traceParser } from '../debug.js'
 import { events } from '../events.js'
 import type { PgBaseType } from '../inspector/types.js'
 import { appendCodeFrame } from '../util/codeFrame.js'
-import { SQLIdentifier, toUniqueIdList } from './identifier.js'
+import { parseQualifiedName, SQLIdentifier } from './identifier.js'
 import { SQLTypeIdentifier } from './typeIdentifier.js'
 import type {
   PgColumnDef,
@@ -145,6 +146,7 @@ export async function parseSQLStatements(
       const id = new SQLIdentifier(relation.relname, relation.schemaname)
       const columns: PgTableColumnDef[] = []
       const primaryKeyColumns: string[] = []
+      const refs = createRefTracker()
 
       for (const elt of tableElts) {
         if ($.isColumnDef(elt)) {
@@ -167,8 +169,6 @@ export async function parseSQLStatements(
             )
           }
 
-          const refs: SQLIdentifier[] = []
-
           if (constraints) {
             for (const constraint of constraints) {
               const { contype } = $(constraint)
@@ -177,9 +177,7 @@ export async function parseSQLStatements(
               } else if (contype === ConstrType.CONSTR_FOREIGN) {
                 const { pktable } = $(constraint)
                 if (pktable) {
-                  refs.push(
-                    new SQLIdentifier(pktable.relname, pktable.schemaname),
-                  )
+                  refs.add(pktable.relname, pktable.schemaname)
                 }
               }
             }
@@ -192,7 +190,6 @@ export async function parseSQLStatements(
               ? SQLIdentifier.fromQualifiedName(collClause.collname)
               : null,
             isPrimaryKey: false,
-            refs,
             node: elt.ColumnDef,
           })
         } else if ($.isConstraint(elt)) {
@@ -209,9 +206,7 @@ export async function parseSQLStatements(
             for (const attr of fk_attrs) {
               const column = columns.find(c => c.name === attr.String.sval)
               if (column) {
-                column.refs!.push(
-                  new SQLIdentifier(pktable.relname, pktable.schemaname),
-                )
+                refs.add(pktable.relname, pktable.schemaname)
               }
             }
           }
@@ -230,6 +225,7 @@ export async function parseSQLStatements(
         id,
         columns,
         primaryKeyColumns,
+        refs: refs.toArray(),
         ...stmt,
       })
     } else if ($.isCompositeTypeStmt(node)) {
@@ -278,20 +274,20 @@ export async function parseSQLStatements(
       const { view, query } = $(node)
 
       const id = new SQLIdentifier(view.relname, view.schemaname)
-      const refs: SQLIdentifier[] = []
+      const refs = createRefTracker()
 
       walk(query, {
         RangeVar(path) {
           const { relname, schemaname } = path.node
-          refs.push(new SQLIdentifier(relname, schemaname))
+          refs.add(relname, schemaname)
         },
         FuncCall(path) {
           const { funcname } = path.node
-          refs.push(SQLIdentifier.fromQualifiedName(funcname))
+          refs.addQualifiedName(funcname)
         },
         TypeCast(path) {
           const { typeName } = path.node
-          refs.push(SQLTypeIdentifier.fromTypeName(typeName).toIdentifier())
+          refs.addQualifiedName(typeName.names)
         },
       })
 
@@ -299,13 +295,7 @@ export async function parseSQLStatements(
         kind: 'view',
         node: node.ViewStmt,
         id,
-        refs: toUniqueIdList(
-          refs.filter(
-            id =>
-              id.schema !== 'pg_catalog' && id.schema !== 'information_schema',
-          ),
-          view.schemaname,
-        ),
+        refs: refs.toArray(),
         fields: null,
         ...stmt,
       })
@@ -454,5 +444,32 @@ function findStatementStart(content: string, start: number, end: number) {
     else {
       return Math.min(i, end)
     }
+  }
+}
+
+type RefTracker = ReturnType<typeof createRefTracker>
+
+function createRefTracker() {
+  const refs: SQLIdentifier[] = []
+  const map: Record<string, SQLIdentifier> = {}
+
+  return {
+    add(name: string, schema: string | undefined) {
+      const hash = `${schema ?? ''}.${name}`
+      if (map[hash]) {
+        return map[hash]
+      }
+      const id = new SQLIdentifier(name, schema)
+      map[hash] = id
+      refs.push(id)
+      return id
+    },
+    addQualifiedName(names: QualifiedName) {
+      const { name, schema } = parseQualifiedName(names)
+      this.add(name, schema)
+    },
+    toArray() {
+      return refs
+    },
   }
 }

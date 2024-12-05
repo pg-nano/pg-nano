@@ -54,7 +54,6 @@ export type PgColumnDef<
   type: SQLTypeIdentifier
   collationName?: SQLIdentifier | null
   isPrimaryKey?: boolean
-  refs?: SQLIdentifier[]
   /**
    * This will be a `FunctionParameter` node if declared as an OUT or INOUT
    * parameter. Otherwise, it's a `ColumnDef` node.
@@ -79,6 +78,7 @@ export interface PgTableStmt extends IPgObjectStmt<CreateStmt> {
   kind: 'table'
   columns: PgTableColumnDef[]
   primaryKeyColumns: string[]
+  refs: SQLIdentifier[]
 }
 
 export interface PgTypeStmt<TNode extends object> extends IPgObjectStmt<TNode> {
