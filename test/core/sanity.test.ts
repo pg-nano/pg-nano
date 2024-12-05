@@ -1,6 +1,6 @@
 import { Client, sql, type ClientConfig } from 'pg-nano'
 import { stringifyValue, Tuple } from 'pg-native'
-import { resetPublicSchema } from 'test/util.js'
+import { resetPublicSchema } from '../util.js'
 
 let client: Client
 
