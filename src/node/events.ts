@@ -73,9 +73,11 @@ export function enableEventLogging(verbose?: boolean) {
     done = log.task('Preparing for migration...')
   })
 
-  events.on('mutation:apply', ({ query }) => {
-    traceMutations('Applying mutation', query)
-  })
+  if (traceMutations.enabled) {
+    events.on('mutation:apply', ({ query }) => {
+      traceMutations(`Applying mutation\n  ${query.replace(/\n/g, '\n  ')}`)
+    })
+  }
 
   events.on('prepare:skip-insert', ({ insert }) => {
     log.warn(
