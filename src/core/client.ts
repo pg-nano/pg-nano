@@ -364,7 +364,7 @@ export class Client {
           // Therefore, a connection with an initial status of `IDLE` is assumed
           // to be a “required connection” (according to the `minConnections`
           // option) which must be re-established automatically.
-          if (initialStatus === ConnectionStatus.IDLE) {
+          if (this.dsn != null && initialStatus === ConnectionStatus.IDLE) {
             this.addConnection(connection, initialStatus, signal, maxRetries)
           }
         })
