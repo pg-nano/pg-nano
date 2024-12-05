@@ -13,7 +13,7 @@ SET default_tablespace = '';
 SET default_table_access_method = heap;
 
 CREATE TABLE nano.inserts (
-    hash character(32) NOT NULL,
+    hash character varying(32) NOT NULL,
     relname name,
     relnamespace name,
     pk text[]
