@@ -54,8 +54,17 @@ const objectLookupSchemes: Record<PgObjectStmtKind, ObjectLookupScheme> = {
   },
 }
 
+export interface ObjectIdentity {
+  id: SQLIdentifier
+  kind: PgObjectStmtKind
+}
+
 export function createIdentityCache(pg: Client) {
   const cache: Record<string, Promise<number | null>> = {}
+  const inverseCache: Record<
+    number,
+    { id: SQLIdentifier; kind: PgObjectStmtKind }
+  > = {}
 
   return {
     get: memo(
@@ -70,7 +79,8 @@ export function createIdentityCache(pg: Client) {
 
         const { from, schemaKey, nameKey, where } = objectLookupSchemes[kind]
 
-        return pg.queryValueOrNull<number>(sql`
+        return pg
+          .queryValueOrNull<number>(sql`
           SELECT oid
           FROM ${sql.id(from)}
           WHERE ${sql.id(schemaKey)} = ${id.schemaVal}${
@@ -79,6 +89,12 @@ export function createIdentityCache(pg: Client) {
             ${nameKey && sql`AND ${sql.id(nameKey)} = ${id.nameVal}`}
             ${where && sql`AND ${where}`};
         `)
+          .then(oid => {
+            if (oid == null) {
+              inverseCache[oid] = { id, kind }
+            }
+            return oid
+          })
       },
       {
         key: (_, id) => id.toQualifiedName(),
@@ -86,7 +102,58 @@ export function createIdentityCache(pg: Client) {
       },
     ),
     delete(id: SQLIdentifier) {
-      delete cache[id.toQualifiedName()]
+      const key = id.toQualifiedName()
+      cache[key]?.then(oid => {
+        if (oid != null) {
+          delete inverseCache[oid]
+        }
+      })
+      delete cache[key]
     },
+    /**
+     * Get an `ObjectIdentity` by its OID.
+     *
+     * Note that only the following object kinds are supported:
+     *   - table
+     *   - view
+     *   - routine
+     *   - type
+     */
+    getById: memo(async (id: number) => {
+      type Object = {
+        name: string
+        schema: string
+        kind: PgObjectStmtKind
+      }
+      const result = await pg.queryRow<Object>(sql`
+        SELECT
+          relname AS "name",
+          nspname AS "schema",
+          CASE
+            WHEN relkind = 'r' THEN 'table'
+            WHEN relkind = 'v' THEN 'view'
+          END AS "kind"
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace AND c.relkind <> 'c'
+        WHERE c.oid = ${sql.val(id)}
+        UNION ALL
+        SELECT
+          proname AS "name",
+          nspname AS "schema",
+          'routine' AS "kind"
+        FROM pg_proc p
+        JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE p.oid = ${sql.val(id)}
+        UNION ALL
+        SELECT
+          typname AS "name",
+          nspname AS "schema",
+          'type' AS "kind"
+        FROM pg_type t
+        JOIN pg_namespace n ON n.oid = t.typnamespace
+        WHERE t.oid = ${sql.val(id)}
+        LIMIT 1
+      `)
+    }),
   }
 }
