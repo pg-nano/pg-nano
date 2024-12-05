@@ -26,5 +26,8 @@
     "editor.defaultFormatter": "dorzey.vscode-sqlfluff"
   },
   "autoHide.autoHidePanel": false,
-  "typescript.preferences.importModuleSpecifierEnding": "js"
+  "typescript.preferences.importModuleSpecifierEnding": "js",
+  "[jsonc]": {
+    "editor.defaultFormatter": "biomejs.biome"
+  }
 }
