@@ -7,7 +7,6 @@ export default defineConfig({
     include: ['test/**/*.test.ts'],
     exclude: ['**/ephemeralpg/**'],
     setupFiles: ['test/setup.ts'],
-    fileParallelism: false,
     isolate: false,
     reporters: 'verbose',
   },
