@@ -59,10 +59,6 @@ export type GenerateOptions = {
    */
   noEmit?: boolean
   /**
-   * Called right before pg-schema-diff is invoked.
-   */
-  preMigrate?: () => any
-  /**
    * Override the default file-reading API.
    *
    * @default import('node:fs').readFileSync
@@ -94,10 +90,6 @@ export async function generate(
 
   const { pluginsByStatementId, droppedTables, sortedObjectStmts } =
     await prepareDatabase(objectStmts, insertStmts, baseTypes, env)
-
-  if (options.preMigrate) {
-    await options.preMigrate()
-  }
 
   await migrateSchema(env, droppedTables)
   await migrateStaticRows(pg, insertStmts, objectStmts, droppedTables)

@@ -1,9 +1,9 @@
 import { ChildProcess } from 'node:child_process'
 import { inspect, type InspectOptions } from 'node:util'
-import { SQLIdentifier } from 'pg-nano/plugin'
 import { objectify } from 'radashi'
+import { SQLIdentifier } from '../src/node/parser/identifier.js'
 
-function inspectCustom<T>(
+function inspectCustom<T extends object>(
   ctor: new (...args: any[]) => T,
   stringify: (instance: T) => any,
 ) {
@@ -12,7 +12,7 @@ function inspectCustom<T>(
     _depth: number,
     options: InspectOptions,
   ) {
-    return `${ctor.name} ${inspect(stringify(this), options)}`
+    return `${this.constructor.name} ${inspect(stringify(this), options)}`
   }
 }
 
