@@ -30,7 +30,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "1.8.3",
-    "@pg-nano/pg-tmp": "^1.0.1",
+    "@pg-nano/pg-tmp": "^1.0.4",
     "@pg-nano/plugin-crud": "workspace:^",
     "@radashi-org/biome-config": "^1.0.2",
     "@sinclair/typebox": "^0.33.11",
