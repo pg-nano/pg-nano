@@ -120,6 +120,7 @@ async function loadEnv(cwd: string, options: EnvOptions) {
         const client = new Client({
           debug: true,
           maxRetries: 2,
+          preconnectMaxRetries: 2,
           sessionParams: {
             client_min_messages: process.env.TEST ? 'NOTICE' : 'WARNING',
             check_function_bodies: false,
