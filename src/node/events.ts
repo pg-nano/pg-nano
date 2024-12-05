@@ -116,7 +116,7 @@ export function enableEventLogging(verbose?: boolean) {
     if (insertCount > 0) {
       found.push(insertCount + ' ' + pluralize('insert', insertCount))
     }
-    log.success(
+    log(
       `Found ${found.slice(0, -1).join(', ')}${found.length > 2 ? ',' : ''} and ${found.at(-1)}`,
     )
   })
@@ -174,18 +174,14 @@ export function enableEventLogging(verbose?: boolean) {
     ({ insertedRowCount, deletedRowCount }) => {
       done()
       if (insertedRowCount > 0) {
-        log.success(
+        log(
           'Inserted %d row%s',
           insertedRowCount,
           insertedRowCount > 1 ? 's' : '',
         )
       }
       if (deletedRowCount > 0) {
-        log.success(
-          'Deleted %d row%s',
-          deletedRowCount,
-          deletedRowCount > 1 ? 's' : '',
-        )
+        log('Deleted %d row%s', deletedRowCount, deletedRowCount > 1 ? 's' : '')
       }
     },
   )
