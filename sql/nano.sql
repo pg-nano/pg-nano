@@ -5,7 +5,7 @@ CREATE SCHEMA nano;
 -- and (2) detect when the schema file has changed and the rows need to be
 -- updated or deleted.
 CREATE TABLE nano.inserts (
-  hash char(32) PRIMARY KEY,
+  hash varchar(32) PRIMARY KEY,
   relname name,
   relnamespace name,
   pk text []
