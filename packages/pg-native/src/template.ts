@@ -61,11 +61,13 @@ export const sql = /* @__PURE__ */ (() => {
     inline: true,
   })) as <T>(
     value: T,
-  ) => T extends SQLTemplate
-    ? TypeCheckError<'sql.val cannot be used with SQLTemplate'>
-    : T extends SQLToken
-      ? TypeCheckError<'sql.val cannot be used with SQLToken'>
-      : SQLToken
+  ) => unknown extends T
+    ? SQLToken
+    : T extends SQLTemplate
+      ? TypeCheckError<'sql.val cannot be used with SQLTemplate'>
+      : T extends SQLToken
+        ? TypeCheckError<'sql.val cannot be used with SQLToken'>
+        : SQLToken
 
   /**
    * A value to be parameterized. If a `SQLTemplate` contains a `sql.param`
@@ -91,7 +93,7 @@ export const sql = /* @__PURE__ */ (() => {
     values: T[],
     mapper?: (value: T) => SQLTemplateValue,
   ): SQLTemplate =>
-    sql`(${sql.join(',', values.map(mapper ?? (v => (v != null ? sql.val(v) : null))))})`
+    sql`(${sql.join(',', values.map(mapper ?? (v => (v != null ? sql.val(v as any) : null))))})`
 
   /** Raw SQL syntax, dynamically inserted into the template. */
   sql.unsafe = (str: string) => new SQLTemplate([str], [])
