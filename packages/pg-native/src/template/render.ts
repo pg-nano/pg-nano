@@ -103,6 +103,7 @@ export function renderTemplateValue(
           pq,
           options,
           parentIndent,
+          parentTemplate,
         )
         if (valueString) {
           list.push(valueString)
