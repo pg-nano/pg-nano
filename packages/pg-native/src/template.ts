@@ -73,11 +73,19 @@ export const sql = /* @__PURE__ */ (() => {
    * A value to be parameterized. If a `SQLTemplate` contains a `sql.param`
    * token, it must not contain multiple statements.
    */
-  sql.param = (value: unknown): SQLToken => ({
+  sql.param = ((value: unknown): SQLToken => ({
     type: 'val',
     value,
     inline: false,
-  })
+  })) as <T>(
+    value: T,
+  ) => unknown extends T
+    ? SQLToken
+    : T extends SQLTemplate
+      ? TypeCheckError<'sql.param cannot be used with SQLTemplate'>
+      : T extends SQLToken
+        ? TypeCheckError<'sql.param cannot be used with SQLToken'>
+        : SQLToken
 
   /** Joins an array of SQLTemplateValues with a separator. */
   sql.join = (
