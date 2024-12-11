@@ -74,7 +74,7 @@
     "bundle-require": "^5.0.0",
     "debug": "^4.3.7",
     "esbuild": "^0.23.1",
-    "jumpgen": "^0.1.1",
+    "jumpgen": "^0.2.0",
     "option-types": "^1.1.0",
     "string-argv": "^0.3.2"
   },
