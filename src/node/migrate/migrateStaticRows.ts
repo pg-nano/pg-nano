@@ -2,15 +2,17 @@ import { createHash } from 'node:crypto'
 import { type Client, sql } from 'pg-nano'
 import { type PgTableStmt, SQLIdentifier } from 'pg-nano/plugin'
 import { map } from 'radashi'
-import { debug } from '../../debug.js'
-import { events } from '../../events.js'
-import type { PgSchema } from '../../parser/parse.js'
-import { throwFormattedQueryError } from '../error.js'
+import { debug } from '../debug.js'
+import { events } from '../events.js'
+import { throwFormattedQueryError } from '../generator/error.js'
+import type { NameResolver } from '../inspector/name.js'
+import type { PgSchema } from '../parser/parse.js'
 
 export async function migrateStaticRows(
   pg: Client,
   schema: PgSchema,
   droppedTables: Set<SQLIdentifier>,
+  names: NameResolver,
 ) {
   events.emit('migrate:static-rows:start')
 
@@ -55,6 +57,10 @@ export async function migrateStaticRows(
       continue
     }
 
+    relationStmt.id.schema ??= (
+      await names.resolve(relationStmt.id.name)
+    ).schema
+
     const targetColumns =
       insertStmt.targetColumns ?? relationStmt.columns.map(col => col.name)
 
@@ -66,6 +72,21 @@ export async function migrateStaticRows(
       targetColumns,
       sql.unsafe,
     )}`
+
+    /**
+     * Conflicts should only happen due to manual interference or a bug in
+     * pg-nano. In these cases, it's better to overwrite than to fail.
+     */
+    const onConflict = sql`
+      ON CONFLICT ${sql.list(relationStmt.primaryKeyColumns, sql.unsafe)}
+      DO UPDATE SET
+        ${sql.join(
+          ',',
+          targetColumns.map(
+            col => sql`${sql.id(col)} = EXCLUDED.${sql.id(col)}`,
+          ),
+        )}
+    `
 
     /** The columns to return from the insertion. */
     const returning = sql`RETURNING ARRAY[${sql.join(
@@ -87,6 +108,7 @@ export async function migrateStaticRows(
             const insertionCTE = sql`
               INSERT INTO ${target}
               VALUES ${sql.list(tuple, sql.unsafe)}
+              ${onConflict}
               ${returning}
             `
             events.emit('mutation:apply', {
@@ -97,16 +119,21 @@ export async function migrateStaticRows(
                 ${insertionCTE}
               )
               INSERT INTO nano.inserts (hash, relname, relnamespace, pk)
-              SELECT
-                ${sql.val(tupleHash)},
-                ${sql.val(relationStmt.id.name)},
-                ${sql.val(relationStmt.id.schema)},
-                inserted.pk
-              FROM inserted;
+                SELECT
+                  ${sql.val(tupleHash)},
+                  ${relationStmt.id.nameVal},
+                  ${relationStmt.id.schemaVal},
+                  inserted.pk
+                FROM inserted
+              ON CONFLICT (hash)
+              DO UPDATE SET
+                hash = EXCLUDED.hash,
+                relname = EXCLUDED.relname,
+                relnamespace = EXCLUDED.relnamespace,
+                pk = EXCLUDED.pk;
             `)
             insertedRowCount++
           } catch (error: any) {
-            console.error(error)
             throwFormattedQueryError(error, insertStmt, message => {
               return `Error inserting into "${relationId}": ${message}`
             })

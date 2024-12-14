@@ -1,8 +1,8 @@
 import { scanSync } from '@pg-nano/pg-parser'
 import { sql } from 'pg-nano'
 import { SQLIdentifier } from 'pg-nano/plugin'
-import type { Env } from '../../env.js'
-import { events } from '../../events.js'
+import type { Env } from '../env.js'
+import { events } from '../events.js'
 import { planSchemaMigration } from './planSchemaMigration.js'
 
 export async function migrateSchema(

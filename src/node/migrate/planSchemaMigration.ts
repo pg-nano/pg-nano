@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process'
 import path from 'node:path'
 import type { Readable } from 'node:stream'
 import type { MigrationHazardType } from 'pg-nano/config'
-import { resolveImport } from '../../util/resolveImport.js'
+import { resolveImport } from '../util/resolveImport.js'
 
 export interface MigrationPlan {
   current_schema_hash: string

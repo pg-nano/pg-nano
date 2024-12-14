@@ -44,7 +44,6 @@
     "pg-nano": "link:",
     "radashi": "12.3.0",
     "rimraf": "^6.0.1",
-    "tinyglobby": "^0.2.10",
     "tinyrun": "^1.0.1",
     "tsup": "^8.2.4",
     "typescript": "^5.5.4",
@@ -76,7 +75,8 @@
     "esbuild": "^0.23.1",
     "jumpgen": "^0.2.0",
     "option-types": "^1.1.0",
-    "string-argv": "^0.3.2"
+    "string-argv": "^0.3.2",
+    "tinyglobby": "^0.2.10"
   },
   "pnpm": {
     "patchedDependencies": {

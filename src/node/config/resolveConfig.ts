@@ -10,20 +10,15 @@ import type { PgRoutineBindingFunction } from './plugin.js'
 
 export type ResolvedConfig = ReturnType<typeof resolveConfig>
 
-interface Options {
-  dsn?: string
-}
-
 export function resolveConfig(
   root: string,
   userConfig: UserConfig | undefined,
-  options: Options,
 ) {
   let connection: ConnectOptions
 
-  const connectionString = options.dsn || userConfig?.dev.connectionString
+  const connectionString = userConfig?.dev.connectionString
   if (connectionString) {
-    if (!options.dsn && userConfig?.dev.connection) {
+    if (userConfig?.dev.connection) {
       throw new Error(
         'Cannot set both dev.connection and dev.connectionString. ' +
           'Use one or the other.',

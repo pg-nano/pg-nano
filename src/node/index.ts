@@ -1,6 +1,5 @@
-export * from './env.js'
 export { enableEventLogging, events } from './events.js'
-export { generate, type GenerateOptions } from './generator/generate.js'
 export { log } from './log.js'
+export { Project } from './project.js'
 export { dedent } from './util/dedent.js'
 export { cwdRelative } from './util/path.js'

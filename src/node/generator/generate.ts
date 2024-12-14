@@ -4,22 +4,22 @@ import path from 'node:path'
 import type { ShallowOptions } from 'option-types'
 import { snakeToCamel, sql } from 'pg-nano'
 import type { RoutineBindingContext } from 'pg-nano/config'
-import { camel, map, mapify, pascal, select, shake, sift } from 'radashi'
+import { camel, pascal, select, shake, sift } from 'radashi'
 import stringArgv from 'string-argv'
 import type {
   GenerateContext,
+  PgObjectStmt,
+  PgRoutineStmt,
+  PgTableStmt,
   Plugin,
   PluginContext,
 } from '../config/plugin.js'
-import { traceParser, traceRender } from '../debug.js'
+import { traceRender } from '../debug.js'
 import type { Env } from '../env.js'
 import { events } from '../events.js'
+import { createIdentityMap } from '../inspector/identity.js'
 import { renderJsonType } from '../inspector/infer/json.js'
-import {
-  inspectBaseTypes,
-  inspectNamespaces,
-  inspectViewFields,
-} from '../inspector/inspect.js'
+import { inspectNamespaces, inspectViewFields } from '../inspector/inspect.js'
 import {
   isBaseType,
   isCompositeType,
@@ -42,76 +42,27 @@ import {
   type PgTypeReference,
   type PgView,
 } from '../inspector/types.js'
+import type { TopologicalSet } from '../linker/topologicalSet.js'
 import { quoteName, SQLIdentifier } from '../parser/identifier.js'
-import { parseSchemaFile } from '../parser/parse.js'
+import type { PgSchema } from '../parser/parse.js'
 import { dedent } from '../util/dedent.js'
 import { memoAsync } from '../util/memoAsync.js'
-import { resolveImport } from '../util/resolveImport.js'
-import { migrateSchema } from './migrate/migrateSchema.js'
-import { migrateStaticRows } from './migrate/migrateStaticRows.js'
-import { prepareDatabase } from './prepare.js'
 import { jsTypeByPgName, subtypeByPgName } from './typeMappings.js'
-
-export type GenerateOptions = {
-  signal?: AbortSignal
-  /**
-   * When true, no files are emitted, but the database is still migrated.
-   */
-  noEmit?: boolean
-  /**
-   * Override the default file-reading API.
-   *
-   * @default import('node:fs').readFileSync
-   */
-  readFile?: (filePath: string, encoding: BufferEncoding) => string
-}
 
 export async function generate(
   env: Env,
-  filePaths: string[],
-  options: GenerateOptions = {},
+  schema: PgSchema,
+  baseTypes: PgBaseType[],
+  sortedObjectStmts: TopologicalSet<PgObjectStmt>,
+  pluginsByStatementId: Map<string, Plugin>,
+  signal?: AbortSignal,
 ) {
   const pg = await env.client
-  const baseTypes = await inspectBaseTypes(pg, options.signal)
-
-  // Include our internal SQL files in the migration plan.
-  filePaths.push(resolveImport('pg-nano/sql/nano.sql'))
-
-  const readFile = options.readFile ?? fs.readFileSync
-
-  const schema = flatMapProperties(
-    await map(filePaths, async file => {
-      traceParser('parsing schema file:', file)
-      return await parseSchemaFile(readFile(file, 'utf8'), file, baseTypes)
-    }),
-  )
-
-  events.emit('schema:parsed', { schema })
-
-  const { pluginsByStatementId, droppedTables, sortedObjectStmts } =
-    await prepareDatabase(schema, baseTypes, env)
-
-  await migrateSchema(env, droppedTables)
-  await migrateStaticRows(pg, schema, droppedTables)
-
-  if (options.noEmit) {
-    return
-  }
-
-  const tableStmts = mapify(
-    schema.objects.filter(obj => obj.kind === 'table'),
-    obj => obj.id.toQualifiedName(),
-  )
-
-  const routineStmts = mapify(
-    schema.objects.filter(obj => obj.kind === 'routine'),
-    obj => obj.id.toQualifiedName(),
-  )
 
   events.emit('generate:start')
 
   // Step 1: Collect type information from the database.
-  const namespaces = await inspectNamespaces(pg, options.signal)
+  const namespaces = await inspectNamespaces(pg, signal)
 
   /** Objects found in the database by introspection. */
   const objects: PgObject[] = []
@@ -152,6 +103,20 @@ export async function generate(
     }
   }
 
+  const tableStmts = createIdentityMap<PgTableStmt>('public')
+  const routineStmts = createIdentityMap<PgRoutineStmt>('public')
+
+  for (const object of schema.objects) {
+    switch (object.kind) {
+      case 'table':
+        tableStmts.set(object.id, object)
+        break
+      case 'routine':
+        routineStmts.set(object.id, object)
+        break
+    }
+  }
+
   // Step 2: Register types and associate objects with plugins.
   for (const nsp of Object.values(namespaces)) {
     for (const types of [
@@ -178,7 +143,7 @@ export async function generate(
   }
 
   const getViewFields = memoAsync((view: PgView) => {
-    return inspectViewFields(pg, view, objects, options.signal)
+    return inspectViewFields(pg, view, objects, signal)
   })
 
   const generateContext: GenerateContext = Object.freeze({
@@ -330,7 +295,13 @@ export async function generate(
 
   const renderTableType = (table: PgTable) => {
     const tableId = new SQLIdentifier(table.name, table.schema)
-    const tableStmt = tableStmts.get(tableId.toQualifiedName())!
+    const tableStmt = tableStmts.get(tableId)
+    if (!tableStmt) {
+      throw new Error(
+        `Statement for table "${tableId.toQualifiedName()}" was not found`,
+      )
+    }
+
     imports.add('type Input')
 
     // Render the TypeScript types for a table's “at rest” shape.
@@ -693,12 +664,17 @@ export async function generate(
 
     // Find the function's CREATE statement, which contains metadata that is
     // useful for type generation.
-    const id = new SQLIdentifier(routine.name, routine.schema)
-    const stmt = routineStmts.get(id.toQualifiedName())!
+    const routineId = new SQLIdentifier(routine.name, routine.schema)
+    const routineStmt = routineStmts.get(routineId)
+    if (!routineStmt) {
+      throw new Error(
+        `Statement for routine "${routineId.toQualifiedName()}" was not found`,
+      )
+    }
 
-    if (!stmt.returnType) {
+    if (!routineStmt.returnType) {
       jsResultType = 'void'
-    } else if (stmt.returnType instanceof SQLIdentifier) {
+    } else if (routineStmt.returnType instanceof SQLIdentifier) {
       jsResultType = renderTypeReference(routine.returnTypeOid, routine, {
         paramKind: PgParamKind.Out,
       })
@@ -735,7 +711,7 @@ export async function generate(
       }
     } else {
       returnRow = true
-      jsResultType = `{ ${stmt.returnType
+      jsResultType = `{ ${routineStmt.returnType
         .map(field => {
           const fieldType = types.find(
             type =>
@@ -1039,12 +1015,4 @@ function extract<TInput, const TOutput>(
 ): Extract<TOutput, TInput> | IfExists<Exclude<TInput, TOutput>, undefined> {
   const index = outputs.indexOf(input as any)
   return (index === -1 ? undefined : outputs[index]) as any
-}
-
-function flatMapProperties<T extends Record<string, any[]>>(objects: T[]): T {
-  const merged = {} as T
-  for (const key in objects[0]) {
-    merged[key] = objects.flatMap(obj => obj[key]) as any
-  }
-  return merged
 }

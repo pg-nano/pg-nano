@@ -1,11 +1,11 @@
 import type { Options as BundleRequireOptions } from 'bundle-require'
 import mri from 'mri'
 import path from 'node:path'
+import type { ShallowOptions } from 'option-types'
 import { Client } from 'pg-nano'
 import { sql } from 'pg-native'
 import { camel, castArrayIfExists, mapKeys } from 'radashi'
 import { resolveConfig, type UserConfig } from './config/config.js'
-import { findConfigFile } from './config/findConfigFile.js'
 import { allMigrationHazardTypes } from './config/hazards.js'
 import { mergeConfig } from './config/mergeConfig.js'
 import { debug } from './debug.js'
@@ -13,43 +13,29 @@ import { events } from './events.js'
 import { log } from './log.js'
 import { isLocalHost } from './util/localhost.js'
 
-export type EnvOptions = {
-  dsn?: string
+export type EnvOptions = ShallowOptions<{
   overrides?: Partial<UserConfig>
-  verbose?: boolean
-  watch?: boolean
-  /** Skip cache and reload environment */
-  reloadEnv?: boolean
+  /**
+   * Override the default config file search logic.
+   */
+  findConfigFile?: (cwd: string) => string | null
   /**
    * When true, dynamic `import()` is used to load the config file, instead of
    * the `bundle-require` npm package. When “config bundling” is disabled,
    * changes to modules imported by the config file aren't observed.
    */
   noConfigBundling?: boolean
-}
+}>
 
-const cache = new Map<string, Promise<Env>>()
+export interface Env extends Awaited<ReturnType<typeof getEnv>> {}
 
-export type Env = Awaited<ReturnType<typeof loadEnv>>
+export async function getEnv(cwd: string, options: EnvOptions = {}) {
+  const findConfigFile =
+    options.findConfigFile ??
+    (await import('./config/findConfigFile.js')).findConfigFile
 
-export function getEnv(cwd: string, options: EnvOptions = {}) {
-  const key = JSON.stringify([cwd, options.dsn])
-
-  let env = cache.get(key)
-  if (env) {
-    if (!options.reloadEnv) {
-      return env
-    }
-    env.then(env => env.close())
-  }
-
-  env = loadEnv(cwd, options)
-  cache.set(key, env)
-  return env
-}
-
-async function loadEnv(cwd: string, options: EnvOptions) {
   const configFilePath = findConfigFile(cwd)
+
   const root = configFilePath ? path.dirname(configFilePath) : cwd
   const untrackedDir = path.join(root, 'node_modules/.pg-nano')
   const schemaDir = path.join(untrackedDir, 'schema')
@@ -91,7 +77,7 @@ async function loadEnv(cwd: string, options: EnvOptions) {
     userConfig = mergeConfig(userConfig, options.overrides)
   }
 
-  const config = resolveConfig(root, userConfig, options)
+  const config = resolveConfig(root, userConfig)
 
   // https://github.com/stripe/pg-schema-diff/issues/129
   config.migration.allowHazards.push('HAS_UNTRACKABLE_DEPENDENCIES' as any)
@@ -112,7 +98,6 @@ async function loadEnv(cwd: string, options: EnvOptions) {
     config,
     untrackedDir,
     schemaDir,
-    verbose: options.verbose,
     get client() {
       return (client ??= (async () => {
         events.emit('connecting', config.dev.connection)
