@@ -50,14 +50,6 @@ export default class extends VitestTestRunner {
   }
 
   async rewriteError(error: any) {
-    if (isResponseError(error)) {
-      console.log('response.status => %O', error.response.status)
-      if (error.response.headers.get('content-type') === 'application/json') {
-        console.log('response.json => %O', await error.response.json())
-      } else {
-        console.log('response.text => %O', await error.response.text())
-      }
-    }
     if (error.name === 'PgResultError') {
       const { patch } = await this.request({
         type: 'pg-error',
