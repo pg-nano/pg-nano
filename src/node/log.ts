@@ -1,8 +1,6 @@
 import {
   blue,
-  bold,
   type Colorize,
-  cyan,
   gray,
   green,
   italic,
@@ -15,12 +13,16 @@ import { isString } from 'radashi'
 
 let logTimestampsEnabled = false
 
-const createLog = (
+function createLogFunction(
   color: Colorize,
+  enabled: boolean,
   prefix = '•',
   method: 'log' | 'trace' = 'log',
-) =>
+) {
   function log(message: string, ...args: any[]) {
+    if (!log.enabled) {
+      return
+    }
     message = color(prefix + ' ' + message)
     if (logTimestampsEnabled) {
       const timestamp = new Date().toLocaleTimeString('en-US', {
@@ -39,34 +41,51 @@ const createLog = (
       console.log(color(trace.stack!.replace(/^.*?\n/, '')))
     }
   }
+  log.enabled = enabled
+  return log
+}
 
-type Logger = ReturnType<typeof createLog>
+type LogFunction = ReturnType<typeof createLogFunction>
 
-export const log = createLog(blue) as Logger & {
-  error: Logger
-  warn: Logger
-  success: Logger
-  command: Logger
-  comment: Logger
-  green: Logger
-  cyan: Logger
-  magenta: Logger
+export enum LogLevel {
+  none = 0,
+  error = 1,
+  warn = 2,
+  info = 3,
+  verbose = 4,
+}
+
+export const log = createLogFunction(blue, true) as LogFunction & {
+  error: LogFunction
+  warn: LogFunction
+  success: LogFunction
+  verbose: LogFunction
   task: (message: string) => () => void
   enableTimestamps: (enabled: boolean) => void
+  get logLevel(): LogLevel
+  setLogLevel(logLevel: LogLevel): void
 }
 
 log.enableTimestamps = (enabled: boolean) => {
   logTimestampsEnabled = enabled
 }
 
-log.error = createLog(red, '⚠️', 'trace')
-log.warn = createLog(yellow, '⚠️')
-log.success = createLog(green, '✔️')
-log.command = createLog(bold, '»')
-log.comment = createLog(gray, ' ')
-log.green = createLog(green)
-log.cyan = createLog(cyan)
-log.magenta = createLog(magenta)
+log.setLogLevel = (logLevel: LogLevel) => {
+  if (logLevel !== log.logLevel) {
+    Object.defineProperty(log, 'logLevel', {
+      value: logLevel,
+      configurable: true,
+    })
+
+    log.enabled = logLevel >= LogLevel.info
+    log.error = createLogFunction(red, logLevel >= LogLevel.error, '⚠️', 'trace')
+    log.warn = createLogFunction(yellow, logLevel >= LogLevel.warn, '⚠️')
+    log.success = createLogFunction(green, logLevel >= LogLevel.info, '✔️')
+    log.verbose = createLogFunction(magenta, logLevel >= LogLevel.verbose)
+  }
+}
+
+log.setLogLevel(LogLevel.info)
 
 let lastLoggedLine = ''
 

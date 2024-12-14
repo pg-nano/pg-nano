@@ -1,5 +1,5 @@
 export { enableEventLogging, events } from './events.js'
-export { log } from './log.js'
+export { LogLevel, log } from './log.js'
 export { Project } from './project.js'
 export { dedent } from './util/dedent.js'
 export { cwdRelative } from './util/path.js'
