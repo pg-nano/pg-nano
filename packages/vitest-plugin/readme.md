@@ -89,3 +89,7 @@ export default async () => {
   }
 }
 ```
+
+## Caveat
+
+This plugin uses the [Test Runner API](https://vitest.dev/advanced/runner.html) of Vitest to intercept test errors for post-processing. This makes the plugin incompatible with other plugins that also use the Test Runner API.
