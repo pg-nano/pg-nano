@@ -51,13 +51,15 @@ export class SQLIdentifier {
    * will be safely escaped by libpq.
    */
   toSQL(defaultSchema?: string): SQLTemplateValue {
-    const schema = this.schema ?? defaultSchema ?? 'public'
     if (this.name) {
+      const schema = this.schema ?? defaultSchema
       return schema === 'pg_catalog'
         ? sql.unsafe(this.name)
-        : sql.id(schema, this.name)
+        : schema
+          ? sql.id(schema, this.name)
+          : sql.id(this.name)
     }
-    return sql.id(schema)
+    return sql.id(this.schema ?? 'public')
   }
 
   /**
@@ -66,7 +68,7 @@ export class SQLIdentifier {
    * specified.
    */
   toQualifiedName(defaultSchema?: string) {
-    const schema = this.schema ?? defaultSchema ?? 'public'
+    const schema = this.schema ?? defaultSchema
 
     return (
       (schema ? unsafelyQuotedName(schema) : '') +
@@ -114,10 +116,10 @@ export class SQLIdentifier {
   /**
    * Check if this identifier is equal to another.
    */
-  equals(other: SQLIdentifier) {
+  equals(other: SQLIdentifier, defaultSchema?: string) {
     return (
       this.name === other.name &&
-      (this.schema ?? 'public') === (other.schema ?? 'public') &&
+      (this.schema ?? defaultSchema) === (other.schema ?? defaultSchema) &&
       this.field === other.field
     )
   }
