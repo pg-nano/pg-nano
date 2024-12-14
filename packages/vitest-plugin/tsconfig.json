@@ -1,0 +1,10 @@
+{
+  "include": ["src"],
+  "compilerOptions": {
+    "strict": true,
+    "moduleResolution": "bundler",
+    "module": "esnext",
+    "lib": ["esnext"],
+    "allowSyntheticDefaultImports": true
+  }
+}

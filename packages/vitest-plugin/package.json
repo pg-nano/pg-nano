@@ -1,0 +1,33 @@
+{
+  "name": "@pg-nano/vitest-plugin",
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/plugin.d.ts",
+      "import": "./dist/plugin.js"
+    }
+  },
+  "scripts": {
+    "dev": "DEV=1 tsup --watch --sourcemap",
+    "build": "tsup",
+    "lint": "tsc -p . --outDir node_modules/.tmp"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.5.13",
+    "radashi": "12.3.0",
+    "vite": "^5.4.11",
+    "vitest": "^2.1.8"
+  },
+  "peerDependencies": {
+    "vite": "*",
+    "vitest": "*"
+  },
+  "dependencies": {
+    "devalue": "^5.1.1",
+    "kleur": "^4.1.5",
+    "pg-nano": "workspace:*",
+    "valibot": "1.0.0-beta.9",
+    "ws": "^8.18.0"
+  }
+}
