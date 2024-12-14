@@ -11,12 +11,6 @@ importers:
       devalue:
         specifier: ^5.1.1
         version: 5.1.1
-      kleur:
-        specifier: ^4.1.5
-        version: 4.1.5
-      pg-nano:
-        specifier: workspace:*
-        version: link:../..
       valibot:
         specifier: 1.0.0-beta.9
         version: 1.0.0-beta.9
@@ -24,9 +18,15 @@ importers:
         specifier: ^8.18.0
         version: 8.18.0
     devDependencies:
+      '@pg-nano/node':
+        specifier: workspace:*
+        version: link:../../src/node
       '@types/ws':
         specifier: ^8.5.13
         version: 8.5.13
+      pg-nano:
+        specifier: workspace:*
+        version: link:../..
       radashi:
         specifier: 12.3.0
         version: 12.3.0
@@ -364,10 +364,6 @@ packages:
     resolution: {integrity: sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==}
     engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
     os: [darwin]
-
-  kleur@4.1.5:
-    resolution: {integrity: sha512-o+NO+8WrRiQEE4/7nwRJhN1HWpVmJm511pBHUxPLtp0BUISzlBplORYSmTclCnJvQq2tKu/sgl3xVpkc7ZWuQQ==}
-    engines: {node: '>=6'}
 
   loupe@3.1.2:
     resolution: {integrity: sha512-23I4pFZHmAemUnz8WZXbYRSKYj801VDaNv9ETuMh7IrMc7VuVVSo+Z9iLE3ni30+U48iDWfi30d3twAXBYmnCg==}
@@ -764,8 +760,6 @@ snapshots:
 
   fsevents@2.3.3:
     optional: true
-
-  kleur@4.1.5: {}
 
   loupe@3.1.2: {}
 
