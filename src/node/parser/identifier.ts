@@ -1,4 +1,4 @@
-import type { QualifiedName } from '@pg-nano/pg-parser'
+import { parseQuerySync, select, type QualifiedName } from '@pg-nano/pg-parser'
 import { sql, type SQLTemplateValue } from 'pg-native'
 import { unique } from 'radashi'
 
@@ -11,6 +11,13 @@ export class SQLIdentifier {
       new SQLIdentifier(''),
       parseQualifiedName(names, includesField),
     )
+  }
+
+  static parse(input: string) {
+    const ast = parseQuerySync(`SELECT 1::${input}`)
+    const targetList = select(ast.stmts[0].stmt, 'targetList')!
+    const typeName = select(targetList[0], 'val.typeName')!
+    return SQLIdentifier.fromQualifiedName(typeName.names)
   }
 
   constructor(
