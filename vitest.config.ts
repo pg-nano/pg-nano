@@ -9,6 +9,9 @@ export default defineConfig({
     setupFiles: ['test/setup.ts'],
     isolate: false,
     reporters: 'verbose',
+    env: {
+      TEST: 'pg-nano',
+    },
   },
   plugins: [tsconfigPaths()],
 })

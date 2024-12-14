@@ -107,7 +107,8 @@ export async function getEnv(cwd: string, options: EnvOptions = {}) {
           maxRetries: 2,
           preconnectMaxRetries: 2,
           sessionParams: {
-            client_min_messages: process.env.TEST ? 'NOTICE' : 'WARNING',
+            client_min_messages:
+              process.env.TEST === 'pg-nano' ? 'NOTICE' : 'WARNING',
             check_function_bodies: false,
           },
         })
