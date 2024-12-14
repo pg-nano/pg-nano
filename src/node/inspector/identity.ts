@@ -100,3 +100,24 @@ export function createIdentityCache(pg: Client, names?: NameResolver) {
     },
   }
 }
+
+export type IdentityMap<T> = ReturnType<typeof createIdentityMap<T>>
+
+export function createIdentityMap<T>(defaultSchema: string) {
+  const schemaMap = new Map<string, Map<string, T>>()
+
+  return {
+    get(id: SQLIdentifier) {
+      const nameMap = schemaMap.get(id.schema ?? defaultSchema)
+      return nameMap?.get(id.name)
+    },
+    set(id: SQLIdentifier, value: T) {
+      const schema = id.schema ?? defaultSchema
+      let nameMap = schemaMap.get(schema)
+      if (!nameMap) {
+        schemaMap.set(schema, (nameMap = new Map()))
+      }
+      nameMap.set(id.name, value)
+    },
+  }
+}
