@@ -412,6 +412,10 @@ export class Client {
   protected async getConnection(signal?: AbortSignal): Promise<Connection> {
     signal?.throwIfAborted()
 
+    if (this.dsn == null) {
+      throw new ConnectionError('Postgres client is not connected')
+    }
+
     const existingConnection = this.connected.find(
       connection =>
         connection.status === ConnectionStatus.IDLE &&
