@@ -16,6 +16,7 @@
     "paths": {
       "pg-nano": ["./src/core/mod.ts"],
       "pg-nano/node": ["./src/node/index.ts"],
+      "pg-nano/dev": ["./src/node/dev.ts"],
       "pg-nano/config": ["./src/node/config/config.ts"],
       "pg-nano/plugin": ["./src/node/config/plugin.ts"],
       "pg-native": ["./packages/pg-native/src/index.ts"],

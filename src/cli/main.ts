@@ -12,21 +12,15 @@ async function main() {
     case 'dev': {
       log.enableTimestamps(true)
       const command = await import('./commands/dev')
-      await command.default(
-        process.cwd(),
-        mri(argv, {
-          string: ['dsn'],
-          boolean: [
-            'verbose',
-            'refreshPluginRole',
-            'noConfigBundling',
-            'noEmit',
-          ],
-          alias: {
-            v: 'verbose',
-          },
-        }),
-      )
+      const args: any = mri(argv, {
+        string: ['dsn'],
+        boolean: ['verbose', 'refreshPluginRole', 'noConfigBundling', 'noEmit'],
+        alias: {
+          v: 'verbose',
+        },
+      })
+      args.root = process.cwd()
+      await command.default(args)
       break
     }
     case 'init': {

@@ -9,6 +9,7 @@ export default defineConfig({
     index: 'index.ts',
     config: 'config/config.ts',
     plugin: 'config/plugin.ts',
+    dev: 'dev.ts',
   },
   outDir: '../../dist/node',
   format: ['esm'],

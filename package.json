@@ -10,6 +10,10 @@
       "types": "./dist/node/index.d.ts",
       "default": "./dist/node/index.js"
     },
+    "./dev": {
+      "types": "./dist/node/dev.d.ts",
+      "default": "./dist/node/dev.js"
+    },
     "./config": {
       "types": "./dist/node/config.d.ts",
       "default": "./dist/node/config.js"
