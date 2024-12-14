@@ -57,7 +57,7 @@ const objectLookupSchemes: Record<PgObjectStmtKind, ObjectLookupScheme> = {
 
 export type IdentityCache = ReturnType<typeof createIdentityCache>
 
-export function createIdentityCache(pg: Client, names?: NameResolver) {
+export function createIdentityCache(pg: Client, names: NameResolver) {
   const cache: Record<string, Promise<number | null>> = {}
   const getObjectId = memo(
     async (kind: PgObjectStmtKind, id: SQLIdentifier) => {
@@ -89,13 +89,17 @@ export function createIdentityCache(pg: Client, names?: NameResolver) {
 
   return {
     async get(kind: PgObjectStmtKind, id: SQLIdentifier) {
-      if (!id.schema && names) {
+      if (id.schema === undefined) {
         const { schema } = await names.resolve(id.name)
         id = id.withSchema(schema)
       }
       return await getObjectId(kind, id)
     },
-    delete(id: SQLIdentifier) {
+    async delete(id: SQLIdentifier) {
+      if (id.schema === undefined) {
+        const { schema } = await names.resolve(id.name)
+        id = id.withSchema(schema)
+      }
       delete cache[id.toQualifiedName()]
     },
   }
