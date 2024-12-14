@@ -6,7 +6,7 @@ This plugin helps you test your Postgres functions with Vitest.
 
 - **Automatic schema migrations**: The plugin runs the same logic as the `pg-nano dev` command, so your database is instantly migrated to match your SQL files. In addition, your test suite will automatically rerun when you make changes to your SQL files.
 
-- **Improved error messages**: Postgres errors are reformatted to provide a stack trace like you're used to with JavaScript. This gives you a preview of where the error occurred in your Postgres function, and you can easily option+click to jump to the source code.
+- **Improved error messages**: Postgres errors are reformatted to provide a stack trace like you're used to with JavaScript. This gives you a preview of where the error occurred in your Postgres function, and you can effortlessly jump to the source code with a click of your mouse.
 
 ## Installation
 
