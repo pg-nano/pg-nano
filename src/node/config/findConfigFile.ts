@@ -3,6 +3,9 @@ import path from 'node:path'
 
 const configFileName = 'pg-nano.config.ts'
 
+/**
+ * The default logic for finding the config file.
+ */
 export function findConfigFile(cwd: string): string | null {
   let currentDir = cwd
 
