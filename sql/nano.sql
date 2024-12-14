@@ -6,9 +6,9 @@ CREATE SCHEMA nano;
 -- updated or deleted.
 CREATE TABLE nano.inserts (
   hash varchar(32) PRIMARY KEY,
-  relname name,
-  relnamespace name,
-  pk text []
+  relname name NOT NULL,
+  relnamespace name NOT NULL,
+  pk text[] NOT NULL
 );
 
 -- This index improves the performance of the `DELETE FROM nano.inserts` query
