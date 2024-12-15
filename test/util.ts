@@ -6,11 +6,10 @@ import {
 import fs from 'node:fs'
 import path from 'node:path'
 import type { Readable } from 'node:stream'
+import type { ShallowOptions } from 'option-types'
 import { Client } from 'pg-nano'
-import type { UserConfig } from 'pg-nano/config'
-import { events, generate, getEnv } from 'pg-nano/node'
-import { select, shake } from 'radashi'
-import type { GenerateOptions } from '../src/node/generator/generate.js'
+import { events, Project } from 'pg-nano/node'
+import { shake } from 'radashi'
 import { dedent } from '../src/node/util/dedent.js'
 
 export function spawn(
@@ -77,85 +76,95 @@ export function currentTestName() {
     .replace(/[./]/g, '+')
 }
 
-export type Project = Awaited<ReturnType<typeof createProject>>
-
-export async function createProject(
-  fixtures: Record<string, string>,
-  config?: Partial<Omit<UserConfig, 'plugins'>> & {
+export declare namespace TestProject {
+  interface Options extends Omit<Project.Options, 'root'> {
+    fixtures: Record<string, string>
     plugins?: string[] | undefined
-  },
-) {
-  const name = currentTestName()
-  const fixtureDir = new URL('./__fixtures__/' + name, import.meta.url).pathname
+  }
+}
 
-  const connectionString = process.env.PG_TMP_DSN!
-  const plugins = config?.plugins ?? []
+export class TestProject extends Project {
+  eventLog: any[][] = []
+  root: string
+  dsn: string
 
-  config = {
-    ...config,
-    dev: { connectionString },
-    plugins: undefined,
+  constructor(options: TestProject.Options) {
+    const dsn = process.env.PG_TMP_DSN!
+    const name = currentTestName()
+    const fixtureDir = new URL('./__fixtures__/' + name, import.meta.url)
+      .pathname
+
+    if (options.plugins) {
+      options.fixtures['pg-nano.config.ts'] ??= dedent`
+        ${options.plugins
+          .map((plugin, index) => {
+            return `import $${index} from '${plugin}'`
+          })
+          .join('\n')}
+        export default {plugins: [${options.plugins.map((_, index) => `$${index}()`).join(', ')}]}
+      `
+    }
+
+    // Write fixtures to the file system.
+    addFixtures(fixtureDir, options.fixtures)
+
+    super({
+      ...options,
+      root: fixtureDir,
+      noConfigBundling: true,
+      config: {
+        ...options.config,
+        dev: {
+          ...options.config?.dev,
+          connectionString: dsn,
+        },
+      },
+    })
+
+    this.root = fixtureDir
+    this.dsn = dsn
+
+    events.emit = (...args: any[]) => {
+      this.eventLog.push(args)
+      return true
+    }
   }
 
-  fixtures['pg-nano.config.ts'] ??= dedent`
-    ${plugins.map((plugin, index) => `import $${index} from '${plugin}'`).join('\n')}
-    const config = ${JSON.stringify(config)}
-    export default {...config, plugins: [${plugins.map((_, index) => `$${index}()`).join(', ')}]}
-  `
-
-  // Write fixtures to the file system.
-  addFixtures(fixtureDir, fixtures)
-
-  // Load the environment, including the config file.
-  const env = await getEnv(fixtureDir, {
-    noConfigBundling: true,
-    verbose: true,
-  })
-
-  const eventLog: any[][] = []
-  events.emit = (...args: any[]) => {
-    eventLog.push(args)
-    return true
+  override async update(
+    options?: ShallowOptions<{
+      skipRefresh?: boolean
+      noEmit?: boolean
+      signal?: AbortSignal
+    }>,
+  ): Promise<void> {
+    this.eventLog.length = 0
+    await super.update(options)
   }
 
-  const readFile = (name: string) => {
+  readFile(name: string) {
     try {
-      return fs.readFileSync(path.join(fixtureDir, name), 'utf8')
+      return fs.readFileSync(path.join(this.root, name), 'utf8')
     } catch (error) {
       return null
     }
   }
 
-  return {
-    env,
-    eventLog,
-    async generate(options?: GenerateOptions) {
-      eventLog.length = 0
-      await generate(
-        env,
-        select(
-          Object.keys(fixtures),
-          file => path.join(env.root, file),
-          file => file.endsWith('.sql'),
-        ),
-        options,
-      )
-    },
-    writeFile(name: string, content: string) {
-      fs.writeFileSync(path.join(fixtureDir, name), content)
-    },
-    get generatedFiles() {
-      return shake({
-        'sql/schema.ts': readFile('sql/schema.ts'),
-        'sql/typeData.ts': readFile('sql/typeData.ts'),
-      })
-    },
-    async importClient<TSchema extends object>() {
-      const schema = await import(path.join(fixtureDir, 'sql/schema.ts'))
-      const client = new Client()
-      await client.connect(connectionString)
-      return client.withSchema<TSchema>(schema)
-    },
+  readGeneratedFiles() {
+    return shake({
+      'sql/schema.ts': this.readFile('sql/schema.ts'),
+      'sql/typeData.ts': this.readFile('sql/typeData.ts'),
+    })
+  }
+
+  writeFile(name: string, content: string) {
+    fs.writeFileSync(path.join(this.root, name), content)
+  }
+
+  async importClient<TSchema extends object>() {
+    const schema = await import(path.join(this.root, 'sql/schema.ts'))
+    const client = new Client()
+    await client.connect(this.dsn)
+    return client.withSchema<TSchema>(schema)
   }
 }
 

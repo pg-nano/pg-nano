@@ -4,9 +4,9 @@ import { select } from 'radashi'
 import { globSync } from 'tinyglobby'
 import {
   bufferReadable,
-  createProject,
   resetPublicSchema,
   spawn,
+  TestProject,
 } from '../util.js'
 
 const cwd = join(__dirname, '__fixtures__')
@@ -19,20 +19,20 @@ describe('migrate', () => {
     const caseName = dirname(beforeFile)
 
     test(caseName, async () => {
-      const project = await createProject({
-        'sql/schema.sql': readFileSync(join(cwd, beforeFile), 'utf8'),
+      const project = new TestProject({
+        fixtures: {
+          'sql/schema.sql': readFileSync(join(cwd, beforeFile), 'utf8'),
+        },
       })
 
-      await project.generate({ noEmit: true })
+      await project.update({ noEmit: true })
 
       project.writeFile(
         'sql/schema.sql',
         readFileSync(join(cwd, afterFile), 'utf8'),
       )
 
-      await project.generate({
-        noEmit: true,
-      })
+      await project.update({ noEmit: true })
 
       await expect(
         '-- noqa: disable=all\n' +

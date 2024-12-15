@@ -1,4 +1,4 @@
-import { createProject, dedent, resetPublicSchema } from '../util.js'
+import { dedent, resetPublicSchema, TestProject } from '../util.js'
 
 const sql = dedent
 
@@ -6,8 +6,9 @@ describe('@pg-nano/plugin-crud', () => {
   beforeEach(resetPublicSchema)
 
   test('basic cases', async () => {
-    const project = await createProject(
-      {
+    const project = new TestProject({
+      plugins: ['@pg-nano/plugin-crud'],
+      fixtures: {
         'sql/schema.sql': sql`
           CREATE TABLE "user" (
             id bigint PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
@@ -21,13 +22,10 @@ describe('@pg-nano/plugin-crud', () => {
           );
         `,
       },
-      {
-        plugins: ['@pg-nano/plugin-crud'],
-      },
-    )
+    })
 
-    await project.generate()
-    expect(project.generatedFiles).toMatchSnapshot()
+    await project.update()
+    expect(project.readGeneratedFiles()).toMatchSnapshot()
 
     type Schema =
       typeof import('../__fixtures__/@pg-nano+plugin-crud__basic_cases/sql/schema.js')
@@ -104,20 +102,18 @@ describe('@pg-nano/plugin-crud', () => {
   })
 
   test('get - null', async () => {
-    const project = await createProject(
-      {
+    const project = new TestProject({
+      plugins: ['@pg-nano/plugin-crud'],
+      fixtures: {
         'sql/schema.sql': sql`
           CREATE TABLE foo (
             id integer PRIMARY KEY
           );
         `,
       },
-      {
-        plugins: ['@pg-nano/plugin-crud'],
-      },
-    )
+    })
 
-    await project.generate()
+    await project.update()
 
     type Schema =
       typeof import('../__fixtures__/@pg-nano+plugin-crud__get_null/sql/schema.js')
@@ -128,8 +124,9 @@ describe('@pg-nano/plugin-crud', () => {
   })
 
   test('create - pk conflict', async () => {
-    const project = await createProject(
-      {
+    const project = new TestProject({
+      plugins: ['@pg-nano/plugin-crud'],
+      fixtures: {
         'sql/schema.sql': sql`
           CREATE TABLE "grocery_list" (
             list_id integer,
@@ -139,12 +136,9 @@ describe('@pg-nano/plugin-crud', () => {
           );
         `,
       },
-      {
-        plugins: ['@pg-nano/plugin-crud'],
-      },
-    )
+    })
 
-    await project.generate()
+    await project.update()
 
     type Schema =
       typeof import('../__fixtures__/@pg-nano+plugin-crud__create_pk_conflict/sql/schema.js')
