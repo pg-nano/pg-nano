@@ -74,6 +74,19 @@ export class Query<
     return this
   }
 
+  /**
+   * Transform a query with an expectation of "zero or one" results into a query
+   * with an expectation of "exactly one" result.
+   */
+  notNull(): TPromiseResult | null extends TPromiseResult
+    ? Query<Exclude<TPromiseResult, null>>
+    : this {
+    if (this.expectedCount === QueryResultCount.zeroOrOne) {
+      this.expectedCount = QueryResultCount.exactlyOne
+    }
+    return this as any
+  }
+
   // biome-ignore lint/suspicious/noThenProperty:
   then<TResult = TPromiseResult, TCatchResult = never>(
     onfulfilled?:
