@@ -98,12 +98,7 @@ export class Connection extends EventEmitter<ConnectionEvents> {
       parseText: parseText || createTextParser(baseTypeParsers),
       ctrl: new AbortController(),
       error: null,
-
-      // Options
-      mapFieldName:
-        type !== QueryType.value ? options?.mapFieldName : undefined,
-      mapFieldValue: options?.mapFieldValue,
-      singleRowMode: options?.singleRowMode,
+      ...options,
     }
 
     const promise = sendQuery(conn, query).finally(() => {
