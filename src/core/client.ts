@@ -361,6 +361,12 @@ export class Client {
         this.config.onConnection?.(connection)
 
         connection.on('close', () => {
+          // If `dsn` is unset, the client is being closed and none of what is
+          // done in this callback is necessary.
+          if (this.dsn == null) {
+            return
+          }
+
           this.config.onConnectionClose?.(connection)
           this.removeConnection(connection)
 
@@ -368,7 +374,7 @@ export class Client {
           // Therefore, a connection with an initial status of `IDLE` is assumed
           // to be a “required connection” (according to the `minConnections`
           // option) which must be re-established automatically.
-          if (this.dsn != null && initialStatus === ConnectionStatus.IDLE) {
+          if (initialStatus === ConnectionStatus.IDLE) {
             this.addConnection(connection, initialStatus, signal, maxRetries)
           }
         })
