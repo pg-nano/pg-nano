@@ -23,7 +23,7 @@ import { inspectNamespaces, inspectViewFields } from '../inspector/inspect.js'
 import {
   isBaseType,
   isCompositeType,
-  isEnumType,
+  isRowType,
   isTableType,
   isViewType,
   type PgBaseType,
@@ -680,14 +680,20 @@ export async function generate(
       })
 
       const type = typesByOid.get(routine.returnTypeOid)
-      if (type && type.object.type !== PgObjectType.Base) {
-        if ((isTableType(type) || isViewType(type)) && !type.isArray) {
-          returnRow = true
-        }
-
-        // Determine if any of the table fields are composite types. If so, we
-        // need to generate runtime parsing hints for them.
-        if (!isEnumType(type)) {
+      if (type && isRowType(type)) {
+        if (type.isArray && isCompositeType(type)) {
+          const fieldMapper = renderFieldMapper(type.object.oid, {
+            fieldName: '',
+            ndims: type.isArray ? 1 : 0,
+            container: routine,
+            paramKind: PgParamKind.Out,
+          })
+          // The "res" key is set by the `sqlRoutineCall` function.
+          // See the "src/core/routines.ts" file for more details.
+          outputMappers.push(['res', fieldMapper])
+        } else {
+          // Determine if any of the table fields are composite types. If so, we
+          // need to generate runtime parsing hints for them.
           const fields = isViewType(type)
             ? await getViewFields(type.object)
             : type.object.fields
@@ -707,6 +713,10 @@ export async function generate(
               }
             }
           })
+
+          if (!type.isArray) {
+            returnRow = true
+          }
         }
       }
     } else {

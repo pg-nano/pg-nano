@@ -274,3 +274,9 @@ export function isBaseType(
 ): type is PgTypeReference<PgBaseType> {
   return type.object.type === PgObjectType.Base
 }
+
+export function isRowType(
+  type: PgTypeReference,
+): type is PgTypeReference<PgCompositeType | PgTable | PgView> {
+  return isCompositeType(type) || isTableType(type) || isViewType(type)
+}
