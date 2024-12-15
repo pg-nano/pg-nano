@@ -23,7 +23,13 @@ import { FieldCase } from './casing.js'
 import { importCustomTypeParsers } from './data/composite.js'
 import { debug } from './debug.js'
 import { ConnectionError } from './error.js'
-import { Query, QueryResultCount } from './query.js'
+import {
+  Query,
+  QueryResultCount,
+  type ListQuery,
+  type RowQuery,
+  type ValueQuery,
+} from './query.js'
 
 export interface ClientConfig {
   /**
@@ -574,8 +580,8 @@ export class Client {
   query<TRow extends Row>(
     input: SQLTemplate | QueryHook<CommandResult<TRow>[]>,
     options?: Query.Options | null,
-  ): Query<CommandResult<TRow>[]> {
-    return new Query(this, QueryType.full, input, options)
+  ): ListQuery<CommandResult<TRow>, QueryType.full> {
+    return new Query(this, QueryType.full, input, options) as any
   }
 
   /**
@@ -589,8 +595,8 @@ export class Client {
   queryRowList<TRow extends Row>(
     input: SQLTemplate | QueryHook<TRow[]>,
     options?: Query.Options | null,
-  ): Query<TRow[]> {
-    return new Query(this, QueryType.row, input, options)
+  ): ListQuery<TRow, QueryType.row> {
+    return new Query(this, QueryType.row, input, options) as any
   }
 
   /**
@@ -604,8 +610,8 @@ export class Client {
   queryValueList<T>(
     input: SQLTemplate | QueryHook<T[]>,
     options?: Query.Options | null,
-  ): Query<T[]> {
-    return new Query(this, QueryType.value, input, options)
+  ): ListQuery<T, QueryType.value> {
+    return new Query(this, QueryType.value, input, options) as any
   }
 
   /**
@@ -618,14 +624,14 @@ export class Client {
   queryRowOrNull<TRow extends Row>(
     input: SQLTemplate | QueryHook<TRow[]>,
     options?: Query.Options | null,
-  ): Query<TRow | null, TRow> {
+  ): RowQuery<TRow | null> {
     return new Query(
       this,
       QueryType.row,
       input,
       options,
       QueryResultCount.zeroOrOne,
-    )
+    ) as RowQuery<any>
   }
 
   /**
@@ -634,14 +640,14 @@ export class Client {
   queryRow<TRow extends Row>(
     input: SQLTemplate | QueryHook<TRow[]>,
     options?: Query.Options | null,
-  ): Query<TRow> {
+  ): RowQuery<TRow> {
     return new Query(
       this,
       QueryType.row,
       input,
       options,
       QueryResultCount.exactlyOne,
-    )
+    ) as RowQuery<any>
   }
 
   /**
@@ -652,14 +658,14 @@ export class Client {
   queryValueOrNull<T>(
     input: SQLTemplate | QueryHook<T[]>,
     options?: Query.Options | null,
-  ): Query<T | null, T> {
+  ): ValueQuery<T | null> {
     return new Query(
       this,
       QueryType.value,
       input,
       options,
       QueryResultCount.zeroOrOne,
-    )
+    ) as ValueQuery<any>
   }
 
   /**
@@ -668,14 +674,14 @@ export class Client {
   queryValue<T extends {}>(
     input: SQLTemplate | QueryHook<T[]>,
     options?: Query.Options | null,
-  ): Query<T, T> {
+  ): ValueQuery<T> {
     return new Query(
       this,
       QueryType.value,
       input,
       options,
       QueryResultCount.exactlyOne,
-    )
+    ) as ValueQuery<any>
   }
 }
 

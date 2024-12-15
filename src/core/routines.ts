@@ -1,5 +1,6 @@
 import type { Options } from 'option-types'
 import {
+  type QueryType,
   sql,
   type Interval,
   type QueryOptions,
@@ -12,7 +13,7 @@ import { isArray, isObject } from 'radashi'
 import type { Client } from './client.js'
 import type { FieldMapper } from './data/fieldMapper.js'
 import type { Input } from './data/types.js'
-import type { Query } from './query.js'
+import type { ListQuery, RowQuery, ValueQuery } from './query.js'
 
 /**
  * Allow a single value to be passed instead of named parameters, unless the
@@ -49,7 +50,7 @@ export type Routine<TArgs extends object, TResult> = TArgs extends any[]
 export function bindQueryRowList<TArgs extends object, TRow extends Row>(
   name: string | string[],
   build: (builder: RoutineBuilder) => typeof builder,
-): Routine<TArgs, Query<TRow[]>> {
+): Routine<TArgs, ListQuery<TRow, QueryType.row>> {
   return buildRoutine('queryRowList', name, build) as any
 }
 
@@ -60,7 +61,7 @@ export function bindQueryRowList<TArgs extends object, TRow extends Row>(
 export function bindQueryValueList<TArgs extends object, TResult>(
   name: string | string[],
   build: (builder: RoutineBuilder) => typeof builder,
-): Routine<TArgs, Query<TResult[]>> {
+): Routine<TArgs, ListQuery<TResult, QueryType.value>> {
   return buildRoutine('queryValueList', name, build) as any
 }
 
@@ -71,7 +72,7 @@ export function bindQueryValueList<TArgs extends object, TResult>(
 export function bindQueryRow<TArgs extends object, TRow extends Row>(
   name: string | string[],
   build: (builder: RoutineBuilder) => typeof builder,
-): Routine<TArgs, Query<TRow | null>> {
+): Routine<TArgs, RowQuery<TRow>> {
   return buildRoutine('queryRow', name, build) as any
 }
 
@@ -82,7 +83,7 @@ export function bindQueryRow<TArgs extends object, TRow extends Row>(
 export function bindQueryValue<TArgs extends object, TResult>(
   name: string | string[],
   build: (builder: RoutineBuilder) => typeof builder,
-): Routine<TArgs, Query<TResult, TResult>> {
+): Routine<TArgs, ValueQuery<TResult>> {
   return buildRoutine('queryValue', name, build) as any
 }
 
@@ -93,7 +94,7 @@ export function bindQueryValue<TArgs extends object, TResult>(
 export function bindQueryRowOrNull<TArgs extends object, TRow extends Row>(
   name: string | string[],
   build: (builder: RoutineBuilder) => typeof builder,
-): Routine<TArgs, Query<TRow | null>> {
+): Routine<TArgs, RowQuery<TRow | null>> {
   return buildRoutine('queryRowOrNull', name, build) as any
 }
 
@@ -104,7 +105,7 @@ export function bindQueryRowOrNull<TArgs extends object, TRow extends Row>(
 export function bindQueryValueOrNull<TArgs extends object, TResult>(
   name: string | string[],
   build: (builder: RoutineBuilder) => typeof builder,
-): Routine<TArgs, Query<TResult | null>> {
+): Routine<TArgs, ValueQuery<TResult | null>> {
   return buildRoutine('queryValueOrNull', name, build) as any
 }
 

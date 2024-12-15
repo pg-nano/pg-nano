@@ -12,8 +12,6 @@ import { FieldCase, snakeToCamel } from './casing.js'
 import type { Client } from './client.js'
 import { QueryError } from './error.js'
 
-type UnwrapArray<T> = T extends readonly (infer U)[] ? U : T
-
 // The Query class relies on protected members of the Client class, so this type
 // is used to allow it protected access.
 interface QueryClient {
@@ -34,15 +32,28 @@ export declare namespace Query {
   type Options = Omit<QueryOptions, 'singleRowMode'>
 }
 
-export class Query<
-  TPromiseResult,
-  TIteratorResult = UnwrapArray<TPromiseResult>,
-> {
+export interface ValueQuery<T> extends Query<T, Exclude<T, null>> {
+  type: QueryType.value
+  notNull(): ValueQuery<Exclude<T, null>>
+}
+
+export interface RowQuery<TRow> extends Query<TRow, Exclude<TRow, null>> {
+  type: QueryType.row
+  notNull(): RowQuery<Exclude<TRow, null>>
+}
+
+export interface ListQuery<T, TQueryType extends QueryType = QueryType>
+  extends Query<T[], T> {
+  type: TQueryType
+  notNull(): this
+}
+
+export class Query<TPromiseResult, TIteratorResult> {
   protected client: QueryClient
   protected trace?: Error = undefined
   constructor(
     client: Client,
-    protected type: QueryType,
+    readonly type: QueryType,
     protected input: SQLTemplate | QueryHook<any>,
     protected options?: Query.Options | null,
     protected expectedCount?: QueryResultCount,
@@ -78,13 +89,11 @@ export class Query<
    * Transform a query with an expectation of "zero or one" results into a query
    * with an expectation of "exactly one" result.
    */
-  notNull(): TPromiseResult | null extends TPromiseResult
-    ? Query<Exclude<TPromiseResult, null>>
-    : this {
+  notNull(): any {
     if (this.expectedCount === QueryResultCount.zeroOrOne) {
       this.expectedCount = QueryResultCount.exactlyOne
     }
-    return this as any
+    return this
   }
 
   // biome-ignore lint/suspicious/noThenProperty:
@@ -213,8 +222,6 @@ export class Query<
   }
 }
 
-export interface Query<
-  TPromiseResult,
-  TIteratorResult = UnwrapArray<TPromiseResult>,
-> extends PromiseLike<TPromiseResult>,
+export interface Query<TPromiseResult, TIteratorResult>
+  extends PromiseLike<TPromiseResult>,
     AsyncIterable<TIteratorResult> {}
