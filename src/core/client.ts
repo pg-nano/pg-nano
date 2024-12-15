@@ -532,9 +532,12 @@ export class Client {
         promise.then(connection => connection.close()),
       ),
     )
-    this.connecting.length = 0
 
-    this.connected.forEach(connection => connection.close())
+    this.connected.forEach(connection => {
+      connection.close()
+    })
+
+    this.connecting.length = 0
     this.connected.length = 0
 
     // Clear the backlog by rejecting all promises.
