@@ -124,7 +124,7 @@ function buildRoutine(
     return (client: Client, args?: unknown) => {
       return client[method as 'queryRow'](
         sqlRoutineCall(id, prepareInput(client, args, config), endClause),
-        config.outputMappers && getQueryOptions(client, config.outputMappers),
+        getQueryOptions(client, config),
       )
     }
   }
@@ -132,7 +132,7 @@ function buildRoutine(
   return (client: Client, ...args: any[]) => {
     return client[method as 'queryRow'](
       sqlRoutineCall(id, prepareInput(client, args, config), endClause),
-      config.outputMappers && getQueryOptions(client, config.outputMappers),
+      getQueryOptions(client, config),
     )
   }
 }
@@ -182,19 +182,21 @@ function sqlRoutineCall(id: SQLToken, values: any[], endClause?: SQLTemplate) {
   `
 }
 
-function getQueryOptions(
-  client: Client,
-  outputMappers: Record<string, FieldMapper>,
-): QueryOptions {
-  return {
-    mapFieldValue(value, name) {
+function getQueryOptions(client: Client, { outputMappers }: RoutineConfig) {
+  let options: QueryOptions | undefined
+
+  if (outputMappers) {
+    options ||= {}
+    options.mapFieldValue = (value, name) => {
       const type = outputMappers[name]
       if (type?.mapOutput) {
         return type.mapOutput(value, client)
       }
       return value
-    },
+    }
   }
+
+  return options
 }
 
 function prepareInput(client: Client, input: unknown, config: RoutineConfig) {
