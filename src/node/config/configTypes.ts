@@ -99,6 +99,13 @@ export interface UserConfig {
      */
     preferredExtension?: string
     /**
+     * Set to `true` if you have a custom `tsconfig.json` that sets
+     * `exactOptionalPropertyTypes` to `true`.
+     *
+     * @default false
+     */
+    exactOptionalPropertyTypes?: boolean
+    /**
      * Control the TypeScript nullability of the fields in composite types.
      *
      * ⚠️ Note: This does not enforce non-nullability at runtime.

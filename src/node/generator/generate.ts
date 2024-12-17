@@ -233,6 +233,9 @@ export async function generate(
   ) => {
     if (optional) {
       type += ' | null'
+      if (env.config.generate.exactOptionalPropertyTypes) {
+        type += ' | undefined'
+      }
     }
     return `${name}: ${type}`
   }
