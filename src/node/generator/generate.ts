@@ -233,6 +233,7 @@ export async function generate(
     optional: boolean,
   ) => {
     if (optional) {
+      name += '?'
       type += ' | null'
       if (exactOptionalPropertyTypes) {
         type += ' | undefined'
