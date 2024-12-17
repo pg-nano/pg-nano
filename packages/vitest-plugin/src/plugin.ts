@@ -1,4 +1,5 @@
 import * as devalue from 'devalue'
+import type { Jumpgen } from 'jumpgen'
 import http from 'node:http'
 import os from 'node:os'
 import path from 'node:path'
@@ -42,6 +43,8 @@ export default async (options: Options): Promise<Plugin> => {
   const ipcPath = path.join(os.tmpdir(), 'pg-nano-ipc.' + uid(7))
 
   let config: ResolvedConfig
+  let generator: Jumpgen<never, [Error | null, Project]>
+  let ipcServer: { close: () => void }
 
   const injectConfig = (
     _config: UserWorkspaceConfig,
@@ -62,7 +65,8 @@ export default async (options: Options): Promise<Plugin> => {
     },
     async configureServer(server) {
       const root = path.resolve(config.root, options.root ?? '')
-      const generator = dev({
+
+      generator = dev({
         ...options,
         root,
       })
@@ -90,12 +94,17 @@ export default async (options: Options): Promise<Plugin> => {
         throw error
       }
 
-      await startIPCServer({
+      ipcServer = await startIPCServer({
         async 'pg-error'({ error }) {
           const patch = await rewritePostgresError(error as any, project)
           return { patch }
         },
       })
+    },
+    async closeBundle() {
+      ipcServer.close()
+      generator.events.removeAllListeners()
+      await generator.destroy()
     },
   }
 
@@ -138,6 +147,13 @@ export default async (options: Options): Promise<Plugin> => {
     await new Promise<void>(resolve => {
       httpServer.listen(ipcPath, resolve)
     })
+
+    return {
+      close() {
+        httpServer.close()
+        wsServer.close()
+      },
+    }
   }
 
   async function rewritePostgresError(
