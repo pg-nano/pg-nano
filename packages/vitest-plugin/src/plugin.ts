@@ -5,7 +5,7 @@ import path from 'node:path'
 import type { PgResultError } from 'pg-nano'
 import type { Options as DevOptions } from 'pg-nano/dev'
 import type { LogLevel, Project } from 'pg-nano/node'
-import { uid } from 'radashi'
+import { shake, uid } from 'radashi'
 import type { Plugin, ResolvedConfig } from 'vite'
 import type { UserWorkspaceConfig } from 'vitest/node'
 import errors from './errors'
@@ -334,10 +334,10 @@ export default async (options: Options): Promise<Plugin> => {
       )
     }
 
-    return {
+    return shake({
       message: message !== error.message ? message : undefined,
       stack: stack !== error.stack ? stack : undefined,
-    }
+    })
   }
 }
 
