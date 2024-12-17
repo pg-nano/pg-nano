@@ -1,4 +1,5 @@
 import type { Range } from 'postgres-range'
+import type { Intersect, Simplify } from 'radashi'
 import type { JSON } from './json'
 import type { Timestamp } from './timestamp'
 
@@ -24,12 +25,25 @@ export type Input<T> = JSON extends T
           { [Index in keyof T]: Input<T[Index]> }
       : IsTimestamp<T> extends true
         ? Date | number
-        : T extends undefined
-          ? T | null | undefined
-          : T extends BigInt
-            ? T | number
-            : T extends Range<infer TSubtype>
-              ? Range<Input<TSubtype>>
-              : T extends object
-                ? { [K in keyof T]: Input<T[K]> }
-                : T
+        : T extends BigInt
+          ? T | number
+          : T extends Range<infer TSubtype>
+            ? Range<Input<TSubtype>>
+            : T extends object
+              ? Optionize<{ [K in keyof T]: Input<T[K]> }>
+              : T
+
+// Allow nullable fields to be omitted. This type is implemented with Intersect
+// to preserve the order of the keys, and with Simplify to reduce the type into
+// a more readable type literal.
+type Optionize<T extends object> = Simplify<
+  Intersect<
+    keyof T extends infer TKey
+      ? TKey extends keyof T
+        ? null extends T[TKey]
+          ? Partial<Pick<T, TKey>>
+          : Pick<T, TKey>
+        : never
+      : never
+  >
+>

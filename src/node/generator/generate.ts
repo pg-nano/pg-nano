@@ -226,6 +226,17 @@ export async function generate(
     return prefix + '.' + pascal(name)
   }
 
+  const renderPropertyType = (
+    name: string,
+    type: string,
+    optional: boolean,
+  ) => {
+    if (optional) {
+      type += ' | null'
+    }
+    return `${name}: ${type}`
+  }
+
   const renderEnumType = (type: PgEnumType) =>
     dedent`
       export type ${pascal(type.name)} = ${type.labels
@@ -240,17 +251,14 @@ export async function generate(
       export type ${pascal(type.name)} = {
         ${type.fields
           .map(field => {
-            const jsName = formatFieldName(field.name)
-            const jsType = renderTypeReference(field.typeOid, type, {
-              fieldName: field.name,
-              field,
-            })
-
-            const optionalToken = getCompositeFieldNullability(type, field)
-              ? '?'
-              : ''
-
-            return `${jsName}${optionalToken}: ${jsType}`
+            return renderPropertyType(
+              formatFieldName(field.name),
+              renderTypeReference(field.typeOid, type, {
+                fieldName: field.name,
+                field,
+              }),
+              getCompositeFieldNullability(type, field),
+            )
           })
           .join('\n')}
       }\n\n
@@ -259,17 +267,16 @@ export async function generate(
   const renderViewType = async (view: PgView) => {
     const fields = await getViewFields(view)
     const renderedFields = fields.map(field => {
-      const jsName = formatFieldName(field.name)
-      const jsType = field.jsonType
-        ? renderJsonType(field.jsonType)
-        : renderTypeReference(field.typeOid, view, {
-            fieldName: field.name,
-            field,
-          })
-
-      const optionalToken = field.nullable ? '?' : ''
-
-      return `${jsName}${optionalToken}: ${jsType}`
+      return renderPropertyType(
+        formatFieldName(field.name),
+        field.jsonType
+          ? renderJsonType(field.jsonType)
+          : renderTypeReference(field.typeOid, view, {
+              fieldName: field.name,
+              field,
+            }),
+        field.nullable,
+      )
     })
 
     return dedent`
@@ -281,16 +288,15 @@ export async function generate(
 
   const renderTableFields =
     (table: PgTable, paramKind: PgParamKind) => (field: PgTableField) => {
-      const jsFieldName = formatFieldName(field.name)
-      const jsFieldType = renderTypeReference(field.typeOid, table, {
-        paramKind,
-        fieldName: field.name,
-        field,
-      })
-
-      const optionalToken = field.nullable ? '?' : ''
-
-      return `${jsFieldName}${optionalToken}: ${jsFieldType}`
+      return renderPropertyType(
+        formatFieldName(field.name),
+        renderTypeReference(field.typeOid, table, {
+          paramKind,
+          fieldName: field.name,
+          field,
+        }),
+        field.nullable,
+      )
     }
 
   const renderTableType = (table: PgTable) => {
