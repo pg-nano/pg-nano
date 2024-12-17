@@ -169,6 +169,7 @@ export async function generate(
     outFile,
     fieldCase,
     preferredExtension,
+    exactOptionalPropertyTypes,
     notNullCompositeFields,
     applyFunctionPatterns,
     postGenerateScript,
@@ -233,7 +234,7 @@ export async function generate(
   ) => {
     if (optional) {
       type += ' | null'
-      if (env.config.generate.exactOptionalPropertyTypes) {
+      if (exactOptionalPropertyTypes) {
         type += ' | undefined'
       }
     }
@@ -653,12 +654,18 @@ export async function generate(
 
     const jsArgEntries = argNames?.some(Boolean)
       ? argNames.map((name, index) => {
-          const optionalToken =
-            index >= routine.paramTypes.length - routine.numDefaultParams
-              ? '?'
-              : ''
+          let jsName = name === '' ? '$' + (index + 1) : formatFieldName(name)
+          let jsType = jsArgTypes[index]
 
-          return `${name === '' ? '$' + (index + 1) : formatFieldName(name)}${optionalToken}: ${jsArgTypes[index]}`
+          if (index >= routine.paramTypes.length - routine.numDefaultParams) {
+            jsName += '?'
+            jsType += ' | null'
+            if (exactOptionalPropertyTypes) {
+              jsType += ' | undefined'
+            }
+          }
+
+          return `${jsName}: ${jsType}`
         })
       : null
 
