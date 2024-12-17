@@ -6,9 +6,7 @@
     "type": "git",
     "url": "https://github.com/pg-nano/pg-nano.git"
   },
-  "files": [
-    "dist"
-  ],
+  "files": ["dist"],
   "exports": {
     ".": {
       "types": "./dist/plugin.d.ts",
@@ -18,7 +16,8 @@
   "scripts": {
     "dev": "DEV=1 tsup --watch --sourcemap",
     "build": "tsup --clean",
-    "lint": "tsc -p . --outDir node_modules/.tmp"
+    "lint": "tsc -p . --outDir node_modules/.tmp",
+    "prepublishOnly": "pnpm build"
   },
   "peerDependencies": {
     "pg-nano": "*",
