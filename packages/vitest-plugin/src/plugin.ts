@@ -296,7 +296,7 @@ export default async (options: Options): Promise<Plugin> => {
           // character in the error line.
           errorColumn ??=
             errorLine != null
-              ? sourceLines[errorLine].match(/\S/)?.index ?? 0
+              ? (sourceLines[errorLine].match(/\S/)?.index ?? 0)
               : 0
         }
 
