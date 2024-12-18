@@ -23,7 +23,6 @@
   },
   "peerDependencies": {
     "pg-nano": "*",
-    "vite": "*",
     "vitest": "*"
   },
   "dependencies": {
