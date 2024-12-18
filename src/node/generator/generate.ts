@@ -1003,7 +1003,9 @@ export async function generate(
       SELECT typname FROM pg_type WHERE oid = ${sql.val(typeOid)}
     `)
 
-    events.emit('unsupported-type', { typeName, typeOid })
+    if (typeName !== 'citext') {
+      events.emit('unsupported-type', { typeName, typeOid })
+    }
   }
 
   if (postGenerateScript) {
