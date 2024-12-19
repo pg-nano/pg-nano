@@ -109,19 +109,24 @@ process.stderr.write = (...args) => {
 }
 
 log.task = (message: string) => {
-  const start = Date.now()
+  let start: number | null = Date.now()
   log(message)
 
   return () => {
-    if (lastLoggedLine.includes(message)) {
-      process.stdout.moveCursor(0, -1) // Move cursor up one line
-      process.stdout.clearLine(0) // Clear entire line
-      process.stdout.cursorTo(0) // Move cursor to start of line
+    if (start !== null) {
+      if (lastLoggedLine.includes(message)) {
+        process.stdout.moveCursor(0, -1) // Move cursor up one line
+        process.stdout.clearLine(0) // Clear entire line
+        process.stdout.cursorTo(0) // Move cursor to start of line
+      }
+
+      const elapsed = (Date.now() - start) / 1000
+      start = null
+
+      log.success(
+        message + ' done' + (elapsed > 0.5 ? ` in ${elapsed.toFixed(1)}s` : ''),
+      )
     }
-    const elapsed = (Date.now() - start) / 1000
-    log.success(
-      message + ' done' + (elapsed > 0.5 ? ` in ${elapsed.toFixed(1)}s` : ''),
-    )
   }
 }
 
