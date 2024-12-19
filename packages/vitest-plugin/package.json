@@ -22,7 +22,7 @@
     "prepublishOnly": "pnpm build"
   },
   "peerDependencies": {
-    "pg-nano": "*",
+    "pg-nano": ">=0.1.0-0",
     "vitest": "*"
   },
   "dependencies": {
