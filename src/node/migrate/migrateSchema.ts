@@ -17,6 +17,7 @@ export async function migrateSchema(
   })
 
   if (!plan.statements) {
+    events.emit('migrate:plan:empty')
     return
   }
 

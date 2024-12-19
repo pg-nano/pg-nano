@@ -27,6 +27,7 @@ type EventMap = {
   'parser:unhandled-statement': [event: { query: string; node: Node }]
   'parser:unhandled-insert': [event: { insertStmt: InsertStmt }]
   'migrate:plan': []
+  'migrate:plan:empty': []
   'migrate:start': []
   'migrate:static-rows:start': []
   'migrate:static-rows:end': [
@@ -151,6 +152,11 @@ export function enableEventLogging(logLevel?: LogLevel) {
     events.on('migrate:plan', () => {
       done()
       done = log.task('Planning migration...')
+    })
+
+    events.on('migrate:plan:empty', () => {
+      done()
+      log('No changes to apply')
     })
 
     events.on('migrate:start', () => {
