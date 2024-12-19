@@ -166,7 +166,19 @@ export default async (options: Options): Promise<Plugin> => {
   }
 
   async function rewritePostgresError(
-    error: PgResultError,
+    error: Pick<
+      PgResultError,
+      | 'message'
+      | 'stack'
+      | 'context'
+      | 'internalPosition'
+      | 'internalQuery'
+      | 'sqlState'
+      | 'severity'
+      | 'messagePrimary'
+      | 'messageDetail'
+      | 'messageHint'
+    >,
     project: Project,
   ): Promise<Partial<PgResultError> | undefined> {
     let message = error.message

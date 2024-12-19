@@ -1,5 +1,5 @@
 import * as devalue from 'devalue'
-import { uid } from 'radashi'
+import { pick, uid } from 'radashi'
 import type { RunnerTask, SerializedConfig } from 'vitest'
 import type { VitestExecutor } from 'vitest/execute'
 import { VitestTestRunner } from 'vitest/runners'
@@ -53,10 +53,18 @@ export default class extends VitestTestRunner {
     if (error.name === 'PgResultError') {
       const { patch } = await this.request({
         type: 'pg-error',
-        error: {
-          ...error,
-          stack: error.stack,
-        },
+        error: pick(error, [
+          'message',
+          'stack',
+          'context',
+          'internalPosition',
+          'internalQuery',
+          'sqlState',
+          'severity',
+          'messagePrimary',
+          'messageDetail',
+          'messageHint',
+        ]),
       })
       if (patch) {
         Object.assign(error, patch)
@@ -78,21 +86,4 @@ export default class extends VitestTestRunner {
       this.ws.send(devalue.stringify({ ...request, _id: id }))
     })
   }
-}
-
-interface ResponseError {
-  response: {
-    status: number
-    headers: Headers
-    json(): Promise<any>
-    text(): Promise<string>
-  }
-}
-
-function isResponseError(error: any): error is ResponseError {
-  return (
-    typeof error.response === 'object' &&
-    typeof error.response.status === 'number' &&
-    typeof error.response.headers === 'object'
-  )
 }
