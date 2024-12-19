@@ -36,6 +36,7 @@ import {
   PgObjectType,
   PgParamKind,
   type PgRoutine,
+  PgRoutineKind,
   type PgTable,
   type PgTableField,
   type PgType,
@@ -826,18 +827,25 @@ export async function generate(
     const binding: RoutineBindingContext = {
       name: routine.name,
       bindingFunction:
-        routine.bindingFunction ??
-        (returnRow
-          ? routine.returnSet
-            ? 'bindQueryRowList'
-            : 'bindQueryRowOrNull'
-          : routine.returnSet
-            ? 'bindQueryValueList'
-            : 'bindQueryValue'),
+        routine.kind === PgRoutineKind.Procedure
+          ? 'bindProcedure'
+          : routine.bindingFunction ??
+            (returnRow
+              ? routine.returnSet
+                ? 'bindQueryRowList'
+                : 'bindQueryRowOrNull'
+              : routine.returnSet
+                ? 'bindQueryValueList'
+                : 'bindQueryValue'),
     }
 
     applyFunctionPatterns?.(binding)
     imports.add(binding.bindingFunction)
+
+    let typeArgs = `${jsName}.Params`
+    if (routine.kind === PgRoutineKind.Function) {
+      typeArgs += `, ${jsName}.Result`
+    }
 
     return dedent`
       export declare namespace ${jsName} {
@@ -845,7 +853,7 @@ export async function generate(
         type Result = ${jsResultType}
       }
 
-      export const ${jsName} = /* @__PURE__ */ ${binding.bindingFunction}<${jsName}.Params, ${jsName}.Result>(${pgName}, ${builder})\n\n
+      export const ${jsName} = /* @__PURE__ */ ${binding.bindingFunction}<${typeArgs}>(${pgName}, ${builder})\n\n
     `
   }
 
