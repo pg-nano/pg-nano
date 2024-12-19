@@ -7,8 +7,8 @@ import type { PgResultError } from 'pg-nano'
 import type { Options as DevOptions } from 'pg-nano/dev'
 import type { LogLevel, Project } from 'pg-nano/node'
 import { shake, uid } from 'radashi'
-import type { Plugin, ResolvedConfig } from 'vite'
-import type { UserWorkspaceConfig } from 'vitest/node'
+import type { Plugin, ResolvedConfig, UserConfig } from 'vite'
+import type * as vitest from 'vitest/node'
 import errors from './errors'
 import { type MessageHandlers, parseMessage } from './message'
 
@@ -45,21 +45,33 @@ export default async (options: Options): Promise<Plugin> => {
   let config: ResolvedConfig
   let generator: Jumpgen<never, [Error | null, Project]>
   let ipcServer: { close: () => void }
+  let triggerFile: string
 
   const injectConfig = (
-    _config: UserWorkspaceConfig,
-  ): Partial<UserWorkspaceConfig> => ({
-    test: {
-      runner: import.meta.resolve('./runner'),
-      environmentOptions: {
-        wsPath: `ws+unix://${ipcPath}`,
+    config: UserConfig,
+  ): UserConfig & {
+    test?: vitest.InlineConfig
+  } => {
+    triggerFile = path.join(
+      config.root ?? process.cwd(),
+      options.root ?? '',
+      '.test-sentinel',
+    )
+
+    return {
+      test: {
+        runner: import.meta.resolve('./runner'),
+        environmentOptions: {
+          wsPath: `ws+unix://${ipcPath}`,
+        },
+        forceRerunTriggers: [triggerFile],
       },
-    },
-  })
+    }
+  }
 
   return {
     name: '@pg-nano/vitest-plugin',
-    config: config => injectConfig(config) as import('vite').UserConfig,
+    config: config => injectConfig(config) as UserConfig,
     async configResolved(res) {
       config = res
     },
@@ -70,9 +82,6 @@ export default async (options: Options): Promise<Plugin> => {
         ...options,
         root,
       })
-
-      const triggerFile = path.join(root, '.test-sentinel')
-      server.watcher.add(triggerFile)
 
       generator.events.on('finish', ([error, project]) => {
         if (error) {
