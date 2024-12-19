@@ -1,9 +1,9 @@
 import type { Options } from 'option-types'
 import {
-  type QueryType,
   sql,
   type Interval,
   type QueryOptions,
+  type QueryType,
   type Range,
   type Row,
   type SQLTemplate,
@@ -13,7 +13,7 @@ import { isArray, isObject } from 'radashi'
 import type { Client } from './client.js'
 import type { FieldMapper } from './data/fieldMapper.js'
 import type { Input } from './data/types.js'
-import type { ListQuery, RowQuery, ValueQuery } from './query.js'
+import type { ListQuery, RowQuery, ValueQuery, VoidQuery } from './query.js'
 
 /**
  * Allow a single value to be passed instead of named parameters, unless the
@@ -109,6 +109,13 @@ export function bindQueryValueOrNull<TArgs extends object, TResult>(
   return buildRoutine('queryValueOrNull', name, build) as any
 }
 
+export function bindProcedure<TArgs extends object>(
+  name: string | string[],
+  build: (builder: RoutineBuilder) => typeof builder,
+): Routine<TArgs, VoidQuery> {
+  return buildRoutine('query', name, build) as any
+}
+
 function buildRoutine(
   method: keyof Client,
   name: string | string[],
@@ -117,22 +124,23 @@ function buildRoutine(
   const { config } = build(new RoutineBuilder())
 
   const id = isArray(name) ? sql.id(...name) : sql.id(name)
+  const query = method === 'query' ? queryProcedureCall : queryFunctionCall
   const endClause = config.returnsRecord
     ? sql`WHERE (res.*) IS NOT NULL`
     : undefined
 
   if (config.argNames) {
     return (client: Client, args?: unknown) => {
-      return client[method as 'queryRow'](
-        sqlRoutineCall(id, prepareInput(client, args, config), endClause),
+      return client[method as 'query'](
+        query(id, prepareInput(client, args, config), endClause),
         getQueryOptions(client, config),
       )
     }
   }
 
   return (client: Client, ...args: any[]) => {
-    return client[method as 'queryRow'](
-      sqlRoutineCall(id, prepareInput(client, args, config), endClause),
+    return client[method as 'query'](
+      query(id, prepareInput(client, args, config), endClause),
       getQueryOptions(client, config),
     )
   }
@@ -176,7 +184,15 @@ class RoutineBuilder {
   }
 }
 
-function sqlRoutineCall(id: SQLToken, values: any[], endClause?: SQLTemplate) {
+function queryProcedureCall(id: SQLToken, values: any[]) {
+  return sql`CALL ${id}(${sql.join(',', values.map(sql.param))})`
+}
+
+function queryFunctionCall(
+  id: SQLToken,
+  values: any[],
+  endClause?: SQLTemplate,
+) {
   return sql`
     SELECT * FROM ${id}(${sql.join(',', values.map(sql.param))}) res
     ${endClause}

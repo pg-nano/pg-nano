@@ -48,6 +48,10 @@ export interface ListQuery<T, TQueryType extends QueryType = QueryType>
   notNull(): this
 }
 
+export interface VoidQuery extends Query<void, void> {
+  type: QueryType.void
+}
+
 export class Query<TPromiseResult, TIteratorResult> {
   protected client: QueryClient
   protected trace?: Error = undefined
