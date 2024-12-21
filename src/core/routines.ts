@@ -125,8 +125,12 @@ function buildRoutine(
 
   const id = isArray(name) ? sql.id(...name) : sql.id(name)
   const query = method === 'query' ? queryProcedureCall : queryFunctionCall
+
+  // When a function's return type is a record type without SETOF before it, the
+  // use of `RETURN NULL` leads to a record with all nulls. The where clause
+  // below is a workaround to treat such a record as just NULL.
   const endClause = config.returnsRecord
-    ? sql`WHERE (res.*) IS NOT NULL`
+    ? sql`WHERE NOT res IS NULL`
     : undefined
 
   if (config.argNames) {
