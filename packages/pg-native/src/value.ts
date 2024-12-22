@@ -87,7 +87,7 @@ function stringifyArray(array: any[]) {
     if (sql.length > 1) {
       sql += ','
     }
-    sql += stringifyValue(value, stringifyArrayElement)
+    sql += stringifyValue(value, escapeArrayElement)
   }
   return sql + '}'
 }
@@ -96,7 +96,7 @@ const BACKSLASH_RE = /\\/g
 const DOUBLE_QUOTE_RE = /"/g
 const SINGLE_QUOTE_RE = /'/g
 
-function stringifyArrayElement(str: string, type: EscapedType) {
+function escapeArrayElement(str: string, type: EscapedType) {
   switch (type) {
     case 'array':
     case 'hex':
