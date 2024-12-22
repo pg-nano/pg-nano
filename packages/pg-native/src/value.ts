@@ -40,7 +40,14 @@ export function stringifyValue(
           return escape(stringifyArray(obj as any[]), 'array')
         case Tuple:
           return escape(
-            `(${(obj as Tuple).map(value => stringifyValue(value, escape)).join(',')})`,
+            `(${(obj as Tuple)
+              .map(value => {
+                if (value === null) {
+                  return ''
+                }
+                return stringifyValue(value, escape)
+              })
+              .join(',')})`,
             'tuple',
           )
         case Interval:
