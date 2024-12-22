@@ -1,25 +1,21 @@
-import { Client, FieldCase, sql, type ClientConfig } from 'pg-nano'
-
-let client: Client
-
-const getClient = async (config?: Partial<ClientConfig>) =>
-  new Client(config).connect(process.env.PG_TMP_DSN!)
-
-afterEach(async () => {
-  await client?.close()
-})
+import { FieldCase, sql } from 'pg-nano'
+import { getClient, getClientFactory } from './util.js'
 
 describe('ClientConfig', () => {
   test('fieldCase preserve', async () => {
-    client = await getClient({ fieldCase: FieldCase.preserve })
+    const client = await getClient({
+      fieldCase: FieldCase.preserve,
+    })
     const results = await client.query(sql`SELECT 1 AS foo_bar`)
     expect(results[0].rows[0].foo_bar).toBe(1)
   })
 })
 
 describe('Client.prototype', () => {
+  const getClient = getClientFactory()
+
   test('query - multiple commands', async () => {
-    client = await getClient()
+    const client = getClient()
     const results = await client.query(sql`SELECT 1; SELECT 2`)
     expect(results).toMatchInlineSnapshot(`
       [
@@ -58,7 +54,7 @@ describe('Client.prototype', () => {
   })
 
   test('query - for await', async () => {
-    client = await getClient()
+    const client = getClient()
     const results: any[] = []
     for await (const result of client.query(sql`
       SELECT generate_series(1, 2) AS n;
@@ -109,7 +105,7 @@ describe('Client.prototype', () => {
   })
 
   test('queryRowList - for await', async () => {
-    client = await getClient()
+    const client = getClient()
     const results: any[] = []
     for await (const result of client.queryRowList(sql`
       SELECT generate_series(1, 2) AS n1;
@@ -136,7 +132,7 @@ describe('Client.prototype', () => {
   })
 
   test('queryValueList - for await', async () => {
-    client = await getClient()
+    const client = getClient()
     const results: any[] = []
     for await (const result of client.queryValueList(sql`
       SELECT generate_series(1, 2);
@@ -155,13 +151,13 @@ describe('Client.prototype', () => {
   })
 
   test('queryRow - basic select', async () => {
-    client = await getClient()
+    const client = getClient()
     const result = await client.queryRow(sql`SELECT 1 AS one`)
     expect(result).toEqual({ one: 1 })
   })
 
   test('queryRow - throw on empty result set', async () => {
-    client = await getClient()
+    const client = getClient()
     await expect(() =>
       client.queryRow(sql`SELECT 1 WHERE false`),
     ).rejects.toThrowErrorMatchingInlineSnapshot(
@@ -170,7 +166,7 @@ describe('Client.prototype', () => {
   })
 
   test('queryRow - throw on multiple rows', async () => {
-    client = await getClient()
+    const client = getClient()
     await expect(() =>
       client.queryRow(sql`SELECT generate_series(1, 2)`),
     ).rejects.toThrowErrorMatchingInlineSnapshot(
@@ -179,19 +175,19 @@ describe('Client.prototype', () => {
   })
 
   test('queryRowOrNull - tolerate empty result set', async () => {
-    client = await getClient()
+    const client = getClient()
     const result = await client.queryRowOrNull(sql`SELECT 1 WHERE false`)
     expect(result).toBeNull()
   })
 
   test('queryValue - basic select', async () => {
-    client = await getClient()
+    const client = getClient()
     const result = await client.queryValue(sql`SELECT 1`)
     expect(result).toBe(1)
   })
 
   test('queryValue - throw on empty result set', async () => {
-    client = await getClient()
+    const client = getClient()
     await expect(() =>
       client.queryValue(sql`SELECT 1 WHERE false`),
     ).rejects.toThrowErrorMatchingInlineSnapshot(
@@ -200,7 +196,7 @@ describe('Client.prototype', () => {
   })
 
   test('queryValue - throw on multiple rows', async () => {
-    client = await getClient()
+    const client = getClient()
     await expect(() =>
       client.queryValue(sql`SELECT generate_series(1, 2)`),
     ).rejects.toThrowErrorMatchingInlineSnapshot(
@@ -209,7 +205,7 @@ describe('Client.prototype', () => {
   })
 
   test('queryValueOrNull - tolerate empty result set', async () => {
-    client = await getClient()
+    const client = getClient()
     const result = await client.queryValueOrNull(sql`SELECT 1 WHERE false`)
     expect(result).toBeNull()
   })
@@ -219,7 +215,7 @@ describe('connection pooling', () => {
   test('multiple connections are opened for parallel queries', async () => {
     vi.useFakeTimers()
 
-    client = await getClient({
+    const client = await getClient({
       minConnections: 0,
       maxConnections: 2,
       idleTimeout: 1000,

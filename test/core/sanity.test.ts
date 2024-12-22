@@ -1,19 +1,13 @@
-import { Client, sql, type ClientConfig } from 'pg-nano'
+import { sql } from 'pg-nano'
 import { stringifyValue, Tuple } from 'pg-native'
 import { resetPublicSchema } from '../util.js'
-
-let client: Client
-
-const getClient = async (config?: Partial<ClientConfig>) =>
-  new Client(config).connect(process.env.PG_TMP_DSN!)
-
-afterEach(async () => {
-  await client?.close()
-})
+import { getClientFactory } from './util.js'
 
 describe('sanity', () => {
+  const getClient = getClientFactory()
+
   test('cast text representation to parsed type', async () => {
-    client = await getClient()
+    const client = getClient()
     const texts = [
       1,
       [1, 2],
@@ -71,7 +65,7 @@ describe('sanity', () => {
   })
 
   test('record-returning function cannot return null', async () => {
-    client = await getClient()
+    const client = getClient()
 
     await resetPublicSchema()
 
@@ -80,7 +74,7 @@ describe('sanity', () => {
         id integer PRIMARY KEY,
         name text
       );
-    
+
       CREATE FUNCTION test_null()
       RETURNS foo
       LANGUAGE plpgsql

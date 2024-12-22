@@ -1,17 +1,11 @@
-import { Client, sql, type ClientConfig } from 'pg-nano'
+import { sql } from 'pg-nano'
 import { uid } from 'radashi'
+import { getClientFactory } from './util.js'
 
-let client: Client
-
-const getClient = async (config?: Partial<ClientConfig>) =>
-  new Client(config).connect(process.env.PG_TMP_DSN!)
-
-afterEach(async () => {
-  await client?.close()
-})
+const getClient = getClientFactory()
 
 test('SELECT from non-existent table', async () => {
-  client = await getClient()
+  const client = getClient()
   await expect(() =>
     client.query(sql`SELECT * FROM unknown_table`),
   ).rejects.toThrowErrorMatchingInlineSnapshot(`
@@ -23,7 +17,7 @@ test('SELECT from non-existent table', async () => {
 })
 
 test('rollback on query error', async () => {
-  client = await getClient()
+  const client = getClient()
   const tableId = uid(20)
   try {
     await client.query(sql`
