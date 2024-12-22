@@ -100,7 +100,6 @@ function stringifyArrayElement(str: string, type: EscapedType) {
   switch (type) {
     case 'array':
     case 'hex':
-    case 'tuple':
       return str
     case 'json':
       return (
