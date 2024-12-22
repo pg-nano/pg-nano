@@ -308,7 +308,12 @@ export class Client {
    * for custom types discovered by introspection, whose type OIDs can't be
    * known at compile-time (i.e. they are non-deterministic).
    */
-  protected async init(dsn: string, connection: Connection) {
+  protected async init(dsn: string, connection: Connection, force?: boolean) {
+    // Wait for the promise to be set, so we can determine if this call gets
+    // superceded by a call to `reloadCustomTypes`.
+    await Promise.resolve()
+    const promise = this.initPromise
+
     const {
       host = process.env.PGHOST ?? 'localhost',
       port = process.env.PGPORT ?? 5432,
@@ -324,10 +329,10 @@ export class Client {
         host,
         port,
         dbname,
+        force,
       )
-
-      if (dsn !== this.dsn) {
-        return // Bail if the connection string has changed.
+      if (promise !== this.initPromise) {
+        return
       }
     }
 
@@ -336,6 +341,42 @@ export class Client {
       ...customTypeParsers,
       ...this.config.textParsers,
     })
+  }
+
+  /**
+   * Initialize the client if needed. Then wait for initialization to complete.
+   */
+  protected async requireInit(
+    dsn: string,
+    connection: Connection,
+    force?: boolean,
+  ) {
+    if (force) {
+      this.initPromise = null
+    }
+    // Use a while loop to wait again if reloadCustomTypes gets called while
+    // waiting for types.
+    while (true) {
+      const promise = !this.initPromise
+        ? (this.initPromise = this.init(dsn, connection, force))
+        : null
+
+      await this.initPromise.catch(error => {
+        error.message = `[pg-nano] Failed to load custom type parsers: ${error.message}`
+        console.error(error)
+      })
+
+      if (promise === this.initPromise) {
+        this.initPromise = null
+        this.connected.forEach(connection => {
+          if (connection.status === ConnectionStatus.AWAITING_TYPES) {
+            connection.status = ConnectionStatus.IDLE
+            this.onIdleConnection(connection)
+          }
+        })
+        break
+      }
+    }
   }
 
   protected addConnection(
@@ -354,9 +395,7 @@ export class Client {
     )
       .then(async dsn => {
         if (!this.parseText) {
-          await (this.initPromise ??= this.init(dsn, connection).finally(() => {
-            this.initPromise = null
-          }))
+          await this.requireInit(dsn, connection)
         }
 
         const index = this.connecting.indexOf(connecting)
@@ -480,7 +519,11 @@ export class Client {
   }
 
   protected onIdleConnection(connection: Connection) {
-    this.backlog.shift()?.(null, connection)
+    if (this.initPromise) {
+      connection.status = ConnectionStatus.AWAITING_TYPES
+    } else if (this.backlog.length > 0) {
+      this.backlog.shift()!(null, connection)
+    }
   }
 
   /**
@@ -551,6 +594,28 @@ export class Client {
 
     // This can't be unset until after the connections have been closed.
     this.parseText = null
+  }
+
+  /**
+   * Reloads the custom types for the current database.
+   */
+  async reloadCustomTypes(signal?: AbortSignal) {
+    if (this.dsn == null) {
+      throw new ConnectionError('Postgres client is not connected')
+    }
+
+    const connection = await this.getConnection(signal)
+    this.connected.forEach(connection => {
+      if (connection.status === ConnectionStatus.IDLE) {
+        connection.status = ConnectionStatus.AWAITING_TYPES
+      }
+    })
+
+    await this.requireInit(this.dsn, connection, true)
+
+    // Ensure this connection can be reused.
+    connection.status = ConnectionStatus.IDLE
+    this.onIdleConnection(connection)
   }
 
   /**

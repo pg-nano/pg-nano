@@ -193,6 +193,8 @@ export enum ConnectionStatus {
   QUERY_WRITING = 3,
   /** This connection is actively reading the result of a query from the socket. */
   QUERY_READING = 4,
+  /** This connection will be idle once custom types are loaded. */
+  AWAITING_TYPES = 5,
 }
 
 interface IConnection extends EventEmitter<ConnectionEvents> {

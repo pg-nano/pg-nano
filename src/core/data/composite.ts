@@ -1,8 +1,8 @@
-import fs from 'node:fs'
+import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { QueryType, sql, type Connection, type TextParser } from 'pg-native'
-import { pascal } from 'radashi'
+import { noop, pascal } from 'radashi'
 import { debug } from '../debug.js'
 
 export async function importCustomTypeParsers(
@@ -10,22 +10,30 @@ export async function importCustomTypeParsers(
   host: string,
   port: string | number,
   dbname: string,
+  force?: boolean,
 ): Promise<Record<number, TextParser>> {
   // Runtime-generated modules are stored in the user's home directory, so that
   // pg-nano's "dev" command can purge them when the schema changes.
   const cacheDir = path.join(os.homedir(), `.pg-nano/${host}+${port}+${dbname}`)
 
-  const cachedModulePath = path.join(cacheDir, 'customTypeParsers.mjs')
-  if (!fs.existsSync(cachedModulePath)) {
+  const moduleName = 'customTypeParsers'
+
+  let cachedModuleFile = await fs
+    .readdir(cacheDir)
+    .then(files => files.findLast(file => file.startsWith(moduleName)), noop)
+
+  if (force || !cachedModuleFile) {
     debug('building custom type parsers')
 
     const code = await buildCustomTypeParsers(conn)
 
-    fs.mkdirSync(cacheDir, { recursive: true })
-    fs.writeFileSync(cachedModulePath, code)
+    cachedModuleFile = `${moduleName}.${Date.now()}.mjs`
+
+    await fs.mkdir(cacheDir, { recursive: true })
+    await fs.writeFile(path.join(cacheDir, cachedModuleFile), code)
   }
 
-  const exports = await import(cachedModulePath)
+  const exports = await import(path.join(cacheDir, cachedModuleFile))
   return exports.default(await import('pg-native'))
 }
 
