@@ -8,7 +8,6 @@ import {
   SQLTemplate,
 } from 'pg-native'
 import { isArray, noop } from 'radashi'
-import { FieldCase, snakeToCamel } from './casing.js'
 import type { Client } from './client.js'
 import { QueryError } from './error.js'
 
@@ -16,6 +15,7 @@ import { QueryError } from './error.js'
 // is used to allow it protected access.
 interface QueryClient {
   config: Client['config']
+  mapFieldName: Client['mapFieldName']
   getConnection: Client['getConnection']
   onIdleConnection: Client['onIdleConnection']
   parseText: Client['parseText']
@@ -142,11 +142,7 @@ export class Query<TPromiseResult, TIteratorResult> {
     const queryPromise = this.promise(connecting, this.input, {
       ...this.options,
       singleRowMode,
-      mapFieldName:
-        this.options?.mapFieldName ??
-        (this.client.config.fieldCase === FieldCase.camel
-          ? snakeToCamel
-          : undefined),
+      mapFieldName: this.options?.mapFieldName ?? this.client.mapFieldName,
     })
       .catch(error => {
         if (this.trace) {

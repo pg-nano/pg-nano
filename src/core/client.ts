@@ -19,7 +19,7 @@ import {
   type TextParser,
 } from 'pg-native'
 import { isString, noop, shake, sleep } from 'radashi'
-import { FieldCase } from './casing.js'
+import { FieldCase, snakeToCamel } from './casing.js'
 import { importCustomTypeParsers } from './data/composite.js'
 import { debug } from './debug.js'
 import { ConnectionError } from './error.js'
@@ -174,6 +174,14 @@ export class Client {
   dsn: string | null = null
   readonly config: Readonly<ClientConfig>
   readonly sessionHash: string
+
+  get mapFieldName() {
+    switch (this.config.fieldCase) {
+      case FieldCase.camel:
+        return snakeToCamel
+    }
+    return undefined
+  }
 
   /** The total number of connections, both connected and connecting. */
   get numConnections() {

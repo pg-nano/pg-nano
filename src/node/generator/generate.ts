@@ -470,7 +470,7 @@ export async function generate(
           container: object,
         })
         if (fieldMapper) {
-          return ` ${formatFieldName(field.name)}: ${fieldMapper}`
+          return ` ${field.name}: ${fieldMapper}`
         }
       }),
     )

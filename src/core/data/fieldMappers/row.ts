@@ -15,19 +15,20 @@ export function defineRowMapper(
   inputMappers?: Record<string, FieldMapper>,
 ): RowMapper {
   const mapper = defineFieldMapper((input: Record<string, unknown>, client) => {
+    const { mapFieldName } = client
     const values = new Tuple()
-    for (let i = 0, key: string, value: unknown; i < keys.length; i++) {
-      key = keys[i]
-      value = Object.prototype.hasOwnProperty.call(input, key)
+    for (let i = 0; i < keys.length; i++) {
+      const key = mapFieldName ? mapFieldName(keys[i]) : keys[i]
+      const value = Object.prototype.hasOwnProperty.call(input, key)
         ? input[key]
         : undefined
 
-      const type = inputMappers?.[key]
-      if (type?.mapInput && value != null) {
-        value = type.mapInput(value, client)
+      if (value == null) {
+        values[i] = null
+      } else {
+        const type = inputMappers?.[keys[i]]
+        values[i] = type?.mapInput ? type.mapInput(value, client) : value
       }
-
-      values[i] = value !== undefined ? value : null
     }
     return values
   }, null) as RowMapper
