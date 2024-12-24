@@ -6,8 +6,8 @@ import { parse as parseInterval } from 'postgres-interval'
 import * as range from 'postgres-range'
 
 export function parseArray(parseElement: TextParser): TextParser {
-  return (value, parse) =>
-    array.parse(value, element => parseElement(element, parse))
+  return (value, parse, mapFieldName) =>
+    array.parse(value, element => parseElement(element, parse, mapFieldName))
 }
 
 function parseBool(value: string) {
@@ -45,13 +45,18 @@ function parseCircle(value: string) {
 
 export function parseComposite(fields: Record<string, number>): TextParser {
   const fieldNames = Object.keys(fields)
-  return (value, parse) => {
+  return (value, parse, mapFieldName) => {
     const row: Record<string, unknown> = {}
     let index = 0
     for (const fieldValue of composite.parse(value)) {
-      const fieldName = fieldNames[index++]
+      let fieldName = fieldNames[index++]
+      if (mapFieldName) {
+        fieldName = mapFieldName(fieldName)
+      }
       row[fieldName] =
-        fieldValue !== null ? parse(fieldValue, fields[fieldName]) : fieldValue
+        fieldValue !== null
+          ? parse(fieldValue, fields[fieldName], mapFieldName)
+          : fieldValue
     }
     return row
   }
@@ -105,7 +110,12 @@ const parseDateRange = parseRange(parseString)
 
 export type TextParser = (
   value: string,
-  parse: (value: string, dataTypeID: number) => any,
+  parse: (
+    value: string,
+    dataTypeID: number,
+    mapFieldName: ((name: string) => string) | undefined,
+  ) => any,
+  mapFieldName: ((name: string) => string) | undefined,
 ) => any
 
 export const baseTypeParsers: Record<number, TextParser> = {
@@ -172,9 +182,13 @@ export const baseTypeParsers: Record<number, TextParser> = {
 }
 
 export function createTextParser(textParsers: Record<number, TextParser>) {
-  const parser = (text: string, dataTypeID: number): unknown => {
+  const parser = (
+    text: string,
+    dataTypeID: number,
+    mapFieldName?: (name: string) => string,
+  ): unknown => {
     const parse = textParsers[dataTypeID]
-    return parse ? parse(text, parser) : text
+    return parse ? parse(text, parser, mapFieldName) : text
   }
   return parser
 }

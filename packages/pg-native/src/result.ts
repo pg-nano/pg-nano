@@ -153,7 +153,7 @@ function parseFieldValue(
   if (text.length === 0 && pq.getisnull(rowIndex, fieldIndex)) {
     return null
   }
-  const value = query.parseText(text, dataTypeID)
+  const value = query.parseText(text, dataTypeID, query.mapFieldName)
   return query.mapFieldValue ? query.mapFieldValue(value, fieldName) : value
 }
 

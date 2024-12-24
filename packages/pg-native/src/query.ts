@@ -46,7 +46,11 @@ export interface QueryDescriptor extends QueryOptions {
   id: string
   type: QueryType
   input: SQLTemplate | QueryHook<any>
-  parseText: (text: string, dataTypeID: number) => unknown
+  parseText: (
+    text: string,
+    dataTypeID: number,
+    mapFieldName: ((name: string) => string) | undefined,
+  ) => unknown
   ctrl: AbortController
   error: Error | null
 }
