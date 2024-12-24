@@ -25,6 +25,8 @@ export enum QueryType {
 export type QueryOptions = Options<{
   /**
    * Map a field name before it's assigned to the result row.
+   *
+   * This callback is also applied to composite fields.
    */
   mapFieldName?: (name: string) => string
   /**
