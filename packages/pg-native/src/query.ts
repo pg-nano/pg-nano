@@ -32,6 +32,9 @@ export type QueryOptions = Options<{
    *
    * The given field `name` has already been mapped by this point, if
    * `mapFieldName` is defined.
+   *
+   * Note: This callback is only applied to root-level fields (i.e. composite
+   * fields are not mapped).
    */
   mapFieldValue?: (value: unknown, name: string) => unknown
   /**
